@@ -1,0 +1,25 @@
+# YouTube Processing API Dependencies
+
+# Core API framework
+fastapi>=0.115.12
+uvicorn>=0.34.3
+pydantic>=2.5.0
+
+# YouTube processing
+yt-dlp>=2024.8.6
+pydub>=0.25.1
+requests>=2.31.0
+
+# LLM and AI processing (specific to youtube_loader needs)
+google-genai>=0.4.0
+langchain>=0.3.25
+langchain-openai>=0.2.8
+langchain-core>=0.3.15
+fal-client>=0.6.0
+
+# Text processing and utilities
+opencc>=1.1.7
+python-dotenv>=1.0.0
+
+# Audio processing system dependencies (for pydub)
+# Note: ffmpeg needs to be installed separately on the system
