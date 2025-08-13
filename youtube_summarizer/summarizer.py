@@ -21,13 +21,8 @@ def quick_summary(text: str) -> str:
     """
     try:
         client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        model_name = os.getenv("LLM")
-        if not model_name:
-            model_name = "models/gemini-1.5-flash-latest"
-            logger.info(f"LLM environment variable not set. Using fallback model: {model_name}")
-
         response = client.models.generate_content(
-            model=model_name,
+            model="gemini-2.5-pro",
             contents=f"Summarize with list out of the key facts mentioned. Follow the language of the text.\n\n{text}",
             config=types.GenerateContentConfig(temperature=0),
         )
