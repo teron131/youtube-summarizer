@@ -5,9 +5,12 @@ Content Summarization Service
 This module provides functions for processing transcribed text to generate formatted subtitles and AI-powered summaries using the Gemini API.
 """
 
+import logging
 import os
 
 from google.genai import Client, types
+
+logger = logging.getLogger(__name__)
 
 
 def quick_summary(text: str) -> str:
@@ -18,8 +21,13 @@ def quick_summary(text: str) -> str:
     """
     try:
         client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+        model_name = os.getenv("LLM")
+        if not model_name:
+            model_name = "models/gemini-1.5-flash-latest"
+            logger.info(f"LLM environment variable not set. Using fallback model: {model_name}")
+
         response = client.models.generate_content(
-            model=os.getenv("LLM"),
+            model=model_name,
             contents=f"Summarize with list out of the key facts mentioned. Follow the language of the text.\n\n{text}",
             config=types.GenerateContentConfig(temperature=0),
         )

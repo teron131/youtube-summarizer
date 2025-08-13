@@ -1,8 +1,8 @@
 """
 YouTube Video and Audio Loader
-------------------------------
+----------------------
 
-This module provides functions to extract information and content from YouTube videos, including video details, subtitles, and audio streams. It uses `yt-dlp` with multiple strategies to ensure robust and reliable data extraction, especially in cloud environments like Railway.
+This module provides robust functions to extract information and content from YouTube videos, including video details, subtitles, and audio streams. It uses `yt-dlp` with multiple strategies to ensure reliable and efficient data extraction, especially in cloud environments like Railway.
 """
 
 import logging
@@ -18,13 +18,8 @@ logger = logging.getLogger(__name__)
 
 def extract_video_info(url: str) -> Dict[str, Any]:
     """
-    Extract video information using yt-dlp with a robust, unified strategy.
-
-    This function uses a single, reliable configuration for yt-dlp to fetch
-    video metadata, ensuring consistency across different environments. It includes
-    error handling to gracefully manage extraction failures.
+    Extract video information using yt-dlp with a robust strategy.
     """
-    log_and_print(f"📡 Extracting video info for URL: {url}")
 
     ydl_opts = {
         "quiet": True,
@@ -41,16 +36,9 @@ def extract_video_info(url: str) -> Dict[str, Any]:
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            log_and_print("✅ Video info extracted successfully!")
-            return info
-    except yt_dlp.utils.DownloadError as e:
-        error_msg = str(e)
-        if "private video" in error_msg.lower() or "video unavailable" in error_msg.lower():
-            raise RuntimeError("Video is private or unavailable.")
-        raise RuntimeError(f"Failed to extract video information: {error_msg}")
+            return ydl.extract_info(url, download=False)
     except Exception as e:
-        raise RuntimeError(f"An unexpected error occurred during video info extraction: {e}")
+        raise RuntimeError(f"Failed to extract video info: {str(e)}")
 
 
 def get_subtitle_from_captions(info: Dict[str, Any]) -> str | None:
