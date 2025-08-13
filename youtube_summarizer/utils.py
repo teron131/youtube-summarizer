@@ -2,8 +2,7 @@
 Utility Functions
 -----------------
 
-This module contains helper functions for string manipulation, data parsing,
-and logging, used across the YouTube Summarizer application.
+This module contains helper functions for string manipulation, data parsing, and logging, used across the YouTube Summarizer application.
 """
 
 import json

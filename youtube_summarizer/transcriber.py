@@ -2,9 +2,7 @@
 Audio Transcription Service
 ---------------------------
 
-This module is responsible for handling audio transcription. It includes functions
-for optimizing audio files for transcription and for interfacing with the FAL
-transcription service.
+This module is responsible for handling audio transcription. It includes functions for optimizing audio files for transcription and for interfacing with the FAL transcription service.
 """
 
 import io

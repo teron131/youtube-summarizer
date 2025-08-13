@@ -33,3 +33,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["youtube_summarizer"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.30.1",
+]

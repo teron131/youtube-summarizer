@@ -2,112 +2,55 @@
 YouTube Video and Audio Loader
 ------------------------------
 
-This module provides functions to extract information and content from YouTube videos,
-including video details, subtitles, and audio streams. It uses `yt-dlp` with
-multiple strategies to ensure robust and reliable data extraction, especially in
-cloud environments like Railway.
+This module provides functions to extract information and content from YouTube videos, including video details, subtitles, and audio streams. It uses `yt-dlp` with multiple strategies to ensure robust and reliable data extraction, especially in cloud environments like Railway.
 """
 
-import json
 import logging
-import os
-import random
 from typing import Any, Dict
 
 import requests
 import yt_dlp
-from .utils import log_and_print, s2hk, parse_youtube_json_captions, srt_to_txt
+
+from .utils import log_and_print, parse_youtube_json_captions, s2hk, srt_to_txt
 
 logger = logging.getLogger(__name__)
 
 
 def extract_video_info(url: str) -> Dict[str, Any]:
     """
-    Extract video information using yt-dlp with Railway-optimized strategies.
-    Cycles through multiple user-agents and client configurations to avoid common
-    HTTP errors.
+    Extract video information using yt-dlp with a robust, unified strategy.
+
+    This function uses a single, reliable configuration for yt-dlp to fetch
+    video metadata, ensuring consistency across different environments. It includes
+    error handling to gracefully manage extraction failures.
     """
-    is_cloud_env = any(
-        [
-            os.getenv("RAILWAY_STATIC_URL"),
-            os.getenv("RAILWAY_PROJECT_ID"),
-            os.getenv("PORT") and not os.getenv("DEVELOPMENT"),
-            os.getenv("RENDER"),
-            "/tmp" in os.getcwd(),
-        ]
-    )
+    log_and_print(f"📡 Extracting video info for URL: {url}")
 
-    if is_cloud_env:
-        log_and_print("🌐 Detected cloud environment - using optimized strategies")
-
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 10; SM-T870) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Safari/537.36",
-    ]
-
-    strategies = [
-        {
-            "user_agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
-            "extractor_args": {"youtube": {"player_client": ["android_tv"], "player_skip": ["configs"], "skip": ["hls", "dash"]}},
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": False,
+        "forcejson": True,
+        "socket_timeout": 30,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "referer": "https://www.youtube.com/",
+        "http_headers": {
+            "Accept-Language": "en-us,en;q=0.5",
         },
-        {
-            "user_agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip",
-            "extractor_args": {"youtube": {"player_client": ["android"], "player_skip": ["configs"]}},
-        },
-        {
-            "user_agent": "com.google.ios.youtube/19.09.3 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)",
-            "extractor_args": {"youtube": {"player_client": ["ios"], "player_skip": ["configs"]}},
-        },
-        {
-            "user_agent": "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Mobile Safari/537.36",
-            "extractor_args": {"youtube": {"player_client": ["android_embedded"], "player_skip": ["configs", "webpage"]}},
-        },
-        {
-            "user_agent": random.choice(user_agents),
-            "extractor_args": {"youtube": {"player_client": ["web"], "player_skip": ["configs"]}},
-            "age_limit": 999,
-        },
-    ]
+    }
 
-    last_error = None
-
-    for i, strategy in enumerate(strategies):
-        log_and_print(f"Trying strategy {i + 1}/{len(strategies)}...")
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "extract_flat": False,
-            "user_agent": strategy["user_agent"],
-            "referer": "https://www.youtube.com/",
-            "extractor_args": strategy["extractor_args"],
-            "socket_timeout": 30,
-            "http_headers": {
-                "User-Agent": strategy["user_agent"],
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-us,en;q=0.5",
-                "Sec-Fetch-Mode": "navigate",
-            },
-        }
-
-        if "age_limit" in strategy:
-            ydl_opts["age_limit"] = strategy["age_limit"]
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                log_and_print(f"✅ Strategy {i + 1} succeeded!")
-                return info
-        except Exception as e:
-            error_msg = str(e)
-            last_error = e
-            log_and_print(f"❌ Strategy {i + 1} failed: {error_msg}")
-            if any(keyword in error_msg.lower() for keyword in ["private video", "video unavailable"]):
-                break
-            continue
-
-    if last_error:
-        raise RuntimeError(f"Failed to access video: {str(last_error)}")
-    raise RuntimeError("Unknown error occurred while processing YouTube video.")
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            log_and_print("✅ Video info extracted successfully!")
+            return info
+    except yt_dlp.utils.DownloadError as e:
+        error_msg = str(e)
+        if "private video" in error_msg.lower() or "video unavailable" in error_msg.lower():
+            raise RuntimeError("Video is private or unavailable.")
+        raise RuntimeError(f"Failed to extract video information: {error_msg}")
+    except Exception as e:
+        raise RuntimeError(f"An unexpected error occurred during video info extraction: {e}")
 
 
 def get_subtitle_from_captions(info: Dict[str, Any]) -> str | None:
