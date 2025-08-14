@@ -6,6 +6,12 @@ echo "Frontend: http://localhost:3000"
 echo "Backend API: http://localhost:8080"
 echo ""
 
+# Ensure frontend knows how to reach the backend locally
+if [ -z "$BACKEND_URL" ]; then
+	export BACKEND_URL="http://localhost:8080"
+fi
+echo "🔗 BACKEND_URL=$BACKEND_URL"
+
 # Function to cleanup background processes
 cleanup() {
     echo ""
@@ -17,9 +23,27 @@ cleanup() {
 # Set trap to cleanup on script exit
 trap cleanup EXIT INT TERM
 
-# Start backend in background
+# Prepare Python runtime (prefer uv to isolate deps)
+PYTHON_CMD="python"
+if command -v uv >/dev/null 2>&1; then
+	echo "🧪 Using uv virtual env (./.venv)"
+	uv sync >/dev/null 2>&1 || true
+	PYTHON_CMD="uv run python"
+else
+	if [ ! -d ".venv" ]; then
+		echo "🧪 Creating local venv (.venv)"
+		python -m venv .venv
+	fi
+	# shellcheck disable=SC1091
+	source .venv/bin/activate
+	python -m pip install -q -r requirements.txt || true
+fi
+
+export PYTHONPATH="$(pwd):$PYTHONPATH"
+
+# Start backend in background (uvicorn inside app.py when __main__)
 echo "🚀 Starting FastAPI Backend (Port 8080)..."
-python app.py &
+$PYTHON_CMD app.py &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
@@ -27,7 +51,7 @@ sleep 3
 
 # Start frontend in background
 echo "🎨 Starting Next.js Frontend (Port 3000)..."
-cd youtube-summarizer-ui && npm run dev &
+cd youtube-summarizer-ui && BACKEND_URL="$BACKEND_URL" npm run dev &
 FRONTEND_PID=$!
 
 # Wait for both processes

@@ -18,6 +18,9 @@ dependencies = [
     "fal-client>=0.6.0",
     "opencc>=1.1.7",
     "python-dotenv>=1.0.0",
+    "curl_cffi<0.7",
+    "trio<0.26",
+    "eventlet<0.36",
 ]
 
 [project.optional-dependencies]

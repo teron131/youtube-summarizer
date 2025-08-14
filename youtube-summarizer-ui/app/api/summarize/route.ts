@@ -1,23 +1,37 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
 
 export async function POST(request: NextRequest) {
   try {
-    const { transcription } = await request.json()
+    const { transcription, url, title, author } = await request.json()
 
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system:
-        "You are an expert at summarizing video content. Create concise, informative summaries that capture the key points and main themes.",
-      prompt: `Please summarize the following video transcription in 3-4 paragraphs, highlighting the main points, key insights, and important takeaways:
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8080"
+    const payload = {
+      url,
+      generate_summary: true,
+    }
 
-${transcription}`,
+    // If transcription already exists, send it along to reduce backend work
+    if (transcription) {
+      Object.assign(payload as any, { transcription, title, author })
+    }
+
+    const resp = await fetch(`${backendUrl}/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
     })
 
-    return NextResponse.json({ summary: text })
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Backend error: ${resp.status} ${text}`)
+    }
+
+    const data = await resp.json()
+    const summary: string | null = data?.data?.summary ?? null
+    return NextResponse.json({ summary })
   } catch (error) {
-    console.error("Error summarizing:", error)
+    console.error("Error summarizing via backend:", error)
     return NextResponse.json({ error: "Failed to generate summary" }, { status: 500 })
   }
 }

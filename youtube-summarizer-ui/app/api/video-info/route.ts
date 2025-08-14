@@ -4,35 +4,37 @@ export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json()
 
-    // Extract video ID from YouTube URL
-    const videoId = extractVideoId(url)
-    if (!videoId) {
-      return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 })
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8080"
+    const resp = await fetch(`${backendUrl}/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, generate_summary: false }),
+      cache: "no-store",
+    })
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Backend error: ${resp.status} ${text}`)
     }
 
-    // Mock response - replace with actual YouTube API call
+    const data = await resp.json()
+    // Map backend response to UI VideoData
     const videoData = {
-      id: videoId,
-      title: "Sample Video Title - Replace with YouTube API",
-      description: "This is a sample description. In production, this would come from the YouTube Data API v3.",
-      channelTitle: "Sample Channel",
-      thumbnail: `/placeholder.svg?height=180&width=320&query=youtube+video+thumbnail`,
-      duration: "PT10M30S",
-      viewCount: 1234567,
-      likeCount: 12345,
+      id: data?.data?.url ?? url,
+      title: data?.data?.title ?? "Unknown",
+      description: "",
+      channelTitle: data?.data?.author ?? "Unknown",
+      thumbnail: "/placeholder.svg?height=180&width=320",
+      duration: data?.data?.processing_time ?? "",
+      viewCount: 0,
+      likeCount: 0,
       publishedAt: new Date().toISOString(),
-      url: url,
+      url,
     }
 
     return NextResponse.json(videoData)
   } catch (error) {
-    console.error("Error fetching video info:", error)
+    console.error("Error fetching video info via backend:", error)
     return NextResponse.json({ error: "Failed to fetch video info" }, { status: 500 })
   }
-}
-
-function extractVideoId(url: string): string | null {
-  const regex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/
-  const match = url.match(regex)
-  return match ? match[1] : null
 }

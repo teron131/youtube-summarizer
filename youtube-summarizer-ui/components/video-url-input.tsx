@@ -1,12 +1,12 @@
 "use client"
 
-import type React from "react"
-import { Loader2 } from "lucide-react" // Import Loader2 from lucide-react or wherever it's defined
+import { Loader2 } from "lucide-react"; // Import Loader2 from lucide-react or wherever it's defined
+import type React from "react";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useMemo, useState } from "react";
 
 interface VideoUrlInputProps {
   onSubmit: (url: string) => void
@@ -16,10 +16,26 @@ interface VideoUrlInputProps {
 export function VideoUrlInput({ onSubmit, isLoading }: VideoUrlInputProps) {
   const [url, setUrl] = useState("")
 
+  const isValidUrl = (value: string): boolean => {
+    const v = value.trim()
+    if (!v) return false
+    try {
+      // Basic absolute URL validation
+      const parsed = new URL(v)
+      // Optionally ensure it's a YouTube URL
+      return /(youtube\.com|youtu\.be)/.test(parsed.hostname)
+    } catch {
+      return false
+    }
+  }
+
+  const canSubmit = useMemo(() => isValidUrl(url), [url])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (url.trim()) {
-      onSubmit(url.trim())
+    const v = url.trim()
+    if (isValidUrl(v)) {
+      onSubmit(v)
     }
   }
 
@@ -28,7 +44,7 @@ export function VideoUrlInput({ onSubmit, isLoading }: VideoUrlInputProps) {
       <CardContent className="p-8 relative z-10">
         <form onSubmit={handleSubmit} className="flex gap-4">
           <Input
-            type="url"
+            type="text"
             placeholder="https://www.youtube.com/watch?v=..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -37,7 +53,7 @@ export function VideoUrlInput({ onSubmit, isLoading }: VideoUrlInputProps) {
           />
           <Button
             type="submit"
-            disabled={!url.trim() || isLoading}
+            disabled={!canSubmit || isLoading}
             className="bg-[#FF0000] hover:bg-[#CC0000] text-white"
           >
             {isLoading ? (

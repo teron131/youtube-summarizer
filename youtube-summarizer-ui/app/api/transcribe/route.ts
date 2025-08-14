@@ -2,26 +2,26 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const { videoId } = await request.json()
+    const { url } = await request.json()
 
-    // Simulate transcription delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8080"
+    const resp = await fetch(`${backendUrl}/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, generate_summary: false }),
+      cache: "no-store",
+    })
 
-    // Mock transcription - replace with actual transcription service
-    const transcription = `This is a sample transcription for video ${videoId}. 
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Backend error: ${resp.status} ${text}`)
+    }
 
-In a real implementation, you would:
-1. Download the audio from the YouTube video
-2. Use a speech-to-text service like OpenAI Whisper, Google Speech-to-Text, or Azure Speech Services
-3. Process the audio and return the transcribed text
-
-The transcription would contain the actual spoken content from the video, with timestamps and speaker identification if needed.
-
-This sample text demonstrates how the transcription would appear in the interface, with proper formatting and line breaks to make it readable for users.`
-
+    const data = await resp.json()
+    const transcription: string = data?.data?.subtitle || ""
     return NextResponse.json({ transcription })
   } catch (error) {
-    console.error("Error transcribing video:", error)
+    console.error("Error transcribing via backend:", error)
     return NextResponse.json({ error: "Failed to transcribe video" }, { status: 500 })
   }
 }

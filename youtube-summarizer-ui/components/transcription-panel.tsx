@@ -1,18 +1,15 @@
 "use client"
 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "framer-motion"
 import { FileText, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface TranscriptionPanelProps {
   transcription: string
-  onTranscribe: () => void
   isLoading: boolean
 }
 
-export function TranscriptionPanel({ transcription, onTranscribe, isLoading }: TranscriptionPanelProps) {
+export function TranscriptionPanel({ transcription, isLoading }: TranscriptionPanelProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -26,28 +23,19 @@ export function TranscriptionPanel({ transcription, onTranscribe, isLoading }: T
               <FileText className="h-5 w-5 text-blue-500" />
               Transcription
             </CardTitle>
-            <Button
-              onClick={onTranscribe}
-              disabled={isLoading}
-              size="sm"
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Transcribing...
-                </>
-              ) : (
-                "Generate Transcription"
-              )}
-            </Button>
+            {isLoading && (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Transcribing...
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           {transcription ? (
-            <ScrollArea className="h-64 w-full rounded-md border border-border/40 p-4">
+            <div className="h-64 w-full overflow-auto rounded-md border border-border/40 p-4">
               <div className="text-sm leading-relaxed whitespace-pre-wrap">{transcription}</div>
-            </ScrollArea>
+            </div>
           ) : (
             <div className="h-64 flex items-center justify-center text-muted-foreground border border-dashed border-border/40 rounded-md">
               <div className="text-center">
