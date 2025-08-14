@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# YouTube Summarizer Development Startup Script
-echo "🎬 Starting YouTube Summarizer Development Environment"
-echo "Frontend: http://localhost:3000"
-echo "Backend API: http://localhost:8080"
+# YouTube Summarizer Startup Script (Dev/Prod)
+echo "🎬 Starting YouTube Summarizer Environment"
+echo "Frontend (Next.js): port will be set from $PORT or 3000"
+echo "Backend API (FastAPI): http://localhost:8080"
 echo ""
 
 # Ensure frontend knows how to reach the backend locally
 if [ -z "$BACKEND_URL" ]; then
-	export BACKEND_URL="http://localhost:8080"
+	export BACKEND_URL="http://127.0.0.1:8080"
 fi
 echo "🔗 BACKEND_URL=$BACKEND_URL"
 
@@ -43,21 +43,25 @@ export PYTHONPATH="$(pwd):$PYTHONPATH"
 
 # Start backend in background (uvicorn inside app.py when __main__)
 echo "🚀 Starting FastAPI Backend (Port 8080)..."
-$PYTHON_CMD app.py &
+PORT=8080 $PYTHON_CMD app.py &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
 sleep 3
 
-# Start frontend in background
-echo "🎨 Starting Next.js Frontend (Port 3000)..."
-cd youtube-summarizer-ui && BACKEND_URL="$BACKEND_URL" npm run dev &
+# Start frontend in background (production server)
+FRONTEND_PORT="${PORT:-3000}"
+echo "🎨 Starting Next.js Frontend (Port $FRONTEND_PORT)..."
+cd youtube-summarizer-ui \
+	&& BACKEND_URL="$BACKEND_URL" npm install --no-audit --no-fund \
+	&& npm run build \
+	&& BACKEND_URL="$BACKEND_URL" npm run start -- -p "$FRONTEND_PORT" &
 FRONTEND_PID=$!
 
 # Wait for both processes
 echo ""
 echo "✅ Both services started!"
-echo "📱 Frontend: http://localhost:3000"
+echo "📱 Frontend: http://localhost:$FRONTEND_PORT"
 echo "🔧 Backend API: http://localhost:8080"
 echo "📊 Backend Health: http://localhost:8080/test"
 echo ""
