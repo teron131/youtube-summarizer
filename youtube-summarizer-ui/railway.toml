@@ -1,0 +1,29 @@
+# Railway config-as-code for Frontend (Next.js)
+
+[build]
+builder = "nixpacks"
+watchPatterns = [
+  "app/**",
+  "components/**",
+  "lib/**",
+  "package.json",
+  "next.config.mjs",
+  "tsconfig.json",
+]
+
+[build.nixpacksPlan]
+providers = ["node"]
+
+[build.nixpacksPlan.phases.install]
+dependsOn = ["setup"]
+cmds = ["npm ci --no-audit --no-fund"]
+
+[deploy]
+startCommand = "npm run start -- -p ${PORT:-3000}"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "always"
+overlapSeconds = 20
+drainingSeconds = 10
+
+
