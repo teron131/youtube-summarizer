@@ -3,12 +3,13 @@
 # YouTube Summarizer Startup Script (Dev/Prod)
 echo "🎬 Starting YouTube Summarizer Environment"
 echo "Frontend (Next.js): port will be set from $PORT or 3000"
-echo "Backend API (FastAPI): http://localhost:8080"
+echo "Backend API (FastAPI): will run on BACKEND_PORT (default 8081)"
 echo ""
 
 # Ensure frontend knows how to reach the backend locally
+BACKEND_PORT="${BACKEND_PORT:-8081}"
 if [ -z "$BACKEND_URL" ]; then
-	export BACKEND_URL="http://127.0.0.1:8080"
+	export BACKEND_URL="http://127.0.0.1:$BACKEND_PORT"
 fi
 echo "🔗 BACKEND_URL=$BACKEND_URL"
 
@@ -42,8 +43,8 @@ fi
 export PYTHONPATH="$(pwd):$PYTHONPATH"
 
 # Start backend in background (uvicorn inside app.py when __main__)
-echo "🚀 Starting FastAPI Backend (Port 8080)..."
-PORT=8080 $PYTHON_CMD app.py &
+echo "🚀 Starting FastAPI Backend (Port $BACKEND_PORT)..."
+PORT="$BACKEND_PORT" $PYTHON_CMD app.py &
 BACKEND_PID=$!
 
 # Wait a moment for backend to start
@@ -62,8 +63,8 @@ FRONTEND_PID=$!
 echo ""
 echo "✅ Both services started!"
 echo "📱 Frontend: http://localhost:$FRONTEND_PORT"
-echo "🔧 Backend API: http://localhost:8080"
-echo "📊 Backend Health: http://localhost:8080/test"
+echo "🔧 Backend API: http://localhost:$BACKEND_PORT"
+echo "📊 Backend Health: http://localhost:$BACKEND_PORT/test"
 echo ""
 echo "Press Ctrl+C to stop both services"
 echo ""
