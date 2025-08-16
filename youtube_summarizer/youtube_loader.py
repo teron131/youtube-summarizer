@@ -21,7 +21,8 @@ def extract_video_info(url: str) -> Dict[str, Any]:
     Extract video information using yt-dlp with a robust strategy.
     """
 
-    ydl_opts = {
+    # Primary configuration with anti-detection (no cookies)
+    primary_opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,
@@ -31,14 +32,107 @@ def extract_video_info(url: str) -> Dict[str, Any]:
         "referer": "https://www.youtube.com/",
         "http_headers": {
             "Accept-Language": "en-us,en;q=0.5",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         },
+        # Anti-detection options
+        "nocheckcertificate": True,
+        "ignoreerrors": False,
+        "no_color": True,
+        # Retry options
+        "retries": 3,
+        "fragment_retries": 3,
+        "skip_unavailable_fragments": True,
+        # Format selection
+        "format": "bestaudio/best",
+        "prefer_ffmpeg": True,
+        "keepvideo": False,
     }
 
+    # Fallback configuration (more aggressive, different user agent)
+    fallback_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": False,
+        "forcejson": True,
+        "socket_timeout": 60,
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "referer": "https://www.youtube.com/",
+        "http_headers": {
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+        },
+        # More aggressive anti-detection
+        "nocheckcertificate": True,
+        "ignoreerrors": False,
+        "no_color": True,
+        # Retry options
+        "retries": 5,
+        "fragment_retries": 5,
+        "skip_unavailable_fragments": True,
+        "format": "bestaudio/best",
+        "prefer_ffmpeg": True,
+        "keepvideo": False,
+    }
+
+    # Third fallback configuration (minimal, most compatible)
+    minimal_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": False,
+        "forcejson": True,
+        "socket_timeout": 90,
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "referer": "https://www.youtube.com/",
+        "http_headers": {
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        # Minimal options for maximum compatibility
+        "nocheckcertificate": True,
+        "ignoreerrors": False,
+        "no_color": True,
+        "retries": 3,
+        "format": "bestaudio/best",
+        "prefer_ffmpeg": True,
+        "keepvideo": False,
+    }
+
+    # Try primary configuration first
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        log_and_print("🔄 Attempting video info extraction with primary configuration...")
+        with yt_dlp.YoutubeDL(primary_opts) as ydl:
             return ydl.extract_info(url, download=False)
-    except Exception as e:
-        raise RuntimeError(f"Failed to extract video info: {str(e)}")
+    except Exception as primary_error:
+        log_and_print(f"⚠️ Primary configuration failed: {str(primary_error)}")
+
+        # Try fallback configuration
+        try:
+            log_and_print("🔄 Attempting video info extraction with fallback configuration...")
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception as fallback_error:
+            log_and_print(f"⚠️ Fallback configuration also failed: {str(fallback_error)}")
+
+            # Try minimal configuration as last resort
+            try:
+                log_and_print("🔄 Attempting video info extraction with minimal configuration...")
+                with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+            except Exception as minimal_error:
+                log_and_print(f"❌ All configurations failed. Primary: {str(primary_error)}. Fallback: {str(fallback_error)}. Minimal: {str(minimal_error)}")
+                raise RuntimeError(f"Failed to extract video info with all configurations. This might indicate YouTube has updated their anti-bot measures or the video is restricted.")
 
 
 def get_subtitle_from_captions(info: Dict[str, Any]) -> str | None:
