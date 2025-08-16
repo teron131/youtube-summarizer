@@ -31,7 +31,7 @@ youtube-summarizer/
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.11
 - FFmpeg (for audio processing)
 - API Keys: `FAL_KEY`, `GEMINI_API_KEY`
 
@@ -61,17 +61,6 @@ cp .env_example .env
 # Edit .env with your API keys
 ```
 
-Required environment variables:
-```bash
-# API Keys
-FAL_KEY=your_fal_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Optional Settings
-PORT=8080
-HOST=0.0.0.0
-```
-
 ### 3. Start the API Server
 
 ```bash
@@ -79,7 +68,7 @@ HOST=0.0.0.0
 python app.py
 
 # Or using uvicorn directly
-uvicorn app:app --host 0.0.0.0 --port 8080 --reload
+python -m uvicorn app:app --host 0.0.0.0 --port 8080
 
 # Production mode
 ./start.sh
