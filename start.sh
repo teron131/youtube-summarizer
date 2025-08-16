@@ -1,73 +1,24 @@
 #!/bin/bash
 
-# YouTube Summarizer Startup Script (Dev/Prod)
-echo "🎬 Starting YouTube Summarizer Environment"
-echo "Frontend (Next.js): port will be set from $PORT or 3000"
-echo "Backend API (FastAPI): will run on BACKEND_PORT (default 8081)"
-echo ""
+# Production startup script for YouTube Summarizer Backend API
+set -e
 
-# Ensure frontend knows how to reach the backend locally
-BACKEND_PORT="${BACKEND_PORT:-8081}"
-if [ -z "$BACKEND_URL" ]; then
-	export BACKEND_URL="http://127.0.0.1:$BACKEND_PORT"
-fi
-echo "🔗 BACKEND_URL=$BACKEND_URL"
+echo "🚀 Starting YouTube Summarizer Backend API..."
 
-# Function to cleanup background processes
-cleanup() {
-    echo ""
-    echo "🛑 Shutting down services..."
-    kill $(jobs -p) 2>/dev/null
-    exit 0
-}
-
-# Set trap to cleanup on script exit
-trap cleanup EXIT INT TERM
-
-# Prepare Python runtime (prefer uv to isolate deps)
-PYTHON_CMD="python"
-if command -v uv >/dev/null 2>&1; then
-	echo "🧪 Using uv virtual env (./.venv)"
-	uv sync >/dev/null 2>&1 || true
-	PYTHON_CMD="uv run python"
+# Check if we're in Railway (has PORT env var)
+if [ -n "$PORT" ]; then
+    echo "🚂 Detected Railway deployment"
+    HOST=${HOST:-"0.0.0.0"}
+    PORT=${PORT}
+    WORKERS=${WORKERS:-1}
 else
-	if [ ! -d ".venv" ]; then
-		echo "🧪 Creating local venv (.venv)"
-		python -m venv .venv
-	fi
-	# shellcheck disable=SC1091
-	source .venv/bin/activate
-	python -m pip install -q -r requirements.txt || true
+    echo "🏠 Local production mode"
+    HOST=${HOST:-"localhost"}
+    PORT=${PORT:-8080}
+    WORKERS=${WORKERS:-1}
 fi
 
-export PYTHONPATH="$(pwd):$PYTHONPATH"
+echo "🌍 Starting API server on $HOST:$PORT with $WORKERS workers"
 
-# Start backend in background (uvicorn inside app.py when __main__)
-echo "🚀 Starting FastAPI Backend (Port $BACKEND_PORT)..."
-PORT="$BACKEND_PORT" $PYTHON_CMD app.py &
-BACKEND_PID=$!
-
-# Wait a moment for backend to start
-sleep 3
-
-# Start frontend in background (production server)
-FRONTEND_PORT="${PORT:-3000}"
-echo "🎨 Starting Next.js Frontend (Port $FRONTEND_PORT)..."
-cd youtube-summarizer-ui \
-	&& BACKEND_URL="$BACKEND_URL" npm install --no-audit --no-fund \
-	&& npm run build \
-	&& BACKEND_URL="$BACKEND_URL" npm run start -- -p "$FRONTEND_PORT" &
-FRONTEND_PID=$!
-
-# Wait for both processes
-echo ""
-echo "✅ Both services started!"
-echo "📱 Frontend: http://localhost:$FRONTEND_PORT"
-echo "🔧 Backend API: http://localhost:$BACKEND_PORT"
-echo "📊 Backend Health: http://localhost:$BACKEND_PORT/test"
-echo ""
-echo "Press Ctrl+C to stop both services"
-echo ""
-
-# Wait for any process to finish
-wait
+# Use uvicorn with import string for proper deployment
+exec python -m uvicorn app:app --host "$HOST" --port "$PORT" --workers "$WORKERS" --access-log

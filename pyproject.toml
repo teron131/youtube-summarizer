@@ -1,26 +1,25 @@
 [project]
 name = "youtube-summarizer"
 version = "0.1.0"
-description = "Standalone YouTube processing API with transcription and AI summarization"
+description = "Backend API for YouTube video transcription and AI summarization"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
 dependencies = [
+    "fal-client>=0.6.0",
     "fastapi>=0.115.12",
-    "uvicorn>=0.34.3",
-    "pydantic>=2.5.0",
-    "yt-dlp>=2024.8.6",
-    "pydub>=0.25.1",
-    "requests>=2.31.0",
     "google-genai>=0.4.0",
     "langchain>=0.3.25",
-    "langchain-openai>=0.2.8",
     "langchain-core>=0.3.15",
-    "fal-client>=0.6.0",
+    "langchain-openai>=0.2.8",
     "opencc>=1.1.7",
+    "pydantic>=2.5.0",
+    "pydub>=0.25.1",
     "python-dotenv>=1.0.0",
-    "curl_cffi<0.7",
-    "trio<0.26",
-    "eventlet<0.36",
+    "requests>=2.31.0",
+    "uvicorn>=0.34.3",
+    "yt-dlp>=2024.8.6",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +27,11 @@ dev = [
     "pytest>=8.0.0",
     "black>=24.0.0",
     "ruff>=0.8.0",
+    "ipykernel>=6.30.1",
 ]
+
+[project.scripts]
+youtube-summarizer = "app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -37,7 +40,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["youtube_summarizer"]
 
-[dependency-groups]
-dev = [
-    "ipykernel>=6.30.1",
-]
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
