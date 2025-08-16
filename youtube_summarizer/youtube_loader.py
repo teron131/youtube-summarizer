@@ -6,7 +6,11 @@ This module provides robust functions to extract information and content from Yo
 """
 
 import logging
-from typing import Any, Dict
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import requests
 import yt_dlp
@@ -16,21 +20,55 @@ from .utils import log_and_print, parse_youtube_json_captions, s2hk, srt_to_txt
 logger = logging.getLogger(__name__)
 
 
-def extract_video_info(url: str) -> Dict[str, Any]:
+def extract_browser_cookies() -> Optional[str]:
     """
-    Extract video information using yt-dlp with multiple client type strategies.
-    Rotates between different device types to avoid bot detection.
+    Extract cookies from browser for YouTube authentication.
+    Returns path to cookies file or None if extraction fails.
+    
+    TEMPORARILY DISABLED due to dependency conflicts with curl_cffi/eventlet/trio
     """
+    log_and_print("🍪 Cookie extraction temporarily disabled due to dependency conflicts")
+    return None
 
-    # Client type configurations to mimic different devices
-    client_configs = [
-        # 1. Desktop Chrome (Web)
+
+def get_enhanced_client_configs():
+    """
+    Get enhanced client configurations with latest headers and better anti-detection.
+    """
+    return [
+        # 1. Latest Chrome Desktop with realistic headers
         {
-            "name": "Desktop Chrome",
+            "name": "Chrome Desktop (Latest)",
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "http_headers": {
-                "Accept-Language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web", "web_creator"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
+        },
+        # 2. Firefox Desktop
+        {
+            "name": "Firefox Desktop",
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+            "http_headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
                 "Accept-Encoding": "gzip, deflate, br",
                 "DNT": "1",
                 "Connection": "keep-alive",
@@ -40,85 +78,121 @@ def extract_video_info(url: str) -> Dict[str, Any]:
                 "Sec-Fetch-Site": "none",
                 "Sec-Fetch-User": "?1",
             },
-        },
-        # 2. Android Mobile App
-        {
-            "name": "Android Mobile",
-            "user_agent": "com.google.android.youtube/17.31.34 (Linux; U; Android 11; en_US; Pixel 5 Build/RQ3A.210805.001.A1)",
-            "http_headers": {
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate",
-                "User-Agent": "com.google.android.youtube/17.31.34 (Linux; U; Android 11; en_US; Pixel 5 Build/RQ3A.210805.001.A1)",
-                "X-YouTube-Client-Name": "2",
-                "X-YouTube-Client-Version": "17.31.34",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web"],
+                }
             },
         },
-        # 3. iOS Mobile App
+        # 3. Android Chrome Mobile
         {
-            "name": "iOS Mobile",
-            "user_agent": "com.google.ios.youtube/17.31.1 (iPhone; iOS 17.1.2; Scale/3.00)",
+            "name": "Android Mobile Chrome",
+            "user_agent": "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
             "http_headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
                 "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate",
-                "User-Agent": "com.google.ios.youtube/17.31.1 (iPhone; iOS 17.1.2; Scale/3.00)",
-                "X-YouTube-Client-Name": "5",
-                "X-YouTube-Client-Version": "17.31.1",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "sec-ch-ua-mobile": "?1",
+                "sec-ch-ua-platform": '"Android"',
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"],
+                }
             },
         },
-        # 4. Smart TV (Roku)
+        # 4. iOS Safari Mobile
         {
-            "name": "Smart TV Roku",
-            "user_agent": "Roku/DVP-9.0 (519.00E04142A)",
+            "name": "iOS Safari Mobile",
+            "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
             "http_headers": {
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate",
-                "User-Agent": "Roku/DVP-9.0 (519.00E04142A)",
-                "X-YouTube-Client-Name": "10",
-                "X-YouTube-Client-Version": "9.0",
-            },
-        },
-        # 5. Gaming Console (PlayStation)
-        {
-            "name": "PlayStation",
-            "user_agent": "Mozilla/5.0 (PlayStation 5; PlayStation 5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
-            "http_headers": {
-                "Accept-Language": "en-US,en;q=0.9",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["ios", "web"],
+                }
+            },
+        },
+        # 5. TV Client (often bypasses restrictions)
+        {
+            "name": "Smart TV Client",
+            "user_agent": "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) Version/6.0 TV Safari/537.36",
+            "http_headers": {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
                 "Accept-Encoding": "gzip, deflate",
-                "User-Agent": "Mozilla/5.0 (PlayStation 5; PlayStation 5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
+                "Connection": "keep-alive",
+            },
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["tv_embedded", "web"],
+                }
             },
         },
     ]
 
-    # Try each client configuration until one works
+
+def extract_video_info_with_cookies(url: str, cookies_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Extract video information with cookie authentication support.
+    """
+    client_configs = get_enhanced_client_configs()
+
     for i, client_config in enumerate(client_configs):
         try:
-            log_and_print(f"🔄 Attempt {i+1}/5: Using {client_config['name']} client...")
+            log_and_print(f"🔄 Attempt {i+1}/{len(client_configs)}: Using {client_config['name']} client...")
 
+            # Base yt-dlp options
             ydl_opts = {
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": False,
                 "forcejson": True,
-                "socket_timeout": 60,
+                "socket_timeout": 90,
                 "user_agent": client_config["user_agent"],
                 "referer": "https://www.youtube.com/",
                 "http_headers": client_config["http_headers"],
-                # Common options
+                # Enhanced anti-detection
                 "nocheckcertificate": True,
                 "ignoreerrors": False,
                 "no_color": True,
-                "retries": 2,
+                "retries": 3,
+                "fragment_retries": 3,
+                "extractor_retries": 3,
+                # Format selection
                 "format": "bestaudio/best",
                 "prefer_ffmpeg": True,
                 "keepvideo": False,
-                # Additional anti-detection
+                # Advanced anti-detection
                 "sleep_interval": 1,
-                "max_sleep_interval": 3,
+                "max_sleep_interval": 5,
+                "sleep_interval_requests": 1,
+                "sleep_interval_subtitles": 1,
+                # Geographic and network settings
+                "geo_bypass": True,
+                "geo_bypass_country": "US",
+                # Client-specific extractor args
+                "extractor_args": client_config.get("extractor_args", {}),
             }
+
+            # Add cookies if available
+            if cookies_file and Path(cookies_file).exists():
+                ydl_opts["cookiefile"] = cookies_file
+                log_and_print(f"🍪 Using cookies from: {cookies_file}")
+
+            # Random delay to avoid rate limiting
+            time.sleep(1)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 result = ydl.extract_info(url, download=False)
@@ -126,11 +200,131 @@ def extract_video_info(url: str) -> Dict[str, Any]:
                 return result
 
         except Exception as e:
-            log_and_print(f"❌ {client_config['name']} client failed: {str(e)}")
+            error_msg = str(e)
+            log_and_print(f"❌ {client_config['name']} client failed: {error_msg}")
+
+            # Add delays between failures to avoid aggressive rate limiting
+            time.sleep(2)
             continue
 
-    # If all clients fail
-    raise RuntimeError("All client types failed. YouTube may have updated their anti-bot measures.")
+    raise RuntimeError("All enhanced client configurations failed. YouTube's anti-bot measures are too aggressive.")
+
+
+def extract_video_info_alternative_methods(url: str) -> Dict[str, Any]:
+    """
+    Alternative extraction methods as last resort.
+    """
+    log_and_print("🔄 Trying alternative extraction methods...")
+
+    # Method 1: Use embedded player
+    try:
+        log_and_print("📺 Trying embedded player method...")
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "format": "bestaudio/best",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["tv_embedded"],
+                    "player_skip": ["webpage"],
+                }
+            },
+            "user_agent": "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36",
+            "referer": "https://www.youtube.com/",
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(url, download=False)
+            log_and_print("✅ Embedded player method succeeded!")
+            return result
+
+    except Exception as e:
+        log_and_print(f"❌ Embedded player method failed: {str(e)}")
+
+    # Method 2: Use age-gate bypass
+    try:
+        log_and_print("🔓 Trying age-gate bypass method...")
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "format": "bestaudio/best",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web_creator", "web"],
+                    "skip": ["hls", "dash"],
+                }
+            },
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "age_limit": 999,  # Bypass age restrictions
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(url, download=False)
+            log_and_print("✅ Age-gate bypass method succeeded!")
+            return result
+
+    except Exception as e:
+        log_and_print(f"❌ Age-gate bypass method failed: {str(e)}")
+
+    raise RuntimeError("All alternative extraction methods failed.")
+
+
+def extract_video_info(url: str) -> Dict[str, Any]:
+    """
+    Extract video information using multiple robust strategies with enhanced anti-detection.
+
+    This function implements a multi-tier approach:
+    1. Try cookie-based authentication with enhanced clients
+    2. Fall back to alternative extraction methods
+    3. Provide detailed error reporting for debugging
+    """
+    log_and_print("📋 Step 1: Extracting video info...")
+
+    # First, try to extract browser cookies for authentication
+    cookies_file = extract_browser_cookies()
+
+    try:
+        # Primary method: Enhanced clients with optional cookies
+        return extract_video_info_with_cookies(url, cookies_file)
+
+    except Exception as primary_error:
+        log_and_print(f"❌ Primary extraction methods failed: {str(primary_error)}")
+
+        try:
+            # Fallback method: Alternative extraction strategies
+            return extract_video_info_alternative_methods(url)
+
+        except Exception as fallback_error:
+            # Final error with comprehensive information
+            error_msg = f"""
+YouTube extraction completely failed. This may be due to:
+1. YouTube's aggressive bot detection
+2. Geographic restrictions
+3. Video privacy settings
+4. Network connectivity issues
+
+Primary error: {str(primary_error)}
+Fallback error: {str(fallback_error)}
+
+Suggestions:
+- Try again in a few minutes
+- Use a different network/VPN
+- Try a different video
+- Check if the video is available in your region
+"""
+            log_and_print(f"💔 Complete extraction failure: {error_msg}")
+            raise RuntimeError(error_msg.strip())
+
+    finally:
+        # Clean up cookies file if we created one
+        if cookies_file and Path(cookies_file).exists():
+            try:
+                Path(cookies_file).unlink()
+                log_and_print("🧹 Cleaned up temporary cookies file")
+            except Exception:
+                pass
 
 
 def get_subtitle_from_captions(info: Dict[str, Any]) -> str | None:
