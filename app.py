@@ -7,6 +7,7 @@ YouTube videos. Backend-only package for programmatic use.
 """
 
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -246,8 +247,6 @@ async def process_youtube_video(request: YouTubeRequest):
 
 
 if __name__ == "__main__":
-    import os
-
     import uvicorn
 
     port = int(os.environ.get("PORT", 8080))
