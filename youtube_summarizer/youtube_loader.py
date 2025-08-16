@@ -18,39 +18,119 @@ logger = logging.getLogger(__name__)
 
 def extract_video_info(url: str) -> Dict[str, Any]:
     """
-    Extract video information using yt-dlp with a simple, robust strategy.
+    Extract video information using yt-dlp with multiple client type strategies.
+    Rotates between different device types to avoid bot detection.
     """
 
-    # Simple configuration that avoids conflicts with networking libraries
-    simple_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": False,
-        "forcejson": True,
-        "socket_timeout": 60,
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "referer": "https://www.youtube.com/",
-        "http_headers": {
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    # Client type configurations to mimic different devices
+    client_configs = [
+        # 1. Desktop Chrome (Web)
+        {
+            "name": "Desktop Chrome",
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "http_headers": {
+                "Accept-Language": "en-US,en;q=0.9,en-GB;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+            },
         },
-        # Minimal options to avoid conflicts
-        "nocheckcertificate": True,
-        "ignoreerrors": False,
-        "no_color": True,
-        "retries": 3,
-        "format": "bestaudio/best",
-        "prefer_ffmpeg": True,
-        "keepvideo": False,
-    }
+        # 2. Android Mobile App
+        {
+            "name": "Android Mobile",
+            "user_agent": "com.google.android.youtube/17.31.34 (Linux; U; Android 11; en_US; Pixel 5 Build/RQ3A.210805.001.A1)",
+            "http_headers": {
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": "com.google.android.youtube/17.31.34 (Linux; U; Android 11; en_US; Pixel 5 Build/RQ3A.210805.001.A1)",
+                "X-YouTube-Client-Name": "2",
+                "X-YouTube-Client-Version": "17.31.34",
+            },
+        },
+        # 3. iOS Mobile App
+        {
+            "name": "iOS Mobile",
+            "user_agent": "com.google.ios.youtube/17.31.1 (iPhone; iOS 17.1.2; Scale/3.00)",
+            "http_headers": {
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": "com.google.ios.youtube/17.31.1 (iPhone; iOS 17.1.2; Scale/3.00)",
+                "X-YouTube-Client-Name": "5",
+                "X-YouTube-Client-Version": "17.31.1",
+            },
+        },
+        # 4. Smart TV (Roku)
+        {
+            "name": "Smart TV Roku",
+            "user_agent": "Roku/DVP-9.0 (519.00E04142A)",
+            "http_headers": {
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": "Roku/DVP-9.0 (519.00E04142A)",
+                "X-YouTube-Client-Name": "10",
+                "X-YouTube-Client-Version": "9.0",
+            },
+        },
+        # 5. Gaming Console (PlayStation)
+        {
+            "name": "PlayStation",
+            "user_agent": "Mozilla/5.0 (PlayStation 5; PlayStation 5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
+            "http_headers": {
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": "Mozilla/5.0 (PlayStation 5; PlayStation 5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
+            },
+        },
+    ]
 
-    try:
-        log_and_print("🔄 Attempting video info extraction with simple configuration...")
-        with yt_dlp.YoutubeDL(simple_opts) as ydl:
-            return ydl.extract_info(url, download=False)
-    except Exception as e:
-        log_and_print(f"❌ Video info extraction failed: {str(e)}")
-        raise RuntimeError(f"Failed to extract video info: {str(e)}")
+    # Try each client configuration until one works
+    for i, client_config in enumerate(client_configs):
+        try:
+            log_and_print(f"🔄 Attempt {i+1}/5: Using {client_config['name']} client...")
+
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": False,
+                "forcejson": True,
+                "socket_timeout": 60,
+                "user_agent": client_config["user_agent"],
+                "referer": "https://www.youtube.com/",
+                "http_headers": client_config["http_headers"],
+                # Common options
+                "nocheckcertificate": True,
+                "ignoreerrors": False,
+                "no_color": True,
+                "retries": 2,
+                "format": "bestaudio/best",
+                "prefer_ffmpeg": True,
+                "keepvideo": False,
+                # Additional anti-detection
+                "sleep_interval": 1,
+                "max_sleep_interval": 3,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                result = ydl.extract_info(url, download=False)
+                log_and_print(f"✅ Success with {client_config['name']} client!")
+                return result
+
+        except Exception as e:
+            log_and_print(f"❌ {client_config['name']} client failed: {str(e)}")
+            continue
+
+    # If all clients fail
+    raise RuntimeError("All client types failed. YouTube may have updated their anti-bot measures.")
 
 
 def get_subtitle_from_captions(info: Dict[str, Any]) -> str | None:

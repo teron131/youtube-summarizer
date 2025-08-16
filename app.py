@@ -84,13 +84,6 @@ class ProcessingStatus(BaseModel):
     message: str
 
 
-class HealthCheckResponse(BaseModel):
-    status: str
-    message: str
-    youtube_test: Optional[Dict[str, Any]] = None
-    timestamp: str
-
-
 # Helper function to extract video metadata
 def extract_video_metadata(info: Dict[str, Any]) -> VideoInfoResponse:
     """Extract relevant video metadata from yt-dlp info."""
@@ -251,35 +244,6 @@ async def process_youtube_video(request: YouTubeRequest):
         logs.append(failure_msg)
 
         return ProcessingResponse(status="error", message=error_message, logs=logs)
-
-
-@app.get("/health", response_model=HealthCheckResponse)
-async def health_check():
-    """
-    Health check endpoint that tests core functionality including YouTube video info extraction.
-    """
-    from datetime import datetime
-
-    try:
-        # Test YouTube functionality with a simple, reliable video
-        test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # Rick Roll - very stable
-
-        log_and_print("🏥 Health check: Testing YouTube functionality...")
-
-        # Test video info extraction
-        try:
-            info = extract_video_info(test_url)
-            youtube_test = {"status": "success", "title": info.get("title", "Unknown"), "uploader": info.get("uploader", "Unknown"), "duration": info.get("duration", 0), "formats_count": len(info.get("formats", [])), "message": "YouTube video info extraction working"}
-            log_and_print("✅ Health check: YouTube functionality test passed")
-        except Exception as e:
-            youtube_test = {"status": "failed", "error": str(e), "message": "YouTube video info extraction failed"}
-            log_and_print(f"❌ Health check: YouTube functionality test failed: {e}")
-
-        return HealthCheckResponse(status="healthy", message="System is operational", youtube_test=youtube_test, timestamp=datetime.now().isoformat())
-
-    except Exception as e:
-        log_and_print(f"❌ Health check failed: {e}")
-        return HealthCheckResponse(status="unhealthy", message=f"System health check failed: {str(e)}", youtube_test=None, timestamp=datetime.now().isoformat())
 
 
 if __name__ == "__main__":
