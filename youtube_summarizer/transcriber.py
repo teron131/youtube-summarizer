@@ -16,9 +16,8 @@ from .utils import log_and_print, whisper_result_to_txt
 
 def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
     """
-    Optimizes audio for transcription using a reliable, high-compression setting.
-    Converts audio to mono, sets a 16kHz sample rate, and uses a 32kbps bitrate
-    to ensure a small file size suitable for transcription APIs.
+    Optimizes audio for transcription using standard MP3 quality.
+    Converts to mono and applies minimal compression to maintain quality.
     """
     raw_size_mb = len(audio_bytes) / 1024 / 1024
     log_and_print(f"🔄 Optimizing audio ({raw_size_mb:.1f}MB) for transcription...")
@@ -26,6 +25,7 @@ def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
     try:
         audio_io = io.BytesIO(audio_bytes)
         audio_segment = None
+
         # Try loading with common formats first
         for fmt in ["mp3", "mp4", "m4a", "webm", "ogg"]:
             try:
@@ -42,22 +42,32 @@ def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
             audio_segment = AudioSegment.from_file(audio_io)
             log_and_print("✅ Loaded audio source with auto-detection")
 
-        # Apply a standard, effective compression configuration
-        log_and_print("⚙️ Applying standard compression: 32kbps, mono, 16kHz sample rate")
-        compressed_audio = audio_segment.set_channels(1).set_frame_rate(16000)
+        # Get original audio properties
+        original_channels = audio_segment.channels
+        original_duration = len(audio_segment) / 1000.0  # Convert to seconds
 
+        log_and_print(f"📊 Original audio: {original_channels} channels, {original_duration:.1f}s")
+
+        # Simple optimization: just convert to mono if needed, minimal compression
+        if original_channels > 1:
+            audio_segment = audio_segment.set_channels(1)
+            log_and_print("🔄 Converted to mono")
+        else:
+            log_and_print("✅ Already mono")
+
+        # Export with standard MP3 quality (128kbps - standard quality)
         output_buffer = io.BytesIO()
-        compressed_audio.export(output_buffer, format="mp3", bitrate="32k")
+        audio_segment.export(output_buffer, format="mp3", bitrate="128k")
         compressed_bytes = output_buffer.getvalue()
 
         compressed_size_mb = len(compressed_bytes) / 1024 / 1024
-        log_and_print(f"✅ Compression complete. New size: {compressed_size_mb:.1f}MB")
+        log_and_print(f"✅ Export complete. New size: {compressed_size_mb:.1f}MB")
 
         return compressed_bytes
 
     except Exception as e:
         log_and_print(f"❌ Audio optimization failed: {e}")
-        log_and_print(f"⚠️ Could not compress audio. Using original audio file ({raw_size_mb:.1f}MB).")
+        log_and_print(f"⚠️ Could not process audio. Using original audio file ({raw_size_mb:.1f}MB).")
         return audio_bytes
 
 
@@ -70,6 +80,13 @@ def transcribe_with_fal(audio_bytes: bytes) -> str:
         log_and_print("🎤 Starting FAL transcription...")
         if not os.getenv("FAL_KEY"):
             return "[FAL_KEY not configured]"
+
+        # Log audio details for debugging
+        audio_size_mb = len(audio_bytes) / 1024 / 1024
+        log_and_print(f"📊 Audio size for transcription: {audio_size_mb:.2f}MB")
+
+        if audio_size_mb < 0.001:
+            log_and_print("⚠️ Warning: Audio file is extremely small, transcription quality may be poor")
 
         log_and_print("📤 Uploading audio to FAL...")
         # FAL is robust; a generic 'audio/mpeg' is sufficient for MP3.
@@ -85,10 +102,27 @@ def transcribe_with_fal(audio_bytes: bytes) -> str:
 
         result = fal_client.subscribe(
             "fal-ai/whisper",
-            arguments={"audio_url": url, "task": "transcribe", "language": None},
+            arguments={
+                "audio_url": url,
+                "task": "transcribe",
+                "language": None,
+                # Add Whisper parameters for better transcription
+                "model": "base",  # Use base model for faster processing
+                "word_timestamps": False,  # Disable word timestamps for faster processing
+            },
             with_logs=True,
             on_queue_update=on_queue_update,
         )
+
+        # Log transcription result details
+        if hasattr(result, "get"):
+            transcript_text = whisper_result_to_txt(result)
+            log_and_print(f"📝 Transcription result: {len(transcript_text)} characters")
+            if len(transcript_text) < 100:
+                log_and_print("⚠️ Warning: Transcription result is very short, audio quality may be poor")
+        else:
+            transcript_text = str(result)
+            log_and_print(f"📝 Raw transcription result type: {type(result)}")
 
         log_and_print("✅ Transcription completed")
         return whisper_result_to_txt(result)
