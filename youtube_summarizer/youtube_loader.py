@@ -5,9 +5,6 @@ YouTube Video and Audio Loader
 This module provides robust functions to extract information and content from YouTube videos, including video details, subtitles, and audio streams. It uses `yt-dlp` with multiple strategies to ensure reliable and efficient data extraction, especially in cloud environments like Railway.
 """
 
-import logging
-import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -17,14 +14,12 @@ import yt_dlp
 
 from .utils import log_and_print, parse_youtube_json_captions, s2hk, srt_to_txt
 
-logger = logging.getLogger(__name__)
-
 
 def extract_browser_cookies() -> Optional[str]:
     """
     Extract cookies from browser for YouTube authentication.
     Returns path to cookies file or None if extraction fails.
-    
+
     TEMPORARILY DISABLED due to dependency conflicts with curl_cffi/eventlet/trio
     """
     log_and_print("🍪 Cookie extraction temporarily disabled due to dependency conflicts")

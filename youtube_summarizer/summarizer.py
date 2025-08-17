@@ -5,12 +5,9 @@ Content Summarization Service
 This module provides functions for processing transcribed text to generate formatted subtitles and AI-powered summaries using the Gemini API.
 """
 
-import logging
 import os
 
 from google.genai import Client, types
-
-logger = logging.getLogger(__name__)
 
 
 def quick_summary(text: str) -> str:

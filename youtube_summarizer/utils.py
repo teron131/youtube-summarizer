@@ -6,18 +6,14 @@ This module contains helper functions for string manipulation, data parsing, and
 """
 
 import json
-import logging
 import sys
 
 from opencc import OpenCC
-
-logger = logging.getLogger(__name__)
 
 
 def log_and_print(message: str):
     """Log and print message to ensure visibility in Railway."""
     print(message, flush=True)
-    logger.info(message)
     sys.stdout.flush()
 
 
