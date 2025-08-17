@@ -72,7 +72,7 @@ def summarize_video(url_or_caption: str) -> Analysis:
 
     response = client.models.generate_content(
         model="models/gemini-2.5-pro",
-        contents=types.Content(parts),
+        contents=types.Content(parts=parts),
         config=types.GenerateContentConfig(
             temperature=0,
             response_mime_type="application/json",
