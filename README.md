@@ -16,57 +16,34 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 
 ```mermaid
 graph TD
-    A[YouTube URL Input] --> B{URL Validation}
-    B -->|Invalid| C[Error: Invalid URL]
-    B -->|Valid| D[Clean & Normalize URL]
+    A[YouTube URL] --> B[Validate URL]
+    B --> C[Get Video Info<br/>📋 pytubefix]
+    C --> D[Extract Transcript<br/>📝 pytubefix captions]
+    D --> E{Transcript Found?}
+    E -->|Yes| F[AI Analysis<br/>🤖 Gemini]
+    E -->|No| G[Download Audio<br/>🎵 yt-dlp]
+    G --> H[Transcribe Audio<br/>🎤 Fal.ai]
+    H --> F
+    F --> I[Generate Summary<br/>🤖 Gemini]
+    I --> J[Return Results]
     
-    D --> E[🎯 Master /generate Endpoint]
-    E --> F[Step 1: Extract Metadata]
-    E --> G[Step 2: Multi-Tier Transcript]
-    E --> H[Step 3: AI Analysis]
-    E --> I[Step 4: Response Assembly]
-    
-    F --> F1[pytubefix: Get video info]
-    F1 --> F2[Title, Author, Duration, Views]
-    
-    G --> G1{🔄 Tier 1: Caption Check}
-    G1 -->|Captions Available| G2[pytubefix: Extract captions]
-    G2 --> G3{Caption Success?}
-    G3 -->|Yes| G4[✅ Use caption text]
-    G3 -->|No| G5[❌ Try Tier 2]
-    
-    G1 -->|No Captions| G5
-    G5 --> G6[🎵 Tier 2: Audio Download]
-    G6 --> G7[yt-dlp: Download audio]
-    G7 --> G8[Audio optimization]
-    G8 --> G9[Fal.ai: Transcription]
-    G9 --> G10{Transcription Success?}
-    G10 -->|Yes| G11[✅ Use transcript]
-    G10 -->|No| G12[❌ Try Tier 3]
-    
-    G12 --> G13[🤖 Tier 3: Gemini Direct]
-    G13 --> G14[Direct URL processing]
-    G14 --> G15[✅ Gemini analysis]
-    
-    G4 --> H
-    G11 --> H
-    G15 --> H
-    
-    H --> H1[Gemini AI Processing]
-    H1 --> H2[Structured Analysis]
-    H2 --> H3[Chapters, Facts, Takeaways]
-    
-    I --> J[📋 Comprehensive Response]
-    J --> J1[Video Info + Transcript]
-    J --> J2[Summary + Analysis]
-    J --> J3[Processing Details + Logs]
-    
-    style E fill:#4CAF50,stroke:#333,stroke-width:3px
-    style G1 fill:#2196F3,stroke:#333,stroke-width:2px
-    style G6 fill:#FF9800,stroke:#333,stroke-width:2px
-    style G13 fill:#9C27B0,stroke:#333,stroke-width:2px
-    style J fill:#4CAF50,stroke:#333,stroke-width:2px
+    style A fill:#e1f5fe
+    style B fill:#e1f5fe
+    style C fill:#2196F3,color:#fff
+    style D fill:#2196F3,color:#fff
+    style E fill:#e1f5fe
+    style G fill:#FF9800,color:#fff
+    style H fill:#FF9800,color:#fff
+    style F fill:#9C27B0,color:#fff
+    style I fill:#9C27B0,color:#fff
+    style J fill:#e8f5e8
 ```
+
+**🎨 Color Legend:**
+- 🔵 **Blue**: pytubefix (metadata & captions)
+- 🟠 **Orange**: yt-dlp + Fal.ai (audio processing)
+- 🟣 **Purple**: Gemini AI (analysis & summarization)
+- ⚪ **Light**: Generic processing steps
 
 ## 🚀 Quick Start
 
