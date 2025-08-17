@@ -17,17 +17,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from youtube_summarizer.summarizer import quick_summary, simple_format_subtitle
-from youtube_summarizer.transcriber import (
-    optimize_audio_for_transcription,
-    transcribe_with_fal,
-)
+from youtube_summarizer.summarizer import quick_summary
 from youtube_summarizer.utils import log_and_print
 from youtube_summarizer.youtube_loader import (
-    download_audio_bytes,
     extract_video_info,
     extract_video_metadata,
-    get_subtitle_from_captions,
+    get_video_transcript,
 )
 
 load_dotenv()
@@ -132,42 +127,18 @@ async def process_youtube_video(request: YouTubeRequest):
         log_and_print(f"✅ Video found: {video_metadata.title} by {video_metadata.author}")
         logs.append(f"✅ Video found: {video_metadata.title} by {video_metadata.author}")
 
-        log_and_print("📋 Step 2: Checking for existing captions...")
-        logs.append("📋 Step 2: Checking for existing captions...")
-        subtitle = get_subtitle_from_captions(info)
+        log_and_print("📋 Step 2: Getting video transcript...")
+        logs.append("📋 Step 2: Getting video transcript...")
 
-        if subtitle:
-            log_and_print("✅ Found existing captions - skipping transcription")
-            logs.append("✅ Found existing captions - skipping transcription")
-            formatted_subtitle = simple_format_subtitle(subtitle)
-        else:
-            log_and_print("🎯 No captions found - proceeding with transcription")
-            logs.append("🎯 No captions found - proceeding with transcription")
-
-            try:
-                log_and_print("📋 Step 3: Downloading audio...")
-                logs.append("📋 Step 3: Downloading audio...")
-                audio_bytes = download_audio_bytes(info)
-
-                log_and_print("📋 Step 4: Optimizing and transcribing audio...")
-                logs.append("📋 Step 4: Optimizing and transcribing audio...")
-                optimized_audio = optimize_audio_for_transcription(audio_bytes)
-
-                if not os.getenv("FAL_KEY"):
-                    log_and_print("❌ FAL_KEY not configured")
-                    logs.append("❌ FAL_KEY not configured")
-                    formatted_subtitle = "[FAL_KEY not configured - please set your FAL API key]"
-                else:
-                    subtitle = transcribe_with_fal(optimized_audio)
-                    formatted_subtitle = simple_format_subtitle(subtitle)
-                    log_and_print("✅ Transcription completed")
-                    logs.append("✅ Transcription completed")
-
-            except Exception as audio_error:
-                error_msg = f"❌ Audio processing failed: {str(audio_error)}"
-                log_and_print(error_msg)
-                logs.append(error_msg)
-                formatted_subtitle = f"[Audio processing failed: {str(audio_error)}]"
+        try:
+            formatted_subtitle = get_video_transcript(request.url)
+            log_and_print("✅ Transcript obtained successfully")
+            logs.append("✅ Transcript obtained successfully")
+        except Exception as transcript_error:
+            error_msg = f"❌ Transcript generation failed: {str(transcript_error)}"
+            log_and_print(error_msg)
+            logs.append(error_msg)
+            formatted_subtitle = f"[Transcript generation failed: {str(transcript_error)}]"
 
         # Generate summary if requested and transcript is available
         summary = None
