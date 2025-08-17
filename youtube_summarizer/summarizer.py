@@ -28,7 +28,7 @@ class Analysis(BaseModel):
     overall_summary: str = Field(description="A comprehensive summary synthesizing all chapters, facts, and themes")
 
 
-def summarize_text(text: str) -> Analysis:
+def summarize_video(caption: str) -> Analysis:
     """
     Summarize the text using the Gemini.
     """
@@ -38,7 +38,7 @@ def summarize_text(text: str) -> Analysis:
     response = client.models.generate_content(
         model="models/gemini-2.5-pro",
         contents=types.Content(
-            parts=[types.Part(text=text)],
+            parts=[types.Part(text=caption)],
         ),
         config=types.GenerateContentConfig(
             temperature=0,
@@ -47,3 +47,5 @@ def summarize_text(text: str) -> Analysis:
             thinking_config=types.ThinkingConfig(thinking_budget=2048),
         ),
     )
+
+    return response.parsed
