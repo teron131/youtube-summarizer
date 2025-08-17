@@ -7,44 +7,43 @@ This module provides functions for processing transcribed text to generate forma
 
 import os
 
+from dotenv import load_dotenv
 from google.genai import Client, types
+from pydantic import BaseModel, Field
+
+load_dotenv()
 
 
-def quick_summary(text: str) -> str:
+class Chapter(BaseModel):
+    header: str = Field(description="A descriptive title for the chapter")
+    key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
+    summary: str = Field(description="A comprehensive summary of the chapter content")
+
+
+class Analysis(BaseModel):
+    title: str = Field(description="The main title or topic of the video content")
+    chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
+    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
+    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
+    overall_summary: str = Field(description="A comprehensive summary synthesizing all chapters, facts, and themes")
+
+
+def summarize_text(text: str) -> Analysis:
     """
-    Generates a summary of the provided text using the Gemini API.
-    The prompt is designed to produce a concise summary with key facts,
-    maintaining the original language of the text.
+    Summarize the text using the Gemini.
     """
-    try:
-        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=f"Summarize with list out of the key facts mentioned. Follow the language of the text.\n\n{text}",
-            config=types.GenerateContentConfig(temperature=0),
-        )
-        return response.text
-    except Exception as e:
-        return f"Summary generation failed: {str(e)}"
 
+    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-def simple_format_subtitle(subtitle: str) -> str:
-    """
-    Performs basic formatting on a raw transcript.
-
-    - Capitalizes the first letter of each line.
-    - Ensures each line ends with a punctuation mark.
-    """
-    lines = subtitle.split("\n")
-    formatted_lines = []
-    for line in lines:
-        line = line.strip()
-        if line:
-            # Capitalize the first letter if it's a lowercase character
-            if line[0].islower():
-                line = line[0].upper() + line[1:]
-            # Add a period if the line doesn't end with punctuation
-            if not line.endswith((".", "!", "?")):
-                line += "."
-            formatted_lines.append(line)
-    return "\n".join(formatted_lines)
+    response = client.models.generate_content(
+        model="models/gemini-2.5-pro",
+        contents=types.Content(
+            parts=[types.Part(text=text)],
+        ),
+        config=types.GenerateContentConfig(
+            temperature=0,
+            response_mime_type="application/json",
+            response_schema=Analysis,
+            thinking_config=types.ThinkingConfig(thinking_budget=2048),
+        ),
+    )
