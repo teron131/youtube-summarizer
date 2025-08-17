@@ -8,7 +8,6 @@ This module provides robust functions to extract information and content from Yo
 import os
 from typing import Any, Dict
 
-import dotenv
 import requests
 import yt_dlp
 
