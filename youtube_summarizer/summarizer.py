@@ -58,6 +58,9 @@ def clean_youtube_url(url: str) -> str:
         video_id = youtu_be_match.group(1)
         return f"https://www.youtube.com/watch?v={video_id}"
 
+    # Return original URL if no match found
+    return url
+
 
 def summarize_video(url_or_caption: str) -> Analysis:
     """
