@@ -26,6 +26,7 @@ from youtube_summarizer.utils import log_and_print
 from youtube_summarizer.youtube_loader import (
     download_audio_bytes,
     extract_video_info,
+    extract_video_metadata,
     get_subtitle_from_captions,
 )
 
@@ -84,26 +85,6 @@ class ProcessingStatus(BaseModel):
     message: str
 
 
-# Helper function to extract video metadata
-def extract_video_metadata(info: Dict[str, Any]) -> VideoInfoResponse:
-    """Extract relevant video metadata from yt-dlp info."""
-    duration = info.get("duration")
-    if duration:
-        minutes, seconds = divmod(duration, 60)
-        duration_str = f"{int(minutes):02d}:{int(seconds):02d}"
-    else:
-        duration_str = None
-
-    return VideoInfoResponse(
-        title=info.get("title", "Unknown Title"),
-        author=info.get("uploader", "Unknown Author"),
-        duration=duration_str,
-        thumbnail=info.get("thumbnail"),
-        view_count=info.get("view_count"),
-        upload_date=info.get("upload_date"),
-    )
-
-
 # API Routes
 @app.get("/api/health")
 async def health_check():
@@ -121,7 +102,8 @@ async def get_video_info(request: YouTubeRequest):
     try:
         log_and_print(f"📋 Extracting video info for: {request.url}")
         info = extract_video_info(request.url)
-        return extract_video_metadata(info)
+        metadata = extract_video_metadata(info)
+        return VideoInfoResponse(**metadata)
     except Exception as e:
         log_and_print(f"❌ Video info extraction failed: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Failed to extract video info: {str(e)}")
@@ -146,7 +128,7 @@ async def process_youtube_video(request: YouTubeRequest):
         logs.append("📋 Step 1: Extracting video info...")
         info = extract_video_info(request.url)
 
-        video_metadata = extract_video_metadata(info)
+        video_metadata = VideoInfoResponse(**extract_video_metadata(info))
         log_and_print(f"✅ Video found: {video_metadata.title} by {video_metadata.author}")
         logs.append(f"✅ Video found: {video_metadata.title} by {video_metadata.author}")
 

@@ -22,10 +22,11 @@ dependencies = [
     "yt-dlp>=2024.8.6",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.0.0",
     "black>=24.0.0",
+    "rich>=14.1.0",
     "ruff>=0.8.0",
     "ipykernel>=6.30.1",
 ]
