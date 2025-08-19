@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.summarizer import (
     clean_youtube_url,
     is_youtube_url,
@@ -57,7 +56,15 @@ app.add_middleware(
 from fastapi.responses import RedirectResponse
 
 
-# Pydantic Models
+def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
+    """Select the best thumbnail from a list, prioritizing resolution."""
+    if not thumbnails:
+        return None
+    # Sort by height as a proxy for quality, descending
+    best_thumbnail = sorted(thumbnails, key=lambda t: t.get("height", 0), reverse=True)[0]
+    return best_thumbnail.get("url")
+
+
 class YouTubeRequest(BaseModel):
     url: str = Field(..., description="YouTube video URL", min_length=1)
 
@@ -173,7 +180,10 @@ async def get_video_info(request: YouTubeRequest):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(cleaned_url, download=False)
 
-        metadata = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "thumbnail": info.get("thumbnail"), "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
+        # Select the best thumbnail URL
+        thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
+
+        metadata = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "thumbnail": thumbnail_url, "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
 
         return VideoInfoResponse(**metadata)
     except HTTPException:
@@ -579,7 +589,10 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(cleaned_url, download=False)
 
-                video_info = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "duration_seconds": info.get("duration", 0), "thumbnail": info.get("thumbnail"), "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
+                # Select the best thumbnail URL
+                thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
+
+                video_info = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "duration_seconds": info.get("duration", 0), "thumbnail": thumbnail_url, "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
 
                 processing_details["metadata_extraction"] = "success"
                 log_and_print(f"✅ Metadata extracted: {video_info['title']} by {video_info['author']}")
