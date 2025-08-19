@@ -2,17 +2,19 @@
 YouTube Video and Audio Loader - yt-dlp only
 ----------------------------------------------------------------
 
-Simple yt-dlp approach:
+Optimized yt-dlp approach:
 1. Use yt-dlp to get video metadata, including captions
 2. If captions exist, load them as text
 3. Otherwise, use yt-dlp to download audio for transcription
 """
 
+import logging
 import os
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import requests
 import yt_dlp
 from dotenv import load_dotenv
 
@@ -20,15 +22,35 @@ from .transcriber import optimize_audio_for_transcription, transcribe_with_fal
 
 load_dotenv()
 
-YDL_OPTS = {
+# Constants
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+YOUTUBE_REFERER = "https://www.youtube.com/"
+SUBTITLE_LANGUAGES = ["en", "a.en", "zh-HK", "zh-CN"]
+SUBTITLE_FILTER_PATTERNS = ["-->", "WEBVTT", "NOTE"]
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Base yt-dlp configuration
+BASE_YDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
-    "format": "bestaudio/best",
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "referer": "https://www.youtube.com/",
-    "subtitleslangs": ["en", "a.en", "zh-HK", "zh-CN"],
+    "user_agent": USER_AGENT,
+    "referer": YOUTUBE_REFERER,
+}
+
+# Metadata extraction configuration
+METADATA_YDL_OPTS = {
+    **BASE_YDL_OPTS,
+    "subtitleslangs": SUBTITLE_LANGUAGES,
     "writesubtitles": True,
     "skip_download": True,
+}
+
+# Audio download configuration
+AUDIO_YDL_OPTS = {
+    **BASE_YDL_OPTS,
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
 }
 
 
@@ -36,9 +58,67 @@ def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
     """Select the best thumbnail from a list, prioritizing resolution."""
     if not thumbnails:
         return None
-    # Sort by height as a proxy for quality, descending
-    best_thumbnail = sorted(thumbnails, key=lambda t: t.get("height", 0), reverse=True)[0]
+
+    best_thumbnail = max(thumbnails, key=lambda t: t.get("height", 0))
     return best_thumbnail.get("url")
+
+
+@contextmanager
+def temp_file_manager(prefix: str = "youtube_", suffix: str = ".%(ext)s"):
+    """Context manager for temporary file handling."""
+    temp_dir = Path(tempfile.gettempdir())
+    temp_filename = temp_dir / f"{prefix}{os.getpid()}{suffix}"
+
+    try:
+        yield str(temp_filename)
+    finally:
+        # Clean up any files that match the pattern
+        if suffix == ".%(ext)s":
+            # Handle yt-dlp template - find actual files
+            pattern = f"{prefix}{os.getpid()}.*"
+            for file_path in temp_dir.glob(pattern):
+                try:
+                    file_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp file {file_path}: {e}")
+        else:
+            try:
+                temp_filename.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file {temp_filename}: {e}")
+
+
+def _extract_yt_dlp_info(url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract video information using yt-dlp with given options."""
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=opts.get("skip_download", True) is False)
+    except Exception as e:
+        raise RuntimeError(f"yt-dlp extraction failed: {e}") from e
+
+
+def _process_subtitle_file(filepath: str) -> Optional[str]:
+    """Process subtitle file and extract clean text."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            lines = []
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Skip timestamp lines, numbers, and VTT headers
+                if any(pattern in line for pattern in SUBTITLE_FILTER_PATTERNS) or line.isdigit() or line.startswith("STYLE") or line.startswith("::cue"):
+                    continue
+
+                lines.append(line)
+
+            subtitle_text = "\n".join(lines)
+            return subtitle_text if subtitle_text.strip() else None
+
+    except Exception as e:
+        logger.warning(f"Failed to process subtitle file {filepath}: {e}")
+        return None
 
 
 def extract_video_info(url: str) -> Dict[str, Any]:
@@ -54,57 +134,44 @@ def extract_video_info(url: str) -> Dict[str, Any]:
     Raises:
         RuntimeError: If video info extraction fails
     """
-    print(f"\n📋 Extracting video info for: {url}")
+    logger.info(f"Extracting video info for: {url}")
 
     try:
-        ydl_opts = {"quiet": True, "no_warnings": True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = _extract_yt_dlp_info(url, {"quiet": True, "no_warnings": True})
 
         # Select the best thumbnail URL
         thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
 
+        duration = info.get("duration", 0)
         metadata = {
             "title": info.get("title"),
             "author": info.get("uploader"),
-            "duration": f"{info.get('duration', 0)}s",
-            "duration_seconds": info.get("duration", 0),
+            "duration": f"{duration}s" if duration else None,
+            "duration_seconds": duration,
             "thumbnail": thumbnail_url,
             "view_count": info.get("view_count"),
             "upload_date": info.get("upload_date"),
             "url": url,
         }
 
-        print(f"✅ Video info extracted: {metadata['title']} by {metadata['author']}")
+        logger.info(f"Video info extracted: {metadata['title']} by {metadata['author']}")
         return metadata
 
     except Exception as e:
         error_msg = f"Failed to extract video info: {e}"
-        print(f"❌ {error_msg}")
-        raise RuntimeError(error_msg)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
-def download_audio_with_ytdlp(url: str) -> bytes:
+def download_audio(url: str) -> bytes:
     """Download audio using yt-dlp with robust configuration."""
+    logger.info(f"Downloading audio for: {url}")
 
-    # Create a temporary file for audio download
-    temp_dir = tempfile.gettempdir()
-    temp_filename = os.path.join(temp_dir, f"youtube_audio_{os.getpid()}.%(ext)s")
+    with temp_file_manager("youtube_audio_") as temp_filename:
+        opts = {**AUDIO_YDL_OPTS, "outtmpl": temp_filename}
 
-    # Prioritize m4a, but fall back to best available audio
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
-        "outtmpl": temp_filename,
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "referer": "https://www.youtube.com/",
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Download the audio file
-            result = ydl.extract_info(url, download=True)
+        try:
+            result = _extract_yt_dlp_info(url, opts)
 
             # Get the actual downloaded filename
             downloaded_file = None
@@ -115,92 +182,102 @@ def download_audio_with_ytdlp(url: str) -> bytes:
                 raise RuntimeError("Downloaded audio file not found")
 
             # Read the audio data
-            with open(downloaded_file, "rb") as f:
-                audio_data = f.read()
+            audio_data = Path(downloaded_file).read_bytes()
 
-            # Clean up the temporary file
-            os.remove(downloaded_file)
+            # Clean up the downloaded file
+            Path(downloaded_file).unlink(missing_ok=True)
 
-            print(f"Downloaded {len(audio_data)} bytes of audio")
+            logger.info(f"Downloaded {len(audio_data)} bytes of audio")
             return audio_data
 
-    except Exception as e:
-        raise RuntimeError(f"yt-dlp audio download failed: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Audio download failed: {e}") from e
+
+
+def _extract_captions(info: Dict[str, Any]) -> Optional[str]:
+    """Extract and process captions from yt-dlp info."""
+    if not info.get("requested_subtitles"):
+        return None
+
+    for lang, sub_info in info["requested_subtitles"].items():
+        filepath = sub_info.get("filepath")
+        if not filepath or not os.path.exists(filepath):
+            continue
+
+        logger.info(f"Processing caption file for {lang}: {filepath}")
+        subtitle = _process_subtitle_file(filepath)
+
+        # Clean up the subtitle file
+        try:
+            os.remove(filepath)
+        except Exception as e:
+            logger.warning(f"Failed to clean up subtitle file {filepath}: {e}")
+
+        if subtitle and subtitle.strip():
+            logger.info(f"Successfully loaded caption {lang}, length: {len(subtitle)} characters")
+            return subtitle
+
+    return None
 
 
 def youtube_loader(url: str) -> str:
     """
-    Load and process YouTube video using a yt-dlp-only approach.
+    Load and process YouTube video using an optimized yt-dlp approach.
 
     Args:
         url: YouTube video URL
 
     Returns:
         Formatted string with video info and subtitle
+
+    Raises:
+        RuntimeError: If video loading fails
     """
-    print(f"\n🎬 Loading YouTube video: {url}")
-    print("=" * 50)
+    logger.info(f"Loading YouTube video: {url}")
 
     try:
-        # Step 1: Use yt-dlp for metadata and caption detection
-        print("📋 Fetching metadata and checking captions with yt-dlp...")
-        with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get("title", "Unknown Title")
-            author = info.get("uploader", "Unknown Author")
-            duration = info.get("duration", "Unknown")
+        # Step 1: Extract metadata and captions
+        logger.info("Fetching metadata and checking captions...")
+        info = _extract_yt_dlp_info(url, METADATA_YDL_OPTS)
 
-        print(f"✅ Video accessible:")
-        print(f"   📺 Title: {title}")
-        print(f"   👤 Author: {author}")
-        print(f"   ⏱️  Duration: {duration}s")
+        title = info.get("title", "Unknown Title")
+        author = info.get("uploader", "Unknown Author")
+        duration = info.get("duration", "Unknown")
 
-        # Step 2: Check for available captions from requested_subtitles
-        subtitle = None
-        if info.get("requested_subtitles"):
-            for lang, sub_info in info["requested_subtitles"].items():
-                if sub_info.get("filepath") and os.path.exists(sub_info["filepath"]):
-                    print(f"📖 Found downloaded caption file for {lang}: {sub_info['filepath']}")
-                    with open(sub_info["filepath"], "r", encoding="utf-8") as f:
-                        # Simple VTT/SRT to plain text conversion
-                        lines = [line.strip() for line in f if "-->" not in line and not line.strip().isdigit() and line.strip()]
-                        subtitle = "\n".join(lines)
-                    # Clean up the subtitle file after reading
-                    os.remove(sub_info["filepath"])
-                    if subtitle and subtitle.strip():
-                        print(f"✅ Successfully loaded caption {lang}, length: {len(subtitle)} characters")
-                        break  # Use the first one found
-                    else:
-                        subtitle = None  # Reset if empty
+        logger.info(f"Video accessible - Title: {title}, Author: {author}, Duration: {duration}s")
 
-        # Step 3: If no captions, use yt-dlp for audio transcription
+        # Step 2: Try to extract captions
+        subtitle = _extract_captions(info)
+
+        # Step 3: If no captions, download and transcribe audio
         if not subtitle:
-            print("🎵 No captions available, downloading audio for transcription...")
+            logger.info("No captions available, downloading audio for transcription...")
 
-            if not os.getenv("FAL_KEY"):
+            fal_key = os.getenv("FAL_KEY")
+            if not fal_key:
                 raise RuntimeError("FAL_KEY not configured - please set your FAL API key")
 
-            # Download audio with yt-dlp
-            audio_bytes = download_audio_with_ytdlp(url)
+            # Download and transcribe audio
+            audio_bytes = download_audio(url)
 
-            # Optimize and transcribe
-            print("🔧 Optimizing audio for transcription...")
+            logger.info("Optimizing audio for transcription...")
             optimized_audio = optimize_audio_for_transcription(audio_bytes)
 
-            print("🎤 Transcribing audio...")
-            subtitle = transcribe_with_fal(optimized_audio)  # Already returns processed text
+            logger.info("Transcribing audio...")
+            subtitle = transcribe_with_fal(optimized_audio)
 
         # Step 4: Format final result
-        content = [
+        content_parts = [
             "Answer the user's question based on the full content.",
             f"Title: {title}",
             f"Author: {author}",
             f"Subtitle:\n{subtitle}",
         ]
 
-        print("✅ SUCCESS: Video processed successfully!")
-        return "\n".join(content)
+        logger.info("Video processed successfully!")
+        return "\n".join(content_parts)
 
     except Exception as e:
-        print(f"💥 FAILED: {e}")
-        raise RuntimeError(f"Failed to load YouTube video: {e}")
+        error_msg = f"Failed to load YouTube video: {e}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
