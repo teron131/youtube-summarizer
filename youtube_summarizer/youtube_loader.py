@@ -9,6 +9,7 @@ Simple yt-dlp approach:
 """
 
 import os
+import tempfile
 
 import requests
 import yt_dlp
@@ -32,22 +33,40 @@ YDL_OPTS = {
 
 def download_audio_with_ytdlp(url: str) -> bytes:
     """Download audio using yt-dlp with robust configuration."""
+    
+    # Create a temporary file for audio download
+    temp_dir = tempfile.gettempdir()
+    temp_filename = os.path.join(temp_dir, f"youtube_audio_{os.getpid()}.%(ext)s")
 
     # Prioritize m4a, but fall back to best available audio
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "format": "bestaudio[ext=m4a]/bestaudio/best",
-        "outtmpl": "-",  # Output to stdout
+        "outtmpl": temp_filename,
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "referer": "https://www.youtube.com/",
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # We are piping the content to stdout, so download=True is correct here
+            # Download the audio file
             result = ydl.extract_info(url, download=True)
-            audio_data = result["requested_downloads"][0]["_final_filename"]
+            
+            # Get the actual downloaded filename
+            downloaded_file = None
+            if result.get("requested_downloads"):
+                downloaded_file = result["requested_downloads"][0]["filepath"]
+            
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                raise RuntimeError("Downloaded audio file not found")
+            
+            # Read the audio data
+            with open(downloaded_file, "rb") as f:
+                audio_data = f.read()
+            
+            # Clean up the temporary file
+            os.remove(downloaded_file)
 
             print(f"Downloaded {len(audio_data)} bytes of audio")
             return audio_data
