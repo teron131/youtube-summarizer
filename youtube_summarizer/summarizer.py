@@ -66,14 +66,20 @@ def summarize_video(url_or_caption: str) -> Analysis:
     """
     Summarize the text using the Gemini.
     """
-    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+    client = Client(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        http_options={"timeout": 600000},
+    )
 
-    parts = [types.Part(file_data=types.FileData(file_uri=url_or_caption)) if is_youtube_url(url_or_caption) else types.Part(text=url_or_caption)]
-
-    response = client.models.generate_content(
+    response = client.models.generate_content_stream(
         model="models/gemini-2.5-pro",
-        contents=types.Content(parts=parts),
+        contents=types.Content(
+            parts=[
+                types.Part(file_data=types.FileData(file_uri=url_or_caption)) if is_youtube_url(url_or_caption) else types.Part(text=url_or_caption),
+            ]
+        ),
         config=types.GenerateContentConfig(
+            system_instruction="Analyze the video/transcript according to the schema and follow the original language.",
             temperature=0,
             response_mime_type="application/json",
             response_schema=Analysis,
@@ -81,4 +87,8 @@ def summarize_video(url_or_caption: str) -> Analysis:
         ),
     )
 
-    return response.parsed
+    result_parts = [chunk.text for chunk in response if chunk.text is not None]
+    final_result = "".join(result_parts)
+    final_result = Analysis.model_validate_json(final_result)  # Convert to Pydantic model
+
+    return final_result

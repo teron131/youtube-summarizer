@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from httpx import RemoteProtocolError
 from pydantic import BaseModel, Field
 from youtube_summarizer.summarizer import (
     clean_youtube_url,
@@ -259,7 +260,14 @@ async def get_video_transcript(request: YouTubeRequest):
             log_and_print("✅ Tier 2 successful: Got content from Gemini direct processing")
             processing_time = datetime.now() - start_time
             return TranscriptResponse(title=title, author=author, transcript=transcript, url=cleaned_url, processing_time=f"{processing_time.total_seconds():.1f}s")
-
+        except RemoteProtocolError as e:
+            if "Server disconnected without sending a response" in str(e):
+                error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                log_and_print(f"❌ Tier 2 failed: {error_msg}")
+                raise HTTPException(status_code=413, detail=error_msg)
+            else:
+                log_and_print(f"❌ Tier 2 failed: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"All processing methods failed. Last error: {str(e)}")
         except Exception as gemini_error:
             log_and_print(f"❌ Tier 2 failed: {str(gemini_error)}")
             raise HTTPException(status_code=500, detail=f"All processing methods failed. Last error: {str(gemini_error)}")
@@ -402,6 +410,17 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                 log_and_print("✅ Tier 2 successful: Got content from Gemini direct processing")
                 logs.append("✅ Tier 2 successful: Got content from Gemini direct processing")
 
+            except RemoteProtocolError as e:
+                if "Server disconnected without sending a response" in str(e):
+                    error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                    log_and_print(f"❌ Tier 2 failed: {error_msg}")
+                    logs.append(f"❌ Tier 2 failed: {error_msg}")
+                    raise HTTPException(status_code=413, detail=error_msg)
+                else:
+                    error_msg = f"❌ Tier 2 failed: {str(e)}"
+                    log_and_print(error_msg)
+                    logs.append(error_msg)
+                    raise HTTPException(status_code=500, detail=f"All processing methods failed. Last error: {str(e)}")
             except Exception as gemini_error:
                 error_msg = f"❌ Tier 2 failed: {str(gemini_error)}"
                 log_and_print(error_msg)
@@ -443,6 +462,17 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                     log_and_print("✅ Summary generated from Gemini analysis")
                     logs.append("✅ Summary generated from Gemini analysis")
 
+                except RemoteProtocolError as e:
+                    if "Server disconnected without sending a response" in str(e):
+                        error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                        log_and_print(f"❌ Summary generation failed: {error_msg}")
+                        logs.append(f"❌ Summary generation failed: {error_msg}")
+                        summary = f"[{error_msg}]"
+                    else:
+                        error_msg = f"Summary generation failed: {str(e)}"
+                        log_and_print(error_msg)
+                        logs.append(error_msg)
+                        summary = f"[Summary generation failed: {str(e)}]"
                 except Exception as summary_error:
                     error_msg = f"❌ Summary generation failed: {str(summary_error)}"
                     log_and_print(error_msg)
@@ -483,6 +513,17 @@ async def process_youtube_video(request: YouTubeProcessRequest):
 
                         log_and_print("✅ Summary generated from transcript")
                         logs.append("✅ Summary generated from transcript")
+                    except RemoteProtocolError as e:
+                        if "Server disconnected without sending a response" in str(e):
+                            error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                            log_and_print(f"❌ Summary generation failed: {error_msg}")
+                            logs.append(f"❌ Summary generation failed: {error_msg}")
+                            summary = f"[{error_msg}]"
+                        else:
+                            error_msg = f"Summary generation failed: {str(e)}"
+                            log_and_print(error_msg)
+                            logs.append(error_msg)
+                            summary = f"[Summary generation failed: {str(e)}]"
                     except Exception as summary_error:
                         error_msg = f"❌ Summary generation failed: {str(summary_error)}"
                         log_and_print(error_msg)
@@ -680,13 +721,26 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                             log_and_print("✅ Tier 2 successful: Got content from Gemini direct processing")
                             logs.append("✅ Tier 2 successful: Got content from Gemini direct processing")
 
+                        except RemoteProtocolError as e:
+                            if "Server disconnected without sending a response" in str(e):
+                                error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                                processing_details["transcript_extraction"] = f"failed: {error_msg}"
+                                log_and_print(f"❌ Tier 2 failed: {error_msg}")
+                                logs.append(f"❌ Tier 2 failed: {error_msg}")
+                                transcript = f"[{error_msg}]"
+                            else:
+                                error_msg = f"❌ Tier 2 failed: {str(e)}"
+                                processing_details["transcript_extraction"] = f"failed: {str(e)}"
+                                log_and_print(error_msg)
+                                logs.append(error_msg)
+                                # Don't fail entire request, continue without transcript
+                                transcript = f"[Transcript extraction failed: {str(e)}]"
                         except Exception as gemini_error:
                             error_msg = f"❌ Tier 2 failed: {str(gemini_error)}"
                             processing_details["transcript_extraction"] = f"failed: {str(gemini_error)}"
                             log_and_print(error_msg)
                             logs.append(error_msg)
-                            # Don't fail entire request, continue without transcript
-                            transcript = f"[Transcript extraction failed: {str(gemini_error)}]"
+                            raise HTTPException(status_code=500, detail=f"All processing methods failed. Last error: {str(gemini_error)}")
 
                 # Update video info with extracted title/author if available
                 if video_info and title != "Unknown Title":
@@ -722,11 +776,35 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                         log_and_print("📋 Using extracted transcript for analysis...")
                         logs.append("📋 Using extracted transcript for analysis...")
                         full_content = f"Title: {video_info.get('title', 'Unknown') if video_info else 'Unknown'}\nTranscript:\n{transcript}"
-                        analysis_result = summarize_video(full_content)
+                        try:
+                            analysis_result = summarize_video(full_content)
+                        except RemoteProtocolError as e:
+                            if "Server disconnected without sending a response" in str(e):
+                                error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                                processing_details["summary_generation"] = f"failed: {error_msg}"
+                                log_and_print(f"❌ {error_msg}")
+                                logs.append(f"❌ {error_msg}")
+                                summary = f"[{error_msg}]"
+                                analysis = {"error": error_msg}
+                                raise Exception(error_msg)
+                            else:
+                                raise
                     else:
                         log_and_print("🔗 Using direct URL for analysis...")
                         logs.append("🔗 Using direct URL for analysis...")
-                        analysis_result = summarize_video(cleaned_url)
+                        try:
+                            analysis_result = summarize_video(cleaned_url)
+                        except RemoteProtocolError as e:
+                            if "Server disconnected without sending a response" in str(e):
+                                error_msg = "Video is too long for processing. Please try with a shorter video or use time segments."
+                                processing_details["summary_generation"] = f"failed: {error_msg}"
+                                log_and_print(f"❌ {error_msg}")
+                                logs.append(f"❌ {error_msg}")
+                                summary = f"[{error_msg}]"
+                                analysis = {"error": error_msg}
+                                raise Exception(error_msg)
+                            else:
+                                raise
 
                     # Generate formatted summary
                     if request.include_summary:
