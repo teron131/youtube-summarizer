@@ -1,9 +1,9 @@
 """
-YouTube Video and Audio Loader - Simplified Hybrid Implementation
+YouTube Video and Audio Loader - yt-dlp only
 ----------------------------------------------------------------
 
-Simple hybrid approach:
-1. Use pytubefix to check for existing captions
+Simple yt-dlp approach:
+1. Use yt-dlp to get video metadata, including captions
 2. If captions exist, load them as text
 3. Otherwise, use yt-dlp to download audio for transcription
 """
@@ -13,11 +13,21 @@ import os
 import requests
 import yt_dlp
 from dotenv import load_dotenv
-from pytubefix import YouTube
 
 from .transcriber import optimize_audio_for_transcription, transcribe_with_fal
 
 load_dotenv()
+
+YDL_OPTS = {
+    "quiet": True,
+    "no_warnings": True,
+    "format": "bestaudio/best",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "referer": "https://www.youtube.com/",
+    "subtitleslangs": ["en", "a.en", "zh-HK", "zh-CN"],
+    "writesubtitles": True,
+    "skip_download": True,
+}
 
 
 def download_audio_with_ytdlp(url: str) -> bytes:
@@ -78,7 +88,7 @@ def download_audio_with_ytdlp(url: str) -> bytes:
 
 def youtube_loader(url: str) -> str:
     """
-    Load and process YouTube video using hybrid approach.
+    Load and process YouTube video using a yt-dlp-only approach.
 
     Args:
         url: YouTube video URL
@@ -90,57 +100,40 @@ def youtube_loader(url: str) -> str:
     print("=" * 50)
 
     try:
-        # Step 1: Use pytubefix for metadata and caption detection
-        print("📋 Fetching metadata and checking captions with pytubefix...")
-        youtube = YouTube(url, client="WEB")
-
-        title = youtube.title
-        author = youtube.author
-        duration = getattr(youtube, "length", "Unknown")
+        # Step 1: Use yt-dlp for metadata and caption detection
+        print("📋 Fetching metadata and checking captions with yt-dlp...")
+        with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get("title", "Unknown Title")
+            author = info.get("uploader", "Unknown Author")
+            duration = info.get("duration", "Unknown")
 
         print(f"✅ Video accessible:")
         print(f"   📺 Title: {title}")
         print(f"   👤 Author: {author}")
         print(f"   ⏱️  Duration: {duration}s")
 
-        # Step 2: Check for available captions
-        print("🔍 Checking for available captions...")
-        available_captions = list(youtube.captions.keys())
-        print(f"📝 Available captions: {available_captions}")
-
+        # Step 2: Check for available captions from requested_subtitles
         subtitle = None
-
-        if available_captions:
-            # Priority order for captions
-            caption_priorities = ["zh-HK", "zh-CN", "en", "a.en"]
-
-            for caption_obj in available_captions:
-                if caption_obj.code in caption_priorities:
-                    try:
-                        print(f"✅ Attempting to use caption: {caption_obj.code} ({caption_obj.name})")
-                        print(f"🔄 Generating txt captions for {caption_obj.code}...")
-                        caption_text = caption_obj.generate_txt_captions()
-
-                        if caption_text and caption_text.strip():
-                            print(f"📖 Successfully loaded caption {caption_obj.code}, length: {len(caption_text)} characters")
-                            subtitle = caption_text
-                            break
-                        else:
-                            print(f"⚠️ Caption {caption_obj.code} generated empty text, trying next...")
-                    except Exception as e:
-                        print(f"❌ Failed to load caption {caption_obj.code}: {e}")
-                        print(f"   Error type: {type(e).__name__}")
-                        continue
-
-            if not subtitle:
-                print("❌ All caption loading attempts failed, falling back to audio transcription...")
+        if info.get("requested_subtitles"):
+            for lang, sub_info in info["requested_subtitles"].items():
+                if sub_info.get("filepath") and os.path.exists(sub_info["filepath"]):
+                    print(f"📖 Found downloaded caption file for {lang}: {sub_info['filepath']}")
+                    with open(sub_info["filepath"], "r", encoding="utf-8") as f:
+                        # Simple VTT/SRT to plain text conversion
+                        lines = [line.strip() for line in f if "-->" not in line and not line.strip().isdigit() and line.strip()]
+                        subtitle = "\n".join(lines)
+                    # Clean up the subtitle file after reading
+                    os.remove(sub_info["filepath"])
+                    if subtitle and subtitle.strip():
+                        print(f"✅ Successfully loaded caption {lang}, length: {len(subtitle)} characters")
+                        break  # Use the first one found
+                    else:
+                        subtitle = None  # Reset if empty
 
         # Step 3: If no captions, use yt-dlp for audio transcription
         if not subtitle:
-            if not available_captions:
-                print("🎵 No captions available, downloading audio for transcription...")
-            else:
-                print("🎵 Caption loading failed, downloading audio for transcription...")
+            print("🎵 No captions available, downloading audio for transcription...")
 
             if not os.getenv("FAL_KEY"):
                 raise RuntimeError("FAL_KEY not configured - please set your FAL API key")

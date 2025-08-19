@@ -5,7 +5,7 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 ## 🌟 Key Features
 
 - **🎯 Master API Endpoint**: Single `/api/generate` endpoint orchestrating all processing capabilities
-- **🔄 Multi-Tier Processing**: Hybrid approach with pytubefix + yt-dlp + Gemini AI fallbacks
+- **🔄 Multi-Tier Processing**: Hybrid approach with yt-dlp + Gemini AI fallbacks
 - **🎤 Smart Transcription**: Prioritizes existing captions, falls back to AI transcription
 - **🤖 AI Summarization**: Structured analysis using Google Gemini with thinking capabilities
 - **📊 Comprehensive APIs**: Granular endpoints for specific tasks plus master orchestrator
@@ -17,8 +17,8 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 ```mermaid
 graph TD
     A[YouTube URL] --> B[Validate URL]
-    B --> C[Get Video Info<br/>📋 pytubefix]
-    C --> D[Extract Transcript<br/>📝 pytubefix captions]
+    B --> C[Get Video Info<br/>📋 yt-dlp]
+    C --> D[Extract Transcript<br/>📝 yt-dlp captions]
     D --> E{Transcript Found?}
     E -->|Yes| F[AI Analysis<br/>🤖 Gemini]
     E -->|No| G[Download Audio<br/>🎵 yt-dlp]
@@ -40,7 +40,7 @@ graph TD
 ```
 
 **🎨 Color Legend:**
-- 🔵 **Blue**: pytubefix (metadata & captions)
+- 🔵 **Blue**: yt-dlp (metadata & captions)
 - 🟠 **Orange**: yt-dlp + Fal.ai (audio processing)
 - 🟣 **Purple**: Gemini AI (analysis & summarization)
 - ⚪ **Light**: Generic processing steps
@@ -359,7 +359,6 @@ ruff check .
 ### Core Dependencies
 
 - **FastAPI**: Modern web framework with automatic API documentation
-- **pytubefix**: Enhanced YouTube library for metadata and captions
 - **yt-dlp**: Robust video downloader for audio extraction
 - **google-genai**: Official Google Gemini AI client
 - **fal-client**: High-quality transcription service
