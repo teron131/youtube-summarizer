@@ -33,6 +33,7 @@ YDL_OPTS = {
 def download_audio_with_ytdlp(url: str) -> bytes:
     """Download audio using yt-dlp with robust configuration."""
 
+    # Prioritize m4a, but fall back to best available audio
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -44,41 +45,9 @@ def download_audio_with_ytdlp(url: str) -> bytes:
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-            # Find best audio format
-            formats = info.get("formats", [])
-            audio_format = None
-
-            for fmt in formats:
-                if fmt.get("vcodec") == "none" and fmt.get("acodec") != "none":
-                    audio_format = fmt
-                    break
-
-            if not audio_format:
-                # Fallback to any format with audio
-                for fmt in formats:
-                    if fmt.get("acodec") != "none":
-                        audio_format = fmt
-                        break
-
-            if not audio_format:
-                raise RuntimeError("No audio format found")
-
-            # Download audio
-            audio_url = audio_format["url"]
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": "https://www.youtube.com/",
-            }
-
-            response = requests.get(audio_url, headers=headers, stream=True, timeout=60)
-            response.raise_for_status()
-
-            audio_data = b""
-            for chunk in response.iter_content(chunk_size=32768):
-                if chunk:
-                    audio_data += chunk
+            # We are piping the content to stdout, so download=True is correct here
+            result = ydl.extract_info(url, download=True)
+            audio_data = result["requested_downloads"][0]["_final_filename"]
 
             print(f"Downloaded {len(audio_data)} bytes of audio")
             return audio_data
