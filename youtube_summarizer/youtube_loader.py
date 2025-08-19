@@ -10,6 +10,7 @@ Simple yt-dlp approach:
 
 import os
 import tempfile
+from typing import Any, Dict, List, Optional
 
 import requests
 import yt_dlp
@@ -31,9 +32,61 @@ YDL_OPTS = {
 }
 
 
+def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
+    """Select the best thumbnail from a list, prioritizing resolution."""
+    if not thumbnails:
+        return None
+    # Sort by height as a proxy for quality, descending
+    best_thumbnail = sorted(thumbnails, key=lambda t: t.get("height", 0), reverse=True)[0]
+    return best_thumbnail.get("url")
+
+
+def extract_video_info(url: str) -> Dict[str, Any]:
+    """
+    Extract basic video information using yt-dlp.
+
+    Args:
+        url: YouTube video URL (should be cleaned/validated before calling)
+
+    Returns:
+        Dictionary containing video metadata
+
+    Raises:
+        RuntimeError: If video info extraction fails
+    """
+    print(f"\n📋 Extracting video info for: {url}")
+
+    try:
+        ydl_opts = {"quiet": True, "no_warnings": True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        # Select the best thumbnail URL
+        thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
+
+        metadata = {
+            "title": info.get("title"),
+            "author": info.get("uploader"),
+            "duration": f"{info.get('duration', 0)}s",
+            "duration_seconds": info.get("duration", 0),
+            "thumbnail": thumbnail_url,
+            "view_count": info.get("view_count"),
+            "upload_date": info.get("upload_date"),
+            "url": url,
+        }
+
+        print(f"✅ Video info extracted: {metadata['title']} by {metadata['author']}")
+        return metadata
+
+    except Exception as e:
+        error_msg = f"Failed to extract video info: {e}"
+        print(f"❌ {error_msg}")
+        raise RuntimeError(error_msg)
+
+
 def download_audio_with_ytdlp(url: str) -> bytes:
     """Download audio using yt-dlp with robust configuration."""
-    
+
     # Create a temporary file for audio download
     temp_dir = tempfile.gettempdir()
     temp_filename = os.path.join(temp_dir, f"youtube_audio_{os.getpid()}.%(ext)s")
@@ -52,19 +105,19 @@ def download_audio_with_ytdlp(url: str) -> bytes:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Download the audio file
             result = ydl.extract_info(url, download=True)
-            
+
             # Get the actual downloaded filename
             downloaded_file = None
             if result.get("requested_downloads"):
                 downloaded_file = result["requested_downloads"][0]["filepath"]
-            
+
             if not downloaded_file or not os.path.exists(downloaded_file):
                 raise RuntimeError("Downloaded audio file not found")
-            
+
             # Read the audio data
             with open(downloaded_file, "rb") as f:
                 audio_data = f.read()
-            
+
             # Clean up the temporary file
             os.remove(downloaded_file)
 
@@ -142,7 +195,7 @@ def youtube_loader(url: str) -> str:
             "Answer the user's question based on the full content.",
             f"Title: {title}",
             f"Author: {author}",
-            f"subtitle:\n{subtitle}",
+            f"Subtitle:\n{subtitle}",
         ]
 
         print("✅ SUCCESS: Video processed successfully!")

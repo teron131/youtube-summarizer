@@ -23,7 +23,7 @@ from youtube_summarizer.summarizer import (
     summarize_video,
 )
 from youtube_summarizer.utils import log_and_print
-from youtube_summarizer.youtube_loader import youtube_loader
+from youtube_summarizer.youtube_loader import youtube_loader, extract_video_info
 
 load_dotenv()
 
@@ -52,18 +52,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add redirect for Railway health check compatibility
-from fastapi.responses import RedirectResponse
-
-
-def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
-    """Select the best thumbnail from a list, prioritizing resolution."""
-    if not thumbnails:
-        return None
-    # Sort by height as a proxy for quality, descending
-    best_thumbnail = sorted(thumbnails, key=lambda t: t.get("height", 0), reverse=True)[0]
-    return best_thumbnail.get("url")
 
 
 class YouTubeRequest(BaseModel):
@@ -174,17 +162,8 @@ async def get_video_info(request: YouTubeRequest):
         cleaned_url = clean_youtube_url(request.url)
         log_and_print(f"📋 Extracting video info for: {cleaned_url}")
 
-        # Use yt-dlp to get basic metadata
-        import yt_dlp
-
-        ydl_opts = {"quiet": True, "no_warnings": True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(cleaned_url, download=False)
-
-        # Select the best thumbnail URL
-        thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
-
-        metadata = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "thumbnail": thumbnail_url, "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
+        # Use the extract_video_info function from youtube_loader
+        metadata = extract_video_info(cleaned_url)
 
         return VideoInfoResponse(**metadata)
     except HTTPException:
@@ -624,16 +603,8 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
             logs.append("📋 Step 2: Extracting video metadata...")
 
             try:
-                import yt_dlp
-
-                ydl_opts = {"quiet": True, "no_warnings": True}
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(cleaned_url, download=False)
-
-                # Select the best thumbnail URL
-                thumbnail_url = get_best_thumbnail(info.get("thumbnails", [])) or info.get("thumbnail")
-
-                video_info = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "duration_seconds": info.get("duration", 0), "thumbnail": thumbnail_url, "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
+                # Use the extract_video_info function from youtube_loader
+                video_info = extract_video_info(cleaned_url)
 
                 processing_details["metadata_extraction"] = "success"
                 log_and_print(f"✅ Metadata extracted: {video_info['title']} by {video_info['author']}")
