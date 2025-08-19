@@ -166,12 +166,14 @@ async def get_video_info(request: YouTubeRequest):
         cleaned_url = clean_youtube_url(request.url)
         log_and_print(f"📋 Extracting video info for: {cleaned_url}")
 
-        # Use pytubefix to get basic metadata
-        from pytubefix import YouTube
+        # Use yt-dlp to get basic metadata
+        import yt_dlp
 
-        youtube = YouTube(cleaned_url, client="WEB")
+        ydl_opts = {"quiet": True, "no_warnings": True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(cleaned_url, download=False)
 
-        metadata = {"title": youtube.title, "author": youtube.author, "duration": f"{getattr(youtube, 'length', 0)}s" if hasattr(youtube, "length") else None, "thumbnail": getattr(youtube, "thumbnail_url", None), "view_count": getattr(youtube, "views", None), "upload_date": str(getattr(youtube, "publish_date", None)) if getattr(youtube, "publish_date", None) else None, "url": cleaned_url}
+        metadata = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "thumbnail": info.get("thumbnail"), "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
 
         return VideoInfoResponse(**metadata)
     except HTTPException:
@@ -194,13 +196,13 @@ async def get_video_transcript(request: YouTubeRequest):
         cleaned_url = clean_youtube_url(request.url)
         log_and_print(f"📋 Extracting transcript for: {cleaned_url}")
 
-        # Tier 1: Try hybrid loader (pytubefix + yt-dlp)
+        # Tier 1: Try yt-dlp loader
         title = "Unknown Title"
         author = "Unknown Author"
         transcript = ""
 
         try:
-            log_and_print("🔄 Tier 1: Trying hybrid loader (pytubefix + yt-dlp)...")
+            log_and_print("🔄 Tier 1: Trying yt-dlp loader...")
             video_content = youtube_loader(cleaned_url)
 
             # Parse the content to extract metadata and transcript
@@ -215,18 +217,18 @@ async def get_video_transcript(request: YouTubeRequest):
                     break
 
             if transcript and transcript.strip() and not transcript.startswith("["):
-                log_and_print("✅ Tier 1 successful: Got transcript from hybrid loader")
+                log_and_print("✅ Tier 1 successful: Got transcript from yt-dlp loader")
                 processing_time = datetime.now() - start_time
                 return TranscriptResponse(title=title, author=author, transcript=transcript, url=cleaned_url, processing_time=f"{processing_time.total_seconds():.1f}s")
             else:
-                log_and_print("❌ Tier 1 failed: No valid transcript from hybrid loader")
+                log_and_print("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
 
         except Exception as e:
             log_and_print(f"❌ Tier 1 failed: {str(e)}")
 
         # Tier 2: Fallback to Gemini direct URL processing
         if not os.getenv("GEMINI_API_KEY"):
-            raise HTTPException(status_code=500, detail="Hybrid loader failed and GEMINI_API_KEY not configured")
+            raise HTTPException(status_code=500, detail="yt-dlp loader failed and GEMINI_API_KEY not configured")
 
         log_and_print("🤖 Tier 2: Using Gemini direct URL processing...")
         try:
@@ -303,7 +305,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
     """
     Complete YouTube video processing with multi-tier fallback approach.
 
-    Tier 1: pytubefix + yt-dlp (captions/transcription)
+    Tier 1: yt-dlp (captions/transcription)
     Tier 2: Gemini direct URL processing
     """
     start_time = datetime.now()
@@ -322,14 +324,14 @@ async def process_youtube_video(request: YouTubeProcessRequest):
         log_and_print(f"🔗 Cleaned URL: {cleaned_url}")
         logs.append(f"🔗 Cleaned URL: {cleaned_url}")
 
-        # Tier 1: Try hybrid loader (pytubefix + yt-dlp)
+        # Tier 1: Try yt-dlp loader
         title = "Unknown Title"
         author = "Unknown Author"
         transcript = ""
         processing_method = "unknown"
 
-        log_and_print("🔄 Tier 1: Trying hybrid loader (pytubefix + yt-dlp)...")
-        logs.append("🔄 Tier 1: Trying hybrid loader (pytubefix + yt-dlp)...")
+        log_and_print("🔄 Tier 1: Trying yt-dlp loader...")
+        logs.append("🔄 Tier 1: Trying yt-dlp loader...")
 
         try:
             video_content = youtube_loader(cleaned_url)
@@ -346,12 +348,12 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                     break
 
             if transcript and transcript.strip() and not transcript.startswith("["):
-                log_and_print("✅ Tier 1 successful: Got transcript from hybrid loader")
-                logs.append("✅ Tier 1 successful: Got transcript from hybrid loader")
-                processing_method = "hybrid_loader"
+                log_and_print("✅ Tier 1 successful: Got transcript from yt-dlp loader")
+                logs.append("✅ Tier 1 successful: Got transcript from yt-dlp loader")
+                processing_method = "yt-dlp_loader"
             else:
-                log_and_print("❌ Tier 1 failed: No valid transcript from hybrid loader")
-                logs.append("❌ Tier 1 failed: No valid transcript from hybrid loader")
+                log_and_print("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
+                logs.append("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
                 transcript = ""
 
         except Exception as loader_error:
@@ -363,7 +365,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
         # Tier 2: Fallback to Gemini direct URL processing
         if not transcript:
             if not os.getenv("GEMINI_API_KEY"):
-                error_msg = "Hybrid loader failed and GEMINI_API_KEY not configured"
+                error_msg = "yt-dlp loader failed and GEMINI_API_KEY not configured"
                 log_and_print(f"❌ {error_msg}")
                 logs.append(f"❌ {error_msg}")
                 raise HTTPException(status_code=500, detail=error_msg)
@@ -438,7 +440,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                     summary = f"[Summary generation failed: {str(summary_error)}]"
 
             else:
-                # Use transcript from hybrid loader for summary generation
+                # Use transcript from yt-dlp loader for summary generation
                 log_and_print("📋 Generating summary from transcript...")
                 logs.append("📋 Generating summary from transcript...")
 
@@ -523,7 +525,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
     This endpoint provides a one-stop-shop for comprehensive YouTube video analysis:
     - URL validation and cleaning
     - Video metadata extraction
-    - Multi-tier transcript extraction (pytubefix + yt-dlp + Gemini fallback)
+    - Multi-tier transcript extraction (yt-dlp + Gemini fallback)
     - AI-powered summarization and analysis
     - Structured data output with detailed logging
     """
@@ -571,11 +573,13 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
             logs.append("📋 Step 2: Extracting video metadata...")
 
             try:
-                from pytubefix import YouTube
+                import yt_dlp
 
-                youtube = YouTube(cleaned_url, client="WEB")
+                ydl_opts = {"quiet": True, "no_warnings": True}
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(cleaned_url, download=False)
 
-                video_info = {"title": youtube.title, "author": youtube.author, "duration": f"{getattr(youtube, 'length', 0)}s" if hasattr(youtube, "length") else None, "duration_seconds": getattr(youtube, "length", 0), "thumbnail": getattr(youtube, "thumbnail_url", None), "view_count": getattr(youtube, "views", None), "upload_date": str(getattr(youtube, "publish_date", None)) if getattr(youtube, "publish_date", None) else None, "url": cleaned_url}
+                video_info = {"title": info.get("title"), "author": info.get("uploader"), "duration": f"{info.get('duration', 0)}s", "duration_seconds": info.get("duration", 0), "thumbnail": info.get("thumbnail"), "view_count": info.get("view_count"), "upload_date": info.get("upload_date"), "url": cleaned_url}
 
                 processing_details["metadata_extraction"] = "success"
                 log_and_print(f"✅ Metadata extracted: {video_info['title']} by {video_info['author']}")
@@ -600,10 +604,10 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                 author = "Unknown Author"
                 transcript_content = ""
 
-                # Tier 1: Try hybrid loader (pytubefix + yt-dlp)
+                # Tier 1: Try yt-dlp loader
                 try:
-                    log_and_print("🔄 Tier 1: Trying hybrid loader (pytubefix + yt-dlp)...")
-                    logs.append("🔄 Tier 1: Trying hybrid loader (pytubefix + yt-dlp)...")
+                    log_and_print("🔄 Tier 1: Trying yt-dlp loader...")
+                    logs.append("🔄 Tier 1: Trying yt-dlp loader...")
 
                     video_content = youtube_loader(cleaned_url)
 
@@ -619,13 +623,13 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                             break
 
                     if transcript_content and transcript_content.strip() and not transcript_content.startswith("["):
-                        log_and_print("✅ Tier 1 successful: Got transcript from hybrid loader")
-                        logs.append("✅ Tier 1 successful: Got transcript from hybrid loader")
-                        processing_details["transcript_extraction"] = "success (hybrid_loader)"
+                        log_and_print("✅ Tier 1 successful: Got transcript from yt-dlp loader")
+                        logs.append("✅ Tier 1 successful: Got transcript from yt-dlp loader")
+                        processing_details["transcript_extraction"] = "success (yt-dlp_loader)"
                         transcript = transcript_content
                     else:
-                        log_and_print("❌ Tier 1 failed: No valid transcript from hybrid loader")
-                        logs.append("❌ Tier 1 failed: No valid transcript from hybrid loader")
+                        log_and_print("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
+                        logs.append("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
                         transcript_content = ""
 
                 except Exception as e:
@@ -636,7 +640,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                 # Tier 2: Fallback to Gemini direct URL processing
                 if not transcript_content:
                     if not os.getenv("GEMINI_API_KEY"):
-                        error_msg = "Hybrid loader failed and GEMINI_API_KEY not configured"
+                        error_msg = "yt-dlp loader failed and GEMINI_API_KEY not configured"
                         processing_details["transcript_extraction"] = f"failed: {error_msg}"
                         log_and_print(f"❌ {error_msg}")
                         logs.append(f"❌ {error_msg}")
@@ -739,7 +743,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                 processing_details["summary_generation"] = f"failed: {str(e)}"
                 error_msg = f"Summary generation failed: {str(e)}"
                 log_and_print(f"❌ {error_msg}")
-                logs.append(f"❌ {error_msg}")
+                logs.append(error_msg)
                 summary = f"[Summary generation failed: {str(e)}]"
                 analysis = {"error": str(e)}
 

@@ -36,7 +36,8 @@ def download_audio_with_ytdlp(url: str) -> bytes:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "outtmpl": "-",  # Output to stdout
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "referer": "https://www.youtube.com/",
     }
