@@ -651,6 +651,11 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
     Perfect for frontend applications requiring complete video analysis.
     """
     start_time = datetime.now()
+
+    # Check for example request
+    if not request.url.strip() or request.url.strip().lower() == "example":
+        return await generate_example_response(start_time)
+
     logs = [f"🚀 Starting comprehensive analysis: {request.url}"]
 
     # Initialize response containers
@@ -806,6 +811,81 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
         logs.append(f"❌ {error_message}")
 
         return GenerateResponse(status="error", message=error_message, metadata=metadata, processing_details=processing_details, logs=logs)
+
+
+async def generate_example_response(start_time: datetime) -> GenerateResponse:
+    """Generate example response for demonstration purposes."""
+
+    log_and_print("🎭 Generating example response for demonstration...")
+
+    # Example video info
+    example_video_info = {"title": "Trump Holds Meeting with Zelensky in the Oval Office", "author": "CNN", "duration": "480s", "duration_seconds": 480, "thumbnail": "https://img.youtube.com/vi/example/hqdefault.jpg", "view_count": 125000, "upload_date": "20240115", "url": "https://youtube.com/watch?v=example"}
+
+    # Example transcript
+    example_transcript = """This is a demonstration transcript showing how the YouTube Summarizer processes video content.
+
+In this example meeting between President Trump and President Zelensky, several key diplomatic discussions take place regarding the ongoing conflict in Ukraine and potential paths toward peace.
+
+The meeting covers topics including security guarantees, potential trilateral negotiations with Russia, and the role of international partners in ensuring lasting peace agreements.
+
+This transcript demonstrates the type of content that would be extracted from a real YouTube video and then analyzed by the AI system."""
+
+    # Example summary
+    example_summary = """**Trump Holds Meeting with Zelensky in the Oval Office**
+
+**Overall Summary:**
+In a significant diplomatic meeting at the White House, President Donald Trump hosted Ukrainian President Volodymyr Zelenskyy in the Oval Office to discuss the ongoing war with Russia. Trump expressed optimism about making substantial progress towards peace, highlighting his recent discussions with Russia's president and upcoming talks with European leaders.
+
+**Key Takeaways:**
+• Donald Trump is actively positioning himself as a central figure in negotiating an end to the war in Ukraine.
+• A potential trilateral summit between the US, Ukraine, and Russia is being floated as a path to peace.
+• The nature of future security guarantees for Ukraine, potentially involving US and European forces, is a critical point of negotiation.
+• Despite past tensions, the meeting between Trump and Zelenskyy appeared cordial, signaling a potential shift in their dynamic.
+
+**Key Facts:**
+• Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.
+• Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."
+• Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.
+• Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.
+
+**Chapters:**
+**Introduction and Welcome**
+The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy.
+
+**Zelenskyy's Remarks and a Letter to the First Lady**
+President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war.
+"""
+
+    # Example analysis structure
+    example_analysis = {
+        "title": "Trump Holds Meeting with Zelensky in the Oval Office",
+        "overall_summary": "In a significant diplomatic meeting at the White House, President Donald Trump hosted Ukrainian President Volodymyr Zelenskyy in the Oval Office to discuss the ongoing war with Russia. Trump expressed optimism about making substantial progress towards peace, highlighting his recent discussions with Russia's president and upcoming talks with European leaders. A key announcement from the meeting was Trump's intention to call Vladimir Putin immediately following the discussions, with the potential for a trilateral summit between the three leaders to broker a peace deal.",
+        "chapters": [
+            {"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy. Trump starts by welcoming Zelenskyy, stating it's an honor to have him. He mentions they've had good discussions and that substantial progress is being made. He also refers to a recent meeting with the President of Russia and a forthcoming meeting with seven European leaders, highlighting the importance of the current discussions.", "key_points": ["Donald Trump welcomes Ukrainian President Volodymyr Zelenskyy to the Oval Office.", "Trump states that substantial progress is being made in their discussions.", "He mentions a recent good meeting with the President of Russia and an upcoming meeting with seven powerful European leaders."]},
+            {"header": "Zelenskyy's Remarks and a Letter to the First Lady", "summary": "President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war. He also takes the opportunity to thank the First Lady of the United States for sending a letter to Vladimir Putin concerning abducted Ukrainian children. Zelenskyy then hands Trump a letter from his own wife, the First Lady of Ukraine, addressed to Trump's wife, which Trump accepts with a laugh.", "key_points": ["Zelenskyy thanks Trump for the invitation and his personal efforts to stop the war.", "Hethanks the First Lady of the United States for sending a letter to Putin about abducted Ukrainian children.", "Zelenskyy presents a letter from his wife to Trump's wife."]},
+            {"header": "Press Questions on Ending the War", "summary": "The press begins to ask questions. A reporter points out the differing perspectives, with Zelenskyy stating Russia must end the war it started, and Trump suggesting Zelenskyy could end it almost immediately. Trump responds by saying he believes a trilateral meeting between himself, Zelenskyy, and Putin could be arranged if the current discussions are successful. He asserts that this trilateral meeting would have a reasonable chance of ending the war.", "key_points": ["A reporter questions the differing views on who should end the war, citing statements from both leaders.", "Trump expresses confidence in the possibility of a trilateral meeting with Zelenskyy and Putin if the day's meetings go well.", "Trump believes there is a reasonable chance of ending the war through such a meeting."]},
+            {"header": "US Support and Security Guarantees", "summary": 'A reporter asks if this meeting is a "deal or no deal" moment for American support to Ukraine. Trump dismisses the idea that it\'s the "end of the road," stating the priority is to stop the ongoing killing. When asked about the security guarantees he needs, Zelenskyy says it involves everything, specifically mentioning the need for a strong Ukrainian army, weapons, training, and intelligence. When asked if security guarantees could involve U.S. troops, Trump does not rule it out, stating, "We\'ll be involved" and that European leaders also want to provide protection.', "key_points": ["Trump is asked if this meeting represents the end of the road for American support for Ukraine.", "Trump denies it's the end of the road, emphasizing the goal is to stop the killing.", "Zelenskyy states that security guarantees would involve strengthening and rearming the Ukrainian military.", "Trump does not rule out sending U.S. troops to Ukraine as part of a security arrangement."]},
+        ],
+        "key_facts": ["Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.", 'Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."', 'Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.', "Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.", "Trump did not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal.", "Zelenskyy delivered a letter from his wife to Melania Trump concerning abducted Ukrainian children.", "Trump claimed that Putin wants the war on Ukraine to end."],
+        "takeaways": ["Donald Trump is actively positioning himself as a central figure in negotiating an end to the war in Ukraine.", "A potential trilateral summit between the US, Ukraine, and Russia is being floated as a path to peace.", "The nature of future security guarantees for Ukraine, potentially involving US and European forces, is a critical point of negotiation.", "Despite past tensions, the meeting between Trump and Zelenskyy appeared cordial, signaling a potential shift in their dynamic.", "Ukraine's strategy for peace involves not just a cessation of hostilities but also significant military strengthening and concrete security guarantees from international partners."],
+        "chapter_count": 4,
+        "total_key_facts": 7,
+        "total_takeaways": 5,
+    }
+
+    # Example logs
+    example_logs = ["🎭 Generating example response for demonstration purposes...", "✅ This is a demonstration of the YouTube Summarizer's comprehensive analysis capabilities.", "🔍 In real usage, the system would validate the YouTube URL and extract video metadata.", "📝 The multi-tier transcript extraction would attempt yt-dlp captions, then audio transcription, then Gemini direct processing.", "🤖 AI analysis would generate structured insights including chapters, key facts, and takeaways.", "🎉 Example response generated successfully!"]
+
+    # Example processing details
+    example_processing_details = {"url_validation": "example_mode", "metadata_extraction": "example_mode", "transcript_extraction": "example_mode", "summary_generation": "example_mode"}
+
+    # Example metadata
+    processing_time = datetime.now() - start_time
+    example_metadata = {"total_processing_time": f"{processing_time.total_seconds():.1f}s", "start_time": start_time.isoformat(), "end_time": datetime.now().isoformat(), "api_version": API_VERSION, "mode": "example_demonstration", "original_url": "example", "cleaned_url": "https://youtube.com/watch?v=example", "steps_completed": 4, "steps_total": 4}
+
+    log_and_print("🎉 Example response generated successfully!")
+
+    return GenerateResponse(status="success", message="Example demonstration of comprehensive video analysis capabilities", video_info=example_video_info, transcript=example_transcript, summary=example_summary, analysis=example_analysis, metadata=example_metadata, processing_details=example_processing_details, logs=example_logs)
 
 
 # ================================

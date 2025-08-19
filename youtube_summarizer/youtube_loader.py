@@ -168,29 +168,80 @@ def download_audio(url: str) -> bytes:
     logger.info(f"Downloading audio for: {url}")
 
     with temp_file_manager("youtube_audio_") as temp_filename:
-        opts = {**AUDIO_YDL_OPTS, "outtmpl": temp_filename}
+        # Ensure explicit download with skip_download: False
+        opts = {**AUDIO_YDL_OPTS, "outtmpl": temp_filename, "skip_download": False}  # Explicitly enable download
 
         try:
             result = _extract_yt_dlp_info(url, opts)
+            logger.debug(f"yt-dlp result keys: {list(result.keys()) if result else 'None'}")
 
-            # Get the actual downloaded filename
+            # Method 1: Try to get filepath from requested_downloads
             downloaded_file = None
             if result.get("requested_downloads"):
-                downloaded_file = result["requested_downloads"][0]["filepath"]
+                downloaded_file = result["requested_downloads"][0].get("filepath")
+                logger.debug(f"Filepath from requested_downloads: {downloaded_file}")
 
+            # Method 2: If that fails, look for files matching our pattern
             if not downloaded_file or not os.path.exists(downloaded_file):
-                raise RuntimeError("Downloaded audio file not found")
+                logger.debug("requested_downloads method failed, searching for downloaded files...")
+
+                # Look for files that match our pattern
+                temp_dir = Path(tempfile.gettempdir())
+                pattern = f"youtube_audio_{os.getpid()}.*"
+                matching_files = list(temp_dir.glob(pattern))
+
+                logger.debug(f"Found {len(matching_files)} files matching pattern: {pattern}")
+                for file_path in matching_files:
+                    logger.debug(f"  - {file_path}")
+
+                if matching_files:
+                    # Use the first (and should be only) matching file
+                    downloaded_file = str(matching_files[0])
+                    logger.debug(f"Using pattern-matched file: {downloaded_file}")
+
+            # Method 3: If still no file, check if the template filename exists as-is
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                template_file = temp_filename.replace(".%(ext)s", ".m4a")  # Common extension
+                if os.path.exists(template_file):
+                    downloaded_file = template_file
+                    logger.debug(f"Using template-based file: {downloaded_file}")
+
+            # Final check
+            if not downloaded_file or not os.path.exists(downloaded_file):
+                # List all temp files for debugging
+                temp_dir = Path(tempfile.gettempdir())
+                all_temp_files = [f for f in temp_dir.iterdir() if f.name.startswith("youtube_")]
+                logger.error(f"No downloaded file found. Temp files in directory: {[str(f) for f in all_temp_files[:10]]}")  # Limit to 10 for logging
+                raise RuntimeError("Downloaded audio file not found after multiple detection methods")
 
             # Read the audio data
+            logger.info(f"Reading audio data from: {downloaded_file}")
             audio_data = Path(downloaded_file).read_bytes()
 
             # Clean up the downloaded file
-            Path(downloaded_file).unlink(missing_ok=True)
+            try:
+                Path(downloaded_file).unlink(missing_ok=True)
+                logger.debug(f"Cleaned up downloaded file: {downloaded_file}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up downloaded file {downloaded_file}: {e}")
 
             logger.info(f"Downloaded {len(audio_data)} bytes of audio")
             return audio_data
 
         except Exception as e:
+            # Enhanced error logging
+            logger.error(f"Audio download failed: {e}")
+            logger.error(f"URL: {url}")
+            logger.error(f"Template: {temp_filename}")
+
+            # List temp directory contents for debugging
+            try:
+                temp_dir = Path(tempfile.gettempdir())
+                recent_files = [f for f in temp_dir.iterdir() if f.name.startswith("youtube_")][:5]
+                logger.error(f"Recent temp files: {[str(f) for f in recent_files]}")
+            except Exception:
+                pass
+
             raise RuntimeError(f"Audio download failed: {e}") from e
 
 

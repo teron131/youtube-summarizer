@@ -64,7 +64,7 @@ def clean_youtube_url(url: str) -> str:
 
 def summarize_video(url_or_caption: str) -> Analysis:
     """
-    Summarize the text using the Gemini.
+    Summarize the text using the Gemini. Streaming seems to be less buggy with long videos.
     """
     client = Client(
         api_key=os.getenv("GEMINI_API_KEY"),
