@@ -158,21 +158,23 @@ def extract_video_info(url: str) -> Dict[str, Any]:
 
 def download_audio(url: str) -> bytes:
     """Download audio using yt-dlp directly into memory."""
+    import glob
     import os
     import tempfile
 
     logger.info(f"Downloading audio for: {url}")
 
-    # Use a more reliable format selection approach
+    # Simplified and more reliable configuration
     download_opts = {
         **BASE_YDL_OPTS,
-        # Simplified format selection - start with most common working formats
-        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
-        "extractaudio": True,
-        "audioformat": "m4a",
-        "audioquality": "128",
-        # Use temporary file approach for reliability
-        "outtmpl": "%(id)s.%(ext)s",
+        # Use best audio format available, prefer m4a/mp3 for compatibility
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio",
+        # Don't use postprocessors - they can cause file naming issues
+        "extractaudio": False,
+        # Simple output template
+        "outtmpl": "audio.%(ext)s",
+        # Keep original format to avoid conversion issues
+        "keepvideo": False,
     }
 
     try:
@@ -183,6 +185,8 @@ def download_audio(url: str) -> bytes:
             os.chdir(temp_dir)
 
             try:
+                logger.info("Starting yt-dlp download...")
+
                 # Download the audio file
                 with yt_dlp.YoutubeDL(download_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -190,32 +194,53 @@ def download_audio(url: str) -> bytes:
                 if not info:
                     raise RuntimeError("Failed to extract video info")
 
-                # Find the downloaded file
-                video_id = info.get("id")
-                possible_extensions = ["m4a", "webm", "mp3", "opus"]
+                logger.info("Download completed, searching for audio files...")
+
+                # List all files in the temp directory for debugging
+                all_files = os.listdir(".")
+                logger.info(f"Files in temp directory: {all_files}")
+
+                # Look for any audio files using glob patterns
+                audio_patterns = ["*.m4a", "*.mp3", "*.webm", "*.opus", "*.aac", "*.wav"]
                 downloaded_file = None
 
-                for ext in possible_extensions:
-                    potential_file = f"{video_id}.{ext}"
-                    if os.path.exists(potential_file):
-                        downloaded_file = potential_file
+                for pattern in audio_patterns:
+                    matching_files = glob.glob(pattern)
+                    if matching_files:
+                        downloaded_file = matching_files[0]  # Take the first match
+                        logger.info(f"Found audio file: {downloaded_file}")
                         break
 
+                # Fallback: look for files with 'audio' in the name
                 if not downloaded_file:
-                    # Look for any audio file in the directory
-                    files = [f for f in os.listdir(".") if f.endswith((".m4a", ".webm", ".mp3", ".opus"))]
-                    if files:
-                        downloaded_file = files[0]
+                    for filename in all_files:
+                        if any(ext in filename.lower() for ext in [".m4a", ".mp3", ".webm", ".opus", ".aac", ".wav"]):
+                            downloaded_file = filename
+                            logger.info(f"Found audio file (fallback): {downloaded_file}")
+                            break
 
                 if not downloaded_file:
-                    raise RuntimeError("No audio file found after download")
+                    # Final fallback: take the largest file (likely the audio)
+                    if all_files:
+                        largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
+                        if os.path.getsize(largest_file) > 1024:  # At least 1KB
+                            downloaded_file = largest_file
+                            logger.info(f"Using largest file as audio: {downloaded_file}")
+
+                if not downloaded_file:
+                    raise RuntimeError(f"No audio file found after download. Files in directory: {all_files}")
 
                 # Read the file into memory
                 file_path = os.path.join(temp_dir, downloaded_file)
+                logger.info(f"Reading audio file: {file_path}")
+
                 with open(file_path, "rb") as f:
                     audio_data = f.read()
 
-                logger.info(f"Successfully downloaded {len(audio_data)} bytes of audio into memory")
+                if len(audio_data) == 0:
+                    raise RuntimeError(f"Downloaded file is empty: {downloaded_file}")
+
+                logger.info(f"Successfully downloaded {len(audio_data)} bytes of audio data")
                 return audio_data
 
             finally:
