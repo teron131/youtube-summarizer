@@ -5,7 +5,7 @@ YouTube Video and Audio Loader - yt-dlp only
 Optimized yt-dlp approach:
 1. Use yt-dlp to get video metadata, including captions
 2. If captions exist, load them as text
-3. Otherwise, use yt-dlp to download audio for transcription
+3. Otherwise, use yt-dlp to download audio for transcaription
 """
 
 import logging
@@ -23,7 +23,7 @@ from .transcriber import optimize_audio_for_transcription, transcribe_with_fal
 load_dotenv()
 
 # Constants
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 YOUTUBE_REFERER = "https://www.youtube.com/"
 SUBTITLE_LANGUAGES = ["en", "a.en", "zh-HK", "zh-CN"]
 SUBTITLE_FILTER_PATTERNS = ["-->", "WEBVTT", "NOTE"]
@@ -31,12 +31,24 @@ SUBTITLE_FILTER_PATTERNS = ["-->", "WEBVTT", "NOTE"]
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Base yt-dlp configuration
+# Base yt-dlp configuration with enhanced headers and options
 BASE_YDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "user_agent": USER_AGENT,
     "referer": YOUTUBE_REFERER,
+    "retries": 3,
+    "fragment_retries": 3,
+    "extractor_retries": 3,
+    "http_headers": {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-us,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    },
 }
 
 # Metadata extraction configuration
@@ -47,10 +59,13 @@ METADATA_YDL_OPTS = {
     "skip_download": True,
 }
 
-# Audio download configuration
+# Audio download configuration with format fallbacks
 AUDIO_YDL_OPTS = {
     **BASE_YDL_OPTS,
-    "format": "bestaudio[ext=m4a]/bestaudio/best",
+    "format": "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best[height<=720]/best",
+    "extractaudio": True,
+    "audioformat": "m4a",
+    "audioquality": "0",  # Best quality
 }
 
 
