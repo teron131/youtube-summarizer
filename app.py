@@ -26,12 +26,12 @@ The application uses a multi-tier fallback approach for optimal results:
 
 ## 📊 API Endpoints
 
-- `/api/validate-url` - Validate YouTube URLs
-- `/api/video-info` - Extract video metadata
-- `/api/transcript` - Get video transcripts
-- `/api/summary` - Generate text summaries
-- `/api/process` - Complete processing pipeline
-- `/api/generate` - Master endpoint with all capabilities
+- `/validate-url` - Validate YouTube URLs
+- `/video-info` - Extract video metadata
+- `/transcript` - Get video transcripts
+- `/summary` - Generate text summaries
+- `/process` - Complete processing pipeline
+- `/generate` - Master endpoint with all capabilities
 
 ## 🔧 Configuration
 
@@ -55,6 +55,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import RemoteProtocolError
 from pydantic import BaseModel, Field
+
 from youtube_summarizer.summarizer import (
     clean_youtube_url,
     is_youtube_url,
@@ -265,7 +266,7 @@ def parse_video_content(video_content: str) -> Tuple[str, str, str]:
             title = line[7:]
         elif line.startswith("Author: "):
             author = line[8:]
-        elif line.strip() == "subtitle:":
+        elif line.startswith("Subtitle:"):  # Fixed: Match capitalized "Subtitle:"
             transcript = "\n".join(lines[i + 1 :])
             break
 
@@ -447,16 +448,16 @@ def generate_summary_from_content(content: str, content_type: str = "transcript"
 @app.get("/")
 async def root():
     """Root endpoint with comprehensive API information."""
-    return {"name": API_TITLE, "version": API_VERSION, "description": API_DESCRIPTION, "docs": "/docs", "health": "/api/health", "endpoints": {"validate_url": "/api/validate-url", "video_info": "/api/video-info", "transcript": "/api/transcript", "summary": "/api/summary", "process": "/api/process", "generate": "/api/generate (Master API - orchestrates all capabilities)"}, "workflow": {"tier_1": "yt-dlp captions extraction", "tier_2": "audio transcription via FAL", "tier_3": "Gemini direct URL processing"}}
+    return {"name": API_TITLE, "version": API_VERSION, "description": API_DESCRIPTION, "docs": "/docs", "health": "/health", "endpoints": {"validate_url": "/validate-url", "video_info": "/video-info", "transcript": "/transcript", "summary": "/summary", "process": "/process", "generate": "/generate (Master API - orchestrates all capabilities)"}, "workflow": {"tier_1": "yt-dlp captions extraction", "tier_2": "audio transcription via FAL", "tier_3": "Gemini direct URL processing"}}
 
 
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """Health check endpoint with system status."""
     return {"status": "healthy", "message": f"{API_TITLE} is running", "timestamp": datetime.now().isoformat(), "version": API_VERSION, "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "fal_configured": bool(os.getenv("FAL_KEY"))}}
 
 
-@app.post("/api/validate-url", response_model=URLValidationResponse)
+@app.post("/validate-url", response_model=URLValidationResponse)
 async def validate_youtube_url(request: YouTubeRequest):
     """Validate and clean YouTube URL."""
     try:
@@ -469,7 +470,7 @@ async def validate_youtube_url(request: YouTubeRequest):
         raise HTTPException(status_code=400, detail=f"URL validation failed: {str(e)}")
 
 
-@app.post("/api/video-info", response_model=VideoInfoResponse)
+@app.post("/video-info", response_model=VideoInfoResponse)
 async def get_video_info(request: YouTubeRequest):
     """Extract basic video information without processing."""
     try:
@@ -486,7 +487,7 @@ async def get_video_info(request: YouTubeRequest):
         raise HTTPException(status_code=400, detail=f"Failed to extract video info: {str(e)}")
 
 
-@app.post("/api/transcript", response_model=TranscriptResponse)
+@app.post("/transcript", response_model=TranscriptResponse)
 async def get_video_transcript(request: YouTubeRequest):
     """Extract video transcript with multi-tier fallback approach."""
     start_time = datetime.now()
@@ -508,7 +509,7 @@ async def get_video_transcript(request: YouTubeRequest):
         raise HTTPException(status_code=400, detail=f"Failed to extract transcript: {str(e)}")
 
 
-@app.post("/api/summary", response_model=SummaryResponse)
+@app.post("/summary", response_model=SummaryResponse)
 async def generate_text_summary(request: TextSummaryRequest):
     """Generate summary from provided text content."""
     start_time = datetime.now()
@@ -534,7 +535,7 @@ async def generate_text_summary(request: TextSummaryRequest):
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
 
 
-@app.post("/api/process", response_model=ProcessingResponse)
+@app.post("/process", response_model=ProcessingResponse)
 async def process_youtube_video(request: YouTubeProcessRequest):
     """
     Complete YouTube video processing with multi-tier fallback approach.
@@ -636,7 +637,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
         return ProcessingResponse(status="error", message=error_message, logs=logs)
 
 
-@app.post("/api/generate", response_model=GenerateResponse)
+@app.post("/generate", response_model=GenerateResponse)
 async def generate_comprehensive_analysis(request: GenerateRequest):
     """
     Master API endpoint that orchestrates all video processing capabilities.
@@ -861,10 +862,10 @@ President Zelenskyy thanks President Trump for the invitation and for his person
         "title": "Trump Holds Meeting with Zelensky in the Oval Office",
         "overall_summary": "In a significant diplomatic meeting at the White House, President Donald Trump hosted Ukrainian President Volodymyr Zelenskyy in the Oval Office to discuss the ongoing war with Russia. Trump expressed optimism about making substantial progress towards peace, highlighting his recent discussions with Russia's president and upcoming talks with European leaders. A key announcement from the meeting was Trump's intention to call Vladimir Putin immediately following the discussions, with the potential for a trilateral summit between the three leaders to broker a peace deal.",
         "chapters": [
-            {"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy. Trump starts by welcoming Zelenskyy, stating it's an honor to have him. He mentions they've had good discussions and that substantial progress is being made. He also refers to a recent meeting with the President of Russia and a forthcoming meeting with seven European leaders, highlighting the importance of the current discussions.", "key_points": ["Donald Trump welcomes Ukrainian President Volodymyr Zelenskyy to the Oval Office.", "Trump states that substantial progress is being made in their discussions.", "He mentions a recent good meeting with the President of Russia and an upcoming meeting with seven powerful European leaders."]},
+            {"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy.", "key_points": ["Donald Trump welcomes Ukrainian President Volodymyr Zelenskyy to the Oval Office.", "Trump states that substantial progress is being made in their discussions.", "He mentions a recent good meeting with the President of Russia and an upcoming meeting with seven European leaders."]},
             {"header": "Zelenskyy's Remarks and a Letter to the First Lady", "summary": "President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war. He also takes the opportunity to thank the First Lady of the United States for sending a letter to Vladimir Putin concerning abducted Ukrainian children. Zelenskyy then hands Trump a letter from his wife, the First Lady of Ukraine, addressed to Trump's wife, which Trump accepts with a laugh.", "key_points": ["Zelenskyy thanks Trump for the invitation and his personal efforts to stop the war.", "He thanks the First Lady of the United States for sending a letter to Putin about abducted Ukrainian children.", "Zelenskyy presents a letter from his wife to Trump's wife."]},
             {"header": "Press Questions on Ending the War", "summary": "The press begins to ask questions. A reporter points out the differing perspectives, with Zelenskyy stating Russia must end the war it started, and Trump suggesting Zelenskyy could end it almost immediately. Trump responds by saying he believes a trilateral meeting between himself, Zelenskyy, and Putin could be arranged if the current discussions are successful. He asserts that this trilateral meeting would have a reasonable chance of ending the war.", "key_points": ["A reporter questions the differing views on who should end the war, citing statements from both leaders.", "Trump expresses confidence in the possibility of a trilateral meeting with Zelenskyy and Putin if the day's meetings are successful.", "Trump believes there is a reasonable chance of ending the war through such a meeting."]},
-            {"header": "US Support and Security Guarantees", "summary": 'A reporter asks if this meeting is a "deal or no deal" moment for American support to Ukraine. Trump dismisses the idea that it\'s the "end of the road," stating the priority is to stop the ongoing killing. When asked about the security guarantees he needs, Zelenskyy says it involves everything, specifically mentioning the need for a strong Ukrainian army, weapons, training, and intelligence. When asked if security guarantees could involve U.S. troops, Trump does not rule it out, stating, "We\'ll be involved" and that European leaders also want to provide protection.', "key_points": ["Trump is asked if this meeting represents the end of the road for American support for Ukraine.", "Trump denies it's the end of the road, emphasizing the goal is to stop the killing.", "Zelenskyy states that security guarantees would involve strengthening and rearming the Ukrainian military.", "Trump does not rule out sending U.S. troops to Ukraine as part of a security arrangement."]},
+            {"header": "US Support and Security Guarantees", "summary": 'A reporter asks if this meeting is a "deal or no deal" moment for American support to Ukraine. Trump dismisses the idea that it\'s the "end of the road," stating the priority is to stop the ongoing killing. When asked about the security guarantees he needs, Zelenskyy says it involves everything, specifically mentioning the need for a strong Ukrainian army, weapons, training, and intelligence. When asked if security guarantees could involve U.S. troops, Trump does not rule it out, stating, "We\'ll be involved" and that European leaders also want to provide protection.', "key_points": ["Trump is asked if this meeting represents the end of the road for American support for Ukraine.", "Trump denies it's the end of the road, emphasizing the goal is to stop the killing.", "Zelenskyy states that security guarantees would involve strengthening and rearming the Ukrainian military.", "Trump does not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal."]},
         ],
         "key_facts": ["Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.", 'Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."', 'Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.', "Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.", "Trump did not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal.", "Zelenskyy delivered a letter from his wife to Melania Trump concerning abducted Ukrainian children.", "Trump claimed that Putin wants the war on Ukraine to end."],
         "takeaways": ["Donald Trump is actively positioning himself as a central figure in negotiating an end to the war in Ukraine.", "A potential trilateral summit between the US, Ukraine, and Russia is being floated as a path to peace.", "The nature of future security guarantees for Ukraine, potentially involving US and European forces, is a critical point of negotiation.", "Despite past tensions, the meeting between Trump and Zelenskyy appeared cordial, signaling a potential shift in their dynamic.", "Ukraine's strategy for peace involves not just a cessation of hostilities but also significant military strengthening and concrete security guarantees from international partners."],
