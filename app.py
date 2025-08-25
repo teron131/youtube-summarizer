@@ -55,7 +55,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import RemoteProtocolError
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.summarizer import (
     clean_youtube_url,
     is_youtube_url,
@@ -114,6 +113,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Add timeout configurations for long-running requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure as needed for production
@@ -121,6 +121,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Configure timeouts for long-running operations
+@app.middleware("http")
+async def timeout_middleware(request, call_next):
+    """Add timeout handling for long-running requests."""
+    import asyncio
+
+    try:
+        # Set a generous timeout for video processing (10 minutes)
+        response = await asyncio.wait_for(call_next(request), timeout=600.0)
+        return response
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": "Request timed out after 10 minutes. Video processing may be taking too long."}
+
 
 # ================================
 # PYDANTIC MODELS

@@ -19,6 +19,14 @@ else
 fi
 
 echo "🌍 Starting API server on $HOST:$PORT with $WORKERS workers"
+echo "⏱️  Timeout settings: 10 minutes for processing, 5 minutes for keep-alive"
 
 # Use uvicorn with import string for proper deployment
-exec python -m uvicorn app:app --host "$HOST" --port "$PORT" --workers "$WORKERS" --access-log
+# Added timeout configurations for YouTube video processing
+exec python -m uvicorn app:app \
+    --host "$HOST" \
+    --port "$PORT" \
+    --workers "$WORKERS" \
+    --access-log \
+    --timeout-keep-alive 300 \
+    --timeout-graceful-shutdown 600
