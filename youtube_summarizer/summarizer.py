@@ -6,11 +6,12 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-import re
 
 from dotenv import load_dotenv
 from google.genai import Client, types
 from pydantic import BaseModel, Field
+
+from .utils import is_youtube_url
 
 load_dotenv()
 
@@ -27,39 +28,6 @@ class Analysis(BaseModel):
     key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
     overall_summary: str = Field(description="A comprehensive summary synthesizing all chapters, facts, and themes")
-
-
-def is_youtube_url(url: str) -> bool:
-    """
-    Check if the URL is a valid YouTube URL.
-    Accepts both youtube.com/watch?v= and youtu.be/ formats.
-    """
-    youtube_patterns = [
-        r"https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+",
-        r"https?://(?:www\.)?youtu\.be/[\w-]+",
-    ]
-    return any(re.match(pattern, url) for pattern in youtube_patterns)
-
-
-def clean_youtube_url(url: str) -> str:
-    """
-    Clean the YouTube URL by extracting video ID and removing extra parameters.
-    Converts both formats to standard youtube.com/watch?v=ID format.
-    """
-    # Extract video ID from youtube.com/watch?v=ID format
-    youtube_match = re.search(r"youtube\.com/watch\?v=([\w-]+)", url)
-    if youtube_match:
-        video_id = youtube_match.group(1)
-        return f"https://www.youtube.com/watch?v={video_id}"
-
-    # Extract video ID from youtu.be/ID format
-    youtu_be_match = re.search(r"youtu\.be/([\w-]+)", url)
-    if youtu_be_match:
-        video_id = youtu_be_match.group(1)
-        return f"https://www.youtube.com/watch?v={video_id}"
-
-    # Return original URL if no match found
-    return url
 
 
 def summarize_video(url_or_caption: str) -> Analysis:
