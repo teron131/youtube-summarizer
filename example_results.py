@@ -88,7 +88,7 @@ result_with_chapters = YouTubeScrapperResult(
     language="English",
 )
 
-result_no_chapters = YouTubeScrapperResult(
+result_without_chapters = YouTubeScrapperResult(
     id="iYT2haVIgSM",
     thumbnail="https://img.youtube.com/vi/iYT2haVIgSM/maxresdefault.jpg",
     url="https://www.youtube.com/watch?v=iYT2haVIgSM",
