@@ -15,25 +15,23 @@ result.publishDateText: str = 'Aug 25, 2025'
 import bisect
 import json
 import os
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .utils import clean_text, clean_youtube_url, is_youtube_url
 
 APIFY_API_KEY = os.getenv("APIFY_API_KEY")
 
 
-@dataclass
-class _ChapterTranscript:
+class ChapterTranscript(BaseModel):
     """Represents a time window for one video chapter."""
 
     title: str
     start_ms: int
-    transcript_parts: List[str] = field(default_factory=list)
+    transcript_parts: List[str] = Field(default_factory=list)
 
     def format_output(self) -> str:
         """Formats the chapter title and its transcript parts into a string."""
@@ -150,8 +148,8 @@ def parse_transcript(result: YouTubeScrapperResult) -> str:
         return clean_text(result.transcript_only_text)
 
     # Create chapter windows and a list of their start times for binary search.
-    windows = [_ChapterTranscript(title=ch.title, start_ms=ch.startSeconds * 1000) for ch in result.chapters]
-    chapter_start_times = [w.start_ms for w in windows]
+    windows = [ChapterTranscript(title=chapter.title, start_ms=chapter.startSeconds * 1000) for chapter in result.chapters]
+    chapter_start_times = [window.start_ms for window in windows]
 
     # Assign each transcript segment to its corresponding chapter window using binary search.
     # This is efficient as it avoids nested loops for chapter lookups.
