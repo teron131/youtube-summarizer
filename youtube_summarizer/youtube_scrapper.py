@@ -6,7 +6,7 @@ from typing import List, Optional
 import requests
 from pydantic import BaseModel
 
-from .utils import clean_youtube_url, is_youtube_url
+from .utils import clean_text, clean_youtube_url, is_youtube_url
 
 APIFY_API_KEY = os.getenv("APIFY_API_KEY")
 
@@ -96,3 +96,61 @@ def youtube_scrap(youtube_url: str) -> YouTubeScrapperResult:
 
     result = json.loads(response.text)[0]
     return YouTubeScrapperResult.model_validate(result)
+
+
+def parse_transcript(result: YouTubeScrapperResult) -> str:
+    """Parse transcript into a single string
+
+    If chapters are present, format into '## <Chapter>' followed by its transcript text...
+
+    If chapters are not present, clean the the transcript_only_text.
+
+    Args:
+        result: YouTubeScrapperResult
+
+    Returns:
+        str: A single string with the transcript formatted as described above.
+    """
+    if not result.chapters:
+        # Clean the transcript_only_text using the same regex patterns
+        return clean_text(result.transcript_only_text)
+
+    # Build chapter windows with list comprehension and direct attribute access
+    num_chapters = len(result.chapters)
+    windows = [
+        {
+            "title": ch.title,
+            "start_ms": ch.startSeconds * 1000,
+            "end_ms": (result.chapters[i + 1].startSeconds * 1000 if i + 1 < num_chapters else 10**9 * 1000),
+            "parts": [],
+        }
+        for i, ch in enumerate(result.chapters)
+    ]
+
+    # Single-pass assignment with direct attribute access
+    current_idx = 0
+    current_window = windows[0]
+
+    for seg in result.transcript:
+        seg_ms = int(seg.startMs)
+
+        # Move to next window if needed
+        while current_idx + 1 < len(windows) and seg_ms >= current_window["end_ms"]:
+            current_idx += 1
+            current_window = windows[current_idx]
+
+        # Add segment text to current window
+        if current_window["start_ms"] <= seg_ms < current_window["end_ms"]:
+            if text := seg.text.strip():
+                current_window["parts"].append(text)
+
+    # Build final output with list comprehension and clean_text function
+    result_parts = [
+        (lambda title_line, parts: f"{title_line}\n{clean_text(' '.join(parts))}" if parts else title_line)(
+            f"## {window['title']}",
+            window["parts"],
+        )
+        for window in windows
+    ]
+
+    return "\n\n".join(result_parts)

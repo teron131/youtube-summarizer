@@ -18,6 +18,15 @@ def log_and_print(message: str):
     sys.stdout.flush()
 
 
+# Module-level compiled patterns for maximum performance
+WHITESPACE_PATTERN = re.compile(r"\s+")
+
+
+def clean_text(text: str) -> str:
+    """Clean the text by removing extra whitespace and newlines."""
+    return WHITESPACE_PATTERN.sub(" ", text).strip()
+
+
 def is_youtube_url(url: str) -> bool:
     """
     Check if the URL is a valid YouTube URL.
