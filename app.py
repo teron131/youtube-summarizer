@@ -253,7 +253,8 @@ app.add_middleware(RateLimitMiddleware, requests_per_minute=RATE_LIMIT_REQUESTS)
 app.add_middleware(RequestLoggingMiddleware)
 
 # CORS with more restrictive defaults (can be overridden via env vars)
-allowed_origins = os.getenv("ALLOWED_ORIGINS", f"http://localhost:3000,http://localhost:8080,{os.getenv('VITE_API_BASE_URL')}").split(",")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://youtube-summarizer-ui-teron131.up.railway.app")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", f"http://localhost:3000,http://localhost:8080,{FRONTEND_URL}").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
