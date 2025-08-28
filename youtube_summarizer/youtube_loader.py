@@ -1,11 +1,10 @@
 """
-YouTube Video and Audio Loader - yt-dlp only
-----------------------------------------------------------------
+This module uses yt-dlp to load a YouTube video and return the transcript and other metadata.
 
 Optimized yt-dlp approach:
 1. Use yt-dlp to get video metadata, including captions
-2. If captions exist, load them as text
-3. Otherwise, use yt-dlp to download audio for transcaription
+2. If captions exist, load them as text.
+3. Otherwise, use yt-dlp to download audio for transcaription.
 """
 
 import logging

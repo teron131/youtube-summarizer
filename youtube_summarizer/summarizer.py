@@ -1,7 +1,4 @@
 """
-Content Summarization Service
------------------------------
-
 This module provides functions for processing transcribed text to generate formatted subtitles and AI-powered summaries using the Gemini API.
 """
 

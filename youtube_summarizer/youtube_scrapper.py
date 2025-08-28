@@ -1,8 +1,6 @@
 """
-Scrape a YouTube video and return the transcript and other metadata.
-
-Uses the Apify YouTube scraper API: https://apify.com/scrape-creators/best-youtube-scraper
-
+This module uses the Apify YouTube scraper API to scrape a YouTube video and return the transcript and other metadata.
+https://apify.com/scrape-creators/best-youtube-scraper
 The API result is wrapped by YouTubeScrapperResult object.
 
 Important video metadata:
