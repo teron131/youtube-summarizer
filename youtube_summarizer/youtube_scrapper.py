@@ -1,5 +1,7 @@
+import bisect
 import json
 import os
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
@@ -9,6 +11,25 @@ from pydantic import BaseModel
 from .utils import clean_text, clean_youtube_url, is_youtube_url
 
 APIFY_API_KEY = os.getenv("APIFY_API_KEY")
+
+
+@dataclass
+class _ChapterTranscript:
+    """Represents a time window for one video chapter."""
+
+    title: str
+    start_ms: int
+    transcript_parts: List[str] = field(default_factory=list)
+
+    def format_output(self) -> str:
+        """Formats the chapter title and its transcript parts into a string."""
+        title_line = f"## {self.title}"
+        if not self.transcript_parts:
+            return title_line
+
+        # Join parts into a single text block and clean it
+        transcript_text = clean_text(" ".join(self.transcript_parts))
+        return f"{title_line}\n{transcript_text}"
 
 
 class Channel(BaseModel):
@@ -99,58 +120,41 @@ def youtube_scrap(youtube_url: str) -> YouTubeScrapperResult:
 
 
 def parse_transcript(result: YouTubeScrapperResult) -> str:
-    """Parse transcript into a single string
+    """Parse transcript into a single string with chapter formatting.
 
-    If chapters are present, format into '## <Chapter>' followed by its transcript text...
-
-    If chapters are not present, clean the the transcript_only_text.
+    If chapters are present, the transcript is segmented by chapter, formatted as
+    '## <Chapter Title>' followed by the cleaned-up transcript text for that chapter.
+    If no chapters are available, the entire transcript is cleaned and returned as a single block.
 
     Args:
-        result: YouTubeScrapperResult
+        result: The YouTubeScrapperResult containing transcript and chapter data.
 
     Returns:
-        str: A single string with the transcript formatted as described above.
+        A formatted string with the transcript, organized by chapters if available.
     """
     if not result.chapters:
-        # Clean the transcript_only_text using the same regex patterns
         return clean_text(result.transcript_only_text)
 
-    # Build chapter windows with list comprehension and direct attribute access
-    num_chapters = len(result.chapters)
-    windows = [
-        {
-            "title": ch.title,
-            "start_ms": ch.startSeconds * 1000,
-            "end_ms": (result.chapters[i + 1].startSeconds * 1000 if i + 1 < num_chapters else 10**9 * 1000),
-            "parts": [],
-        }
-        for i, ch in enumerate(result.chapters)
-    ]
+    # Create chapter windows and a list of their start times for binary search.
+    windows = [_ChapterTranscript(title=ch.title, start_ms=ch.startSeconds * 1000) for ch in result.chapters]
+    chapter_start_times = [w.start_ms for w in windows]
 
-    # Single-pass assignment with direct attribute access
-    current_idx = 0
-    current_window = windows[0]
-
+    # Assign each transcript segment to its corresponding chapter window using binary search.
+    # This is efficient as it avoids nested loops for chapter lookups.
     for seg in result.transcript:
+        if not seg.text or not seg.text.strip():
+            continue
+
         seg_ms = int(seg.startMs)
 
-        # Move to next window if needed
-        while current_idx + 1 < len(windows) and seg_ms >= current_window["end_ms"]:
-            current_idx += 1
-            current_window = windows[current_idx]
+        # Find the index of the chapter this segment belongs to.
+        # bisect_right gives the insertion point, so we subtract 1 to get the current chapter.
+        idx = bisect.bisect_right(chapter_start_times, seg_ms) - 1
 
-        # Add segment text to current window
-        if current_window["start_ms"] <= seg_ms < current_window["end_ms"]:
-            if text := seg.text.strip():
-                current_window["parts"].append(text)
+        if idx >= 0:
+            windows[idx].transcript_parts.append(seg.text)
 
-    # Build final output with list comprehension and clean_text function
-    result_parts = [
-        (lambda title_line, parts: f"{title_line}\n{clean_text(' '.join(parts))}" if parts else title_line)(
-            f"## {window['title']}",
-            window["parts"],
-        )
-        for window in windows
-    ]
+    # Format each chapter window into its final string representation.
+    result_parts = [window.format_output() for window in windows]
 
     return "\n\n".join(result_parts)
