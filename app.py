@@ -3,25 +3,20 @@ YouTube Summarizer FastAPI Application
 =====================================
 
 This FastAPI application provides a comprehensive API for YouTube video processing,
-including downloading, transcription, and AI-powered summarization.
+including scraping, transcription, and AI-powered summarization.
 
 ## 🔄 Processing Workflow
 
 The application uses a multi-tier fallback approach for optimal results:
 
-### Tier 1: yt-dlp Captions
-- Attempts to extract existing captions/subtitles from YouTube
-- Fastest method when captions are available
-- Supports multiple languages (English, Chinese)
+### Tier 1: Apify YouTube Scraper API
+- Uses professional YouTube scraping API to extract video metadata and transcripts
+- Fastest and most reliable method when API quota is available
+- Supports automatic transcript extraction and chapter detection
 
-### Tier 2: Audio Transcription
-- Downloads audio using yt-dlp when no captions exist
-- Transcribes using FAL API with Whisper
-- Handles videos without captions
-
-### Tier 3: Gemini Direct Processing
+### Tier 2: Gemini Direct Processing
 - Directly processes YouTube URLs using Google's Gemini AI
-- Fallback when other methods fail
+- Fallback when API fails or quota is exhausted
 - Provides analysis even for problematic videos
 
 ## 📊 API Endpoints
@@ -36,8 +31,9 @@ The application uses a multi-tier fallback approach for optimal results:
 ## 🔧 Configuration
 
 Set environment variables:
+- `APIFY_API_KEY` - For YouTube scraping API
 - `GEMINI_API_KEY` - For AI summarization
-- `FAL_KEY` - For audio transcription
+- `FAL_KEY` - For audio transcription (legacy fallback)
 - `PORT` - Server port (default: 8080)
 - `HOST` - Server host (default: 0.0.0.0)
 
@@ -55,13 +51,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import RemoteProtocolError
 from pydantic import BaseModel, Field
-from youtube_summarizer.summarizer import (
-    clean_youtube_url,
-    is_youtube_url,
-    summarize_video,
+
+from youtube_summarizer.summarizer import Analysis, summarize_video
+from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
+from youtube_summarizer.youtube_scrapper import (
+    YouTubeScrapperResult,
+    parse_transcript,
+    scrap_youtube,
 )
-from youtube_summarizer.utils import log_and_print
-from youtube_summarizer.youtube_loader import extract_video_info, youtube_loader
 
 load_dotenv()
 
@@ -78,9 +75,11 @@ ERROR_MESSAGES = {
     "invalid_url": "Invalid YouTube URL format",
     "empty_url": "YouTube URL is required",
     "gemini_not_configured": "GEMINI_API_KEY not configured",
-    "fal_not_configured": "FAL_KEY not configured",
+    "apify_not_configured": "APIFY_API_KEY not configured",
+    "fal_not_configured": "FAL_KEY not configured (legacy fallback)",
     "video_too_long": "Video is too long for processing. Please try with a shorter video or use time segments.",
     "processing_failed": "All processing methods failed",
+    "api_quota_exceeded": "YouTube scraping API quota exceeded. Please try again later.",
 }
 
 # Processing status indicators
@@ -261,34 +260,62 @@ def validate_url(url: str) -> str:
     return clean_youtube_url(url)
 
 
-def parse_video_content(video_content: str) -> Tuple[str, str, str]:
+def parse_video_content(scrapper_result: YouTubeScrapperResult) -> Tuple[str, str, str]:
     """
-    Parse video content from youtube_loader output.
+    Parse video content from YouTubeScrapperResult.
 
     Args:
-        video_content: Raw output from youtube_loader
+        scrapper_result: YouTubeScrapperResult from scrap_youtube
 
     Returns:
         Tuple of (title, author, transcript)
     """
-    title = "Unknown Title"
-    author = "Unknown Author"
-    transcript = ""
-
-    lines = video_content.split("\n")
-    for i, line in enumerate(lines):
-        if line.startswith("Title: "):
-            title = line[7:]
-        elif line.startswith("Author: "):
-            author = line[8:]
-        elif line.startswith("Subtitle:"):  # Fixed: Match capitalized "Subtitle:"
-            transcript = "\n".join(lines[i + 1 :])
-            break
+    title = scrapper_result.title if scrapper_result.title else "Unknown Title"
+    author = scrapper_result.channel.title if scrapper_result.channel and scrapper_result.channel.title else "Unknown Author"
+    transcript = parse_transcript(scrapper_result)
 
     return title, author, transcript
 
 
-def create_transcript_from_analysis(analysis) -> str:
+def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
+    """
+    Extract video information using Apify YouTube scraper API.
+
+    Args:
+        cleaned_url: Validated YouTube URL
+
+    Returns:
+        Dictionary containing video metadata
+
+    Raises:
+        Various exceptions for different failure modes
+    """
+    if not os.getenv("APIFY_API_KEY"):
+        raise HTTPException(status_code=500, detail=ERROR_MESSAGES["apify_not_configured"])
+
+    try:
+        scrapper_result = scrap_youtube(cleaned_url)
+
+        # Convert to format expected by VideoInfoResponse
+        return {
+            "title": scrapper_result.title,
+            "author": scrapper_result.channel.title if scrapper_result.channel else "Unknown Author",
+            "duration": scrapper_result.durationFormatted,
+            "thumbnail": scrapper_result.thumbnail,
+            "view_count": scrapper_result.viewCountInt,
+            "upload_date": scrapper_result.publishDateText,
+            "url": cleaned_url,
+        }
+    except Exception as e:
+        # If API fails, return basic structure with error
+        error_msg = f"API extraction failed: {str(e)}"
+        if "quota" in str(e).lower() or "limit" in str(e).lower():
+            raise HTTPException(status_code=429, detail=ERROR_MESSAGES["api_quota_exceeded"])
+        else:
+            raise HTTPException(status_code=500, detail=error_msg)
+
+
+def create_transcript_from_analysis(analysis: Analysis) -> str:
     """
     Create transcript-like content from Gemini analysis.
 
@@ -306,7 +333,7 @@ def create_transcript_from_analysis(analysis) -> str:
     return "\n".join(transcript_parts)
 
 
-def format_summary_from_analysis(analysis) -> str:
+def format_summary_from_analysis(analysis: Analysis) -> str:
     """
     Format structured analysis into markdown summary.
 
@@ -331,7 +358,7 @@ def format_summary_from_analysis(analysis) -> str:
     return "\n".join(summary_parts)
 
 
-def convert_analysis_to_dict(analysis) -> Dict[str, Any]:
+def convert_analysis_to_dict(analysis: Analysis) -> Dict[str, Any]:
     """
     Convert analysis result to dictionary format.
 
@@ -341,7 +368,12 @@ def convert_analysis_to_dict(analysis) -> Dict[str, Any]:
     Returns:
         Dictionary representation of analysis
     """
-    return {"chapters": [{"header": c.header, "summary": c.summary, "key_points": c.key_points} for c in analysis.chapters], "key_facts": analysis.key_facts, "takeaways": analysis.takeaways, "overall_summary": analysis.overall_summary}
+    return {
+        "chapters": [{"header": c.header, "summary": c.summary, "key_points": c.key_points} for c in analysis.chapters],
+        "key_facts": analysis.key_facts,
+        "takeaways": analysis.takeaways,
+        "overall_summary": analysis.overall_summary,
+    }
 
 
 def handle_remote_protocol_error(e: RemoteProtocolError, context: str = "processing") -> HTTPException:
@@ -380,31 +412,39 @@ def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple
     transcript = ""
     processing_method = "unknown"
 
-    # Tier 1: Try yt-dlp loader
-    try:
-        log_and_print("🔄 Tier 1: Trying yt-dlp loader...")
-        logs.append("🔄 Tier 1: Trying yt-dlp loader...")
+    # Tier 1: Try Apify YouTube Scraper API
+    if os.getenv("APIFY_API_KEY"):
+        try:
+            log_and_print("🔄 Tier 1: Trying Apify YouTube Scraper API...")
+            logs.append("🔄 Tier 1: Trying Apify YouTube Scraper API...")
 
-        video_content = youtube_loader(cleaned_url)
-        title, author, transcript = parse_video_content(video_content)
+            scrapper_result = scrap_youtube(cleaned_url)
+            title, author, transcript = parse_video_content(scrapper_result)
 
-        if transcript and transcript.strip() and not transcript.startswith("["):
-            log_and_print("✅ Tier 1 successful: Got transcript from yt-dlp loader")
-            logs.append("✅ Tier 1 successful: Got transcript from yt-dlp loader")
-            processing_method = "yt-dlp_loader"
-            return title, author, transcript, processing_method
-        else:
-            log_and_print("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
-            logs.append("❌ Tier 1 failed: No valid transcript from yt-dlp loader")
+            if transcript and transcript.strip() and not transcript.startswith("["):
+                log_and_print("✅ Tier 1 successful: Got transcript from Apify API")
+                logs.append("✅ Tier 1 successful: Got transcript from Apify API")
+                processing_method = "apify_api"
+                return title, author, transcript, processing_method
+            else:
+                log_and_print("❌ Tier 1 failed: No valid transcript from Apify API")
+                logs.append("❌ Tier 1 failed: No valid transcript from Apify API")
 
-    except Exception as e:
-        error_msg = f"❌ Tier 1 failed: {str(e)}"
-        log_and_print(error_msg)
-        logs.append(error_msg)
+        except Exception as e:
+            error_msg = f"❌ Tier 1 failed: {str(e)}"
+            log_and_print(error_msg)
+            logs.append(error_msg)
+
+            # Check for quota/rate limit issues
+            if "quota" in str(e).lower() or "limit" in str(e).lower():
+                logs.append("⚠️ API quota/rate limit detected, proceeding to Tier 2...")
+    else:
+        log_and_print("⚠️ Tier 1 skipped: APIFY_API_KEY not configured")
+        logs.append("⚠️ Tier 1 skipped: APIFY_API_KEY not configured")
 
     # Tier 2: Fallback to Gemini direct URL processing
     if not os.getenv("GEMINI_API_KEY"):
-        error_msg = "yt-dlp loader failed and GEMINI_API_KEY not configured"
+        error_msg = "Apify API failed and GEMINI_API_KEY not configured"
         log_and_print(f"❌ {error_msg}")
         logs.append(f"❌ {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
@@ -463,13 +503,27 @@ def generate_summary_from_content(content: str, content_type: str = "transcript"
 @app.get("/")
 async def root():
     """Root endpoint with comprehensive API information."""
-    return {"name": API_TITLE, "version": API_VERSION, "description": API_DESCRIPTION, "docs": "/docs", "health": "/health", "endpoints": {"validate_url": "/validate-url", "video_info": "/video-info", "transcript": "/transcript", "summary": "/summary", "process": "/process", "generate": "/generate (Master API - orchestrates all capabilities)"}, "workflow": {"tier_1": "yt-dlp captions extraction", "tier_2": "audio transcription via FAL", "tier_3": "Gemini direct URL processing"}}
+    return {
+        "name": API_TITLE,
+        "version": API_VERSION,
+        "description": API_DESCRIPTION,
+        "docs": "/docs",
+        "health": "/health",
+        "endpoints": {"validate_url": "/validate-url", "video_info": "/video-info", "transcript": "/transcript", "summary": "/summary", "process": "/process", "generate": "/generate (Master API - orchestrates all capabilities)"},
+        "workflow": {"tier_1": "Apify YouTube Scraper API", "tier_2": "Gemini direct URL processing"},
+    }
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint with system status."""
-    return {"status": "healthy", "message": f"{API_TITLE} is running", "timestamp": datetime.now().isoformat(), "version": API_VERSION, "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "fal_configured": bool(os.getenv("FAL_KEY"))}}
+    return {
+        "status": "healthy",
+        "message": f"{API_TITLE} is running",
+        "timestamp": datetime.now().isoformat(),
+        "version": API_VERSION,
+        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("APIFY_API_KEY")), "fal_configured": bool(os.getenv("FAL_KEY"))},
+    }
 
 
 @app.post("/validate-url", response_model=URLValidationResponse)
@@ -479,7 +533,11 @@ async def validate_youtube_url(request: YouTubeRequest):
         is_valid = is_youtube_url(request.url)
         cleaned_url = clean_youtube_url(request.url) if is_valid else None
 
-        return URLValidationResponse(is_valid=is_valid, cleaned_url=cleaned_url, original_url=request.url)
+        return URLValidationResponse(
+            is_valid=is_valid,
+            cleaned_url=cleaned_url,
+            original_url=request.url,
+        )
     except Exception as e:
         log_and_print(f"❌ URL validation failed: {str(e)}")
         raise HTTPException(status_code=400, detail=f"URL validation failed: {str(e)}")
@@ -515,7 +573,13 @@ async def get_video_transcript(request: YouTubeRequest):
         title, author, transcript, _ = extract_transcript_with_fallback(cleaned_url, logs)
 
         processing_time = datetime.now() - start_time
-        return TranscriptResponse(title=title, author=author, transcript=transcript, url=cleaned_url, processing_time=f"{processing_time.total_seconds():.1f}s")
+        return TranscriptResponse(
+            title=title,
+            author=author,
+            transcript=transcript,
+            url=cleaned_url,
+            processing_time=f"{processing_time.total_seconds():.1f}s",
+        )
 
     except HTTPException:
         raise
@@ -541,7 +605,12 @@ async def generate_text_summary(request: TextSummaryRequest):
         # Extract title from analysis
         analysis = summarize_video(request.text)
 
-        return SummaryResponse(title=analysis.title, summary=summary, analysis=analysis_dict, processing_time=f"{processing_time.total_seconds():.1f}s")
+        return SummaryResponse(
+            title=analysis.title,
+            summary=summary,
+            analysis=analysis_dict,
+            processing_time=f"{processing_time.total_seconds():.1f}s",
+        )
 
     except HTTPException:
         raise
@@ -557,7 +626,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
 
     Workflow:
     1. URL validation and cleaning
-    2. Tier 1: yt-dlp captions extraction
+    2. Tier 1: Apify YouTube Scraper API
     3. Tier 2: Gemini direct URL processing
     4. Optional: AI summary generation
     """
@@ -660,7 +729,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
     This is the most comprehensive endpoint providing:
     - URL validation and cleaning
     - Video metadata extraction
-    - Multi-tier transcript extraction (yt-dlp + Gemini fallback)
+    - Multi-tier transcript extraction (Apify API + Gemini fallback)
     - AI-powered summarization and analysis
     - Structured data output with detailed logging
 
@@ -679,8 +748,17 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
     transcript = None
     summary = None
     analysis = None
-    processing_details = {"url_validation": PROCESSING_STATUS["pending"], "metadata_extraction": PROCESSING_STATUS["pending"], "transcript_extraction": PROCESSING_STATUS["pending"], "summary_generation": PROCESSING_STATUS["pending"]}
-    metadata = {"total_processing_time": "0s", "start_time": start_time.isoformat(), "api_version": API_VERSION}
+    processing_details = {
+        "url_validation": PROCESSING_STATUS["pending"],
+        "metadata_extraction": PROCESSING_STATUS["pending"],
+        "transcript_extraction": PROCESSING_STATUS["pending"],
+        "summary_generation": PROCESSING_STATUS["pending"],
+    }
+    metadata = {
+        "total_processing_time": "0s",
+        "start_time": start_time.isoformat(),
+        "api_version": API_VERSION,
+    }
 
     try:
         # Step 1: URL Validation
@@ -805,15 +883,28 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
 
                 log_and_print(f"❌ {error_msg}")
                 logs.append(f"❌ {error_msg}")
+
         # Finalize response
         processing_time = datetime.now() - start_time
-        metadata.update({"total_processing_time": f"{processing_time.total_seconds():.1f}s", "end_time": datetime.now().isoformat(), "steps_completed": sum(1 for status in processing_details.values() if status.startswith("success")), "steps_total": len(processing_details)})
+        metadata.update(
+            {"total_processing_time": f"{processing_time.total_seconds():.1f}s", "end_time": datetime.now().isoformat(), "steps_completed": sum(1 for status in processing_details.values() if status.startswith("success")), "steps_total": len(processing_details)},
+        )
 
         completion_msg = f"🎉 Comprehensive analysis completed in {processing_time.total_seconds():.1f}s"
         log_and_print(completion_msg)
         logs.append(completion_msg)
 
-        return GenerateResponse(status="success", message="Comprehensive video analysis completed successfully", video_info=video_info, transcript=transcript, summary=summary, analysis=analysis, metadata=metadata, processing_details=processing_details, logs=logs)
+        return GenerateResponse(
+            status="success",
+            message="Comprehensive video analysis completed successfully",
+            video_info=video_info,
+            transcript=transcript,
+            summary=summary,
+            analysis=analysis,
+            metadata=metadata,
+            processing_details=processing_details,
+            logs=logs,
+        )
 
     except HTTPException:
         raise
@@ -862,7 +953,7 @@ In a significant diplomatic meeting at the White House, President Donald Trump h
 • Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.
 • Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."
 • Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.
-• Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.
+• Zelenskyy said that rearming and strengthening Ukraine's military would be part of any security guarantees.
 
 **Chapters:**
 **Introduction and Welcome**
@@ -879,7 +970,7 @@ President Zelenskyy thanks President Trump for the invitation and for his person
         "chapters": [
             {"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy.", "key_points": ["Donald Trump welcomes Ukrainian President Volodymyr Zelenskyy to the Oval Office.", "Trump states that substantial progress is being made in their discussions.", "He mentions a recent good meeting with the President of Russia and an upcoming meeting with seven European leaders."]},
             {"header": "Zelenskyy's Remarks and a Letter to the First Lady", "summary": "President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war. He also takes the opportunity to thank the First Lady of the United States for sending a letter to Vladimir Putin concerning abducted Ukrainian children. Zelenskyy then hands Trump a letter from his wife, the First Lady of Ukraine, addressed to Trump's wife, which Trump accepts with a laugh.", "key_points": ["Zelenskyy thanks Trump for the invitation and his personal efforts to stop the war.", "He thanks the First Lady of the United States for sending a letter to Putin about abducted Ukrainian children.", "Zelenskyy presents a letter from his wife to Trump's wife."]},
-            {"header": "Press Questions on Ending the War", "summary": "The press begins to ask questions. A reporter points out the differing perspectives, with Zelenskyy stating Russia must end the war it started, and Trump suggesting Zelenskyy could end it almost immediately. Trump responds by saying he believes a trilateral meeting between himself, Zelenskyy, and Putin could be arranged if the current discussions are successful. He asserts that this trilateral meeting would have a reasonable chance of ending the war.", "key_points": ["A reporter questions the differing views on who should end the war, citing statements from both leaders.", "Trump expresses confidence in the possibility of a trilateral meeting with Zelenskyy and Putin if the day's meetings are successful.", "Trump believes there is a reasonable chance of ending the war through such a meeting."]},
+            {"header": "Press Questions on Ending the War", "summary": "A reporter questions the differing perspectives, with Zelenskyy stating Russia must end the war it started, and Trump suggesting Zelenskyy could end it almost immediately. Trump responds by saying he believes a trilateral meeting between himself, Zelenskyy, and Putin could be arranged if the current discussions are successful. He asserts that this trilateral meeting would have a reasonable chance of ending the war.", "key_points": ["A reporter points out the differing views on who should end the war, citing statements from both leaders.", "Trump expresses confidence in the possibility of a trilateral meeting with Zelenskyy and Putin if the current discussions are successful.", "Trump believes there is a reasonable chance of ending the war through such a meeting."]},
             {"header": "US Support and Security Guarantees", "summary": 'A reporter asks if this meeting is a "deal or no deal" moment for American support to Ukraine. Trump dismisses the idea that it\'s the "end of the road," stating the priority is to stop the ongoing killing. When asked about the security guarantees he needs, Zelenskyy says it involves everything, specifically mentioning the need for a strong Ukrainian army, weapons, training, and intelligence. When asked if security guarantees could involve U.S. troops, Trump does not rule it out, stating, "We\'ll be involved" and that European leaders also want to provide protection.', "key_points": ["Trump is asked if this meeting represents the end of the road for American support for Ukraine.", "Trump denies it's the end of the road, emphasizing the goal is to stop the killing.", "Zelenskyy states that security guarantees would involve strengthening and rearming the Ukrainian military.", "Trump does not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal."]},
         ],
         "key_facts": ["Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.", 'Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."', 'Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.', "Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.", "Trump did not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal.", "Zelenskyy delivered a letter from his wife to Melania Trump concerning abducted Ukrainian children.", "Trump claimed that Putin wants the war on Ukraine to end."],
@@ -890,18 +981,50 @@ President Zelenskyy thanks President Trump for the invitation and for his person
     }
 
     # Example logs
-    example_logs = ["🎭 Generating example response for demonstration purposes...", "✅ This is a demonstration of the YouTube Summarizer's comprehensive analysis capabilities.", "🔍 In real usage, the system would validate the YouTube URL and extract video metadata.", "📝 The multi-tier transcript extraction would attempt yt-dlp captions, then audio transcription, then Gemini direct processing.", "🤖 AI analysis would generate structured insights including chapters, key facts, and takeaways.", "🎉 Example response generated successfully!"]
+    example_logs = [
+        "🎭 Generating example response for demonstration purposes...",
+        "✅ This is a demonstration of the YouTube Summarizer's comprehensive analysis capabilities.",
+        "🔍 In real usage, the system would validate the YouTube URL and extract video metadata.",
+        "📝 The multi-tier transcript extraction would attempt Apify API, then Gemini direct processing.",
+        "🤖 AI analysis would generate structured insights including chapters, key facts, and takeaways.",
+        "🎉 Example response generated successfully!",
+    ]
 
     # Example processing details
-    example_processing_details = {"url_validation": "example_mode", "metadata_extraction": "example_mode", "transcript_extraction": "example_mode", "summary_generation": "example_mode"}
+    example_processing_details = {
+        "url_validation": "example_mode",
+        "metadata_extraction": "example_mode",
+        "transcript_extraction": "example_mode",
+        "summary_generation": "example_mode",
+    }
 
     # Example metadata
     processing_time = datetime.now() - start_time
-    example_metadata = {"total_processing_time": f"{processing_time.total_seconds():.1f}s", "start_time": start_time.isoformat(), "end_time": datetime.now().isoformat(), "api_version": API_VERSION, "mode": "example_demonstration", "original_url": "example", "cleaned_url": "https://youtube.com/watch?v=example", "steps_completed": 4, "steps_total": 4}
+    example_metadata = {
+        "total_processing_time": f"{processing_time.total_seconds():.1f}s",
+        "start_time": start_time.isoformat(),
+        "end_time": datetime.now().isoformat(),
+        "api_version": API_VERSION,
+        "mode": "example_demonstration",
+        "original_url": "example",
+        "cleaned_url": "https://youtube.com/watch?v=example",
+        "steps_completed": 4,
+        "steps_total": 4,
+    }
 
     log_and_print("🎉 Example response generated successfully!")
 
-    return GenerateResponse(status="success", message="Example demonstration of comprehensive video analysis capabilities", video_info=example_video_info, transcript=example_transcript, summary=example_summary, analysis=example_analysis, metadata=example_metadata, processing_details=example_processing_details, logs=example_logs)
+    return GenerateResponse(
+        status="success",
+        message="Example demonstration of comprehensive video analysis capabilities",
+        video_info=example_video_info,
+        transcript=example_transcript,
+        summary=example_summary,
+        analysis=example_analysis,
+        metadata=example_metadata,
+        processing_details=example_processing_details,
+        logs=example_logs,
+    )
 
 
 # ================================

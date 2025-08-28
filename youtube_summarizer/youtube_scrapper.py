@@ -105,7 +105,7 @@ class YouTubeScrapperResult(BaseModel):
     language: str
 
 
-def youtube_scrap(youtube_url: str) -> YouTubeScrapperResult:
+def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """
     Scrape a YouTube video and return the transcript and other metadata.
 
