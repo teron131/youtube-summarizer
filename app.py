@@ -352,22 +352,22 @@ class URLValidationResponse(BaseResponse):
 class VideoInfoResponse(BaseResponse):
     """Response model for video metadata."""
 
+    url: str = Field(description="Cleaned YouTube URL")
     title: str
     author: str
     duration: Optional[str] = None
     thumbnail: Optional[str] = None
     view_count: Optional[int] = None
     upload_date: Optional[str] = None
-    url: str = Field(description="Cleaned YouTube URL")
 
 
 class TranscriptResponse(BaseResponse):
     """Response model for transcript extraction."""
 
+    url: str = Field(description="Cleaned YouTube URL")
     title: str
     author: str
     transcript: str
-    url: str = Field(description="Cleaned YouTube URL")
     processing_time: str
     source: str = Field(description="Data source: apify_api, gemini_direct")
 
@@ -474,13 +474,13 @@ async def extract_video_info_async(cleaned_url: str) -> Dict[str, Any]:
         scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
 
         return {
+            "url": cleaned_url,
             "title": scrapper_result.title,
             "author": scrapper_result.channel.title if scrapper_result.channel else "Unknown Author",
             "duration": scrapper_result.durationFormatted,
             "thumbnail": scrapper_result.thumbnail,
             "view_count": scrapper_result.viewCountInt,
             "upload_date": scrapper_result.publishDateText,
-            "url": cleaned_url,
         }
     except Exception as e:
         error_msg = f"API extraction failed: {str(e)}"
@@ -910,6 +910,8 @@ async def process_youtube_video(request: YouTubeProcessRequest):
         logs.append(completion_msg)
 
         result_data = {
+            "url": cleaned_url,
+            "original_url": request.url,
             "title": title,
             "author": author,
             "transcript": transcript,
@@ -917,8 +919,6 @@ async def process_youtube_video(request: YouTubeProcessRequest):
             "analysis": analysis_data,
             "processing_method": processing_method,
             "processing_time": f"{processing_time.total_seconds():.1f}s",
-            "url": cleaned_url,
-            "original_url": request.url,
         }
 
         return ProcessingResponse(
@@ -1020,7 +1020,12 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
                 logs.append(f"⚠️ {error_msg}")
 
                 # Don't fail entire request for metadata issues
-                video_info = {"title": "Unknown Title", "author": "Unknown Author", "url": cleaned_url, "error": str(e)}
+                video_info = {
+                    "title": "Unknown Title",
+                    "author": "Unknown Author",
+                    "url": cleaned_url,
+                    "error": str(e),
+                }
 
         # Step 3: Transcript Extraction
         if request.include_transcript:
