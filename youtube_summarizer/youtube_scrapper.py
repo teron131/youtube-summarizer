@@ -4,12 +4,13 @@ https://apify.com/scrape-creators/best-youtube-scraper
 The API result is wrapped by YouTubeScrapperResult object.
 
 Important video metadata:
-result.title: str = 'Getting Started with the NVIDIA Jetson AGX Thor Developer Kit for Physical AI'
-result.thumbnail: str = 'https://img.youtube.com/vi/iYT2haVIgSM/maxresdefault.jpg'
+result.title: str = 'The Trillion Dollar Equation'
+result.thumbnail: str = 'https://img.youtube.com/vi/A5w-dEgIU1M/maxresdefault.jpg'
 result.channel.title: str = 'NVIDIA Developer'
 result.durationFormatted: str = '00:06:32'
-result.likeCountInt: int = 590
-result.publishDateText: str = 'Aug 25, 2025'
+result.viewCountInt: int = 13462116
+result.likeCountInt: int = 321234
+result.publishDateText: str = 'Feb 27, 2024'
 """
 
 import bisect
