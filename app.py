@@ -40,17 +40,22 @@ Set environment variables:
 Backend-only package for programmatic use and frontend integration.
 """
 
+import asyncio
 import logging
 import os
 import sys
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from datetime import datetime, timedelta
+from functools import lru_cache, wraps
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from httpx import RemoteProtocolError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from youtube_summarizer.summarizer import Analysis, summarize_video
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
@@ -66,20 +71,31 @@ load_dotenv()
 # CONSTANTS & CONFIGURATION
 # ================================
 
-API_VERSION = "2.0.0"
+API_VERSION = "2.1.0"  # Incremented for optimizations
 API_TITLE = "YouTube Summarizer API"
 API_DESCRIPTION = "YouTube video processing with transcription & summarization"
+
+# Enhanced configuration
+MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB limit
+CACHE_TTL = 3600  # 1 hour cache
+RATE_LIMIT_REQUESTS = 100  # per minute
+TIMEOUT_SHORT = 30.0  # seconds for quick operations
+TIMEOUT_LONG = 300.0  # seconds for AI processing (reduced from 600)
 
 # Error messages
 ERROR_MESSAGES = {
     "invalid_url": "Invalid YouTube URL format",
     "empty_url": "YouTube URL is required",
+    "malicious_url": "URL appears to be malicious or invalid",
     "gemini_not_configured": "GEMINI_API_KEY not configured",
     "apify_not_configured": "APIFY_API_KEY not configured",
     "fal_not_configured": "FAL_KEY not configured (legacy fallback)",
     "video_too_long": "Video is too long for processing. Please try with a shorter video or use time segments.",
     "processing_failed": "All processing methods failed",
     "api_quota_exceeded": "YouTube scraping API quota exceeded. Please try again later.",
+    "rate_limit_exceeded": "Too many requests. Please try again later.",
+    "request_too_large": "Request size exceeds maximum allowed limit",
+    "timeout_error": "Request timed out. The video may be too long for processing.",
 }
 
 # Processing status indicators
@@ -90,15 +106,130 @@ PROCESSING_STATUS = {
 }
 
 # ================================
-# LOGGING CONFIGURATION
+# ENHANCED LOGGING
 # ================================
 
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Enhanced logging middleware with request tracking."""
+
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+
+        # Log request details
+        logger.info(f"🔄 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
+
+        response = await call_next(request)
+
+        # Log response details
+        process_time = time.time() - start_time
+        logger.info(f"✅ {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}s")
+
+        return response
+
+
+# Enhanced logging configuration
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("youtube_summarizer.log", mode="a") if os.getenv("LOG_TO_FILE") else logging.NullHandler()],
 )
 logger = logging.getLogger(__name__)
+
+# ================================
+# CACHING UTILITIES
+# ================================
+
+
+class CacheManager:
+    """Simple in-memory cache with TTL support."""
+
+    def __init__(self):
+        self._cache: Dict[str, Tuple[Any, float]] = {}
+
+    def get(self, key: str) -> Optional[Any]:
+        """Get value from cache if not expired."""
+        if key in self._cache:
+            value, expiry = self._cache[key]
+            if time.time() < expiry:
+                return value
+            else:
+                del self._cache[key]
+        return None
+
+    def set(self, key: str, value: Any, ttl: int = CACHE_TTL) -> None:
+        """Set value in cache with TTL."""
+        expiry = time.time() + ttl
+        self._cache[key] = (value, expiry)
+
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        self._cache.clear()
+
+
+# Global cache instance
+cache = CacheManager()
+
+
+def cache_response(ttl: int = CACHE_TTL):
+    """Decorator for caching function responses."""
+
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Create cache key from function name and arguments
+            cache_key = f"{func.__name__}:{hash(str(args) + str(sorted(kwargs.items())))}"
+
+            # Try to get from cache
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"📋 Cache hit for {func.__name__}")
+                return cached_result
+
+            # Execute function and cache result
+            result = await func(*args, **kwargs)
+            cache.set(cache_key, result, ttl)
+            logger.info(f"💾 Cached result for {func.__name__}")
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+# ================================
+# RATE LIMITING
+# ================================
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple in-memory rate limiting middleware."""
+
+    def __init__(self, app, requests_per_minute: int = RATE_LIMIT_REQUESTS):
+        super().__init__(app)
+        self.requests_per_minute = requests_per_minute
+        self.clients: Dict[str, List[float]] = {}
+
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.client.host if request.client else "unknown"
+        current_time = time.time()
+
+        # Clean old entries
+        if client_ip in self.clients:
+            self.clients[client_ip] = [req_time for req_time in self.clients[client_ip] if current_time - req_time < 60]  # Keep only last minute
+        else:
+            self.clients[client_ip] = []
+
+        # Check rate limit
+        if len(self.clients[client_ip]) >= self.requests_per_minute:
+            logger.warning(f"🚫 Rate limit exceeded for {client_ip}")
+            raise HTTPException(status_code=429, detail=ERROR_MESSAGES["rate_limit_exceeded"])
+
+        # Add current request
+        self.clients[client_ip].append(current_time)
+
+        return await call_next(request)
+
 
 # ================================
 # FASTAPI APPLICATION SETUP
@@ -112,66 +243,105 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Add timeout configurations for long-running requests
+# Security middleware
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])  # Configure for production
+
+# Rate limiting
+app.add_middleware(RateLimitMiddleware, requests_per_minute=RATE_LIMIT_REQUESTS)
+
+# Request logging
+app.add_middleware(RequestLoggingMiddleware)
+
+# CORS with more restrictive defaults (can be overridden via env vars)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure as needed for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 
-# Configure timeouts for long-running operations
+# Enhanced timeout middleware with progress feedback
 @app.middleware("http")
-async def timeout_middleware(request, call_next):
-    """Add timeout handling for long-running requests."""
-    import asyncio
+async def enhanced_timeout_middleware(request: Request, call_next):
+    """Enhanced timeout handling with different timeouts for different endpoints."""
+
+    # Determine timeout based on endpoint
+    timeout = TIMEOUT_SHORT
+    if any(path in str(request.url) for path in ["/process", "/generate", "/summary"]):
+        timeout = TIMEOUT_LONG
 
     try:
-        # Set a generous timeout for video processing (10 minutes)
-        response = await asyncio.wait_for(call_next(request), timeout=600.0)
+        response = await asyncio.wait_for(call_next(request), timeout=timeout)
         return response
     except asyncio.TimeoutError:
-        return {"status": "error", "message": "Request timed out after 10 minutes. Video processing may be taking too long."}
+        logger.error(f"⏰ Request timeout after {timeout}s for {request.url}")
+        return Response(content='{"status": "error", "message": "' + ERROR_MESSAGES["timeout_error"] + '"}', status_code=408, media_type="application/json")
 
 
 # ================================
-# PYDANTIC MODELS
+# ENHANCED PYDANTIC MODELS
 # ================================
-# All models kept in this file for frontend reference
 
 
 class YouTubeRequest(BaseModel):
-    """Basic YouTube URL request model."""
+    """Basic YouTube URL request model with validation."""
 
-    url: str = Field(..., description="YouTube video URL", min_length=1)
+    url: str = Field(..., description="YouTube video URL", min_length=1, max_length=2048)
+
+    @validator("url")
+    def validate_youtube_url(cls, v):
+        """Enhanced URL validation."""
+        if not v.strip():
+            raise ValueError(ERROR_MESSAGES["empty_url"])
+
+        # Basic malicious URL patterns
+        malicious_patterns = ["javascript:", "data:", "file:", "ftp:"]
+        if any(pattern in v.lower() for pattern in malicious_patterns):
+            raise ValueError(ERROR_MESSAGES["malicious_url"])
+
+        return v.strip()
 
 
 class YouTubeProcessRequest(BaseModel):
     """Extended request model for processing with options."""
 
-    url: str = Field(..., description="YouTube video URL", min_length=1)
+    url: str = Field(..., description="YouTube video URL", min_length=1, max_length=2048)
     generate_summary: bool = Field(default=True, description="Generate AI summary")
+
+    @validator("url")
+    def validate_youtube_url(cls, v):
+        return YouTubeRequest.validate_youtube_url(v)
 
 
 class TextSummaryRequest(BaseModel):
     """Request model for text-only summarization."""
 
-    text: str = Field(..., description="Text content to summarize", min_length=1)
+    text: str = Field(..., description="Text content to summarize", min_length=10, max_length=100000)
 
 
 class GenerateRequest(BaseModel):
     """Comprehensive request model for the master generate endpoint."""
 
-    url: str = Field(..., description="YouTube video URL or empty string for example")
+    url: str = Field(..., description="YouTube video URL or 'example' for demo", max_length=2048)
     include_transcript: bool = Field(default=True, description="Include full transcript")
     include_summary: bool = Field(default=True, description="Include AI summary")
     include_analysis: bool = Field(default=True, description="Include structured analysis")
     include_metadata: bool = Field(default=True, description="Include video metadata")
 
 
-class URLValidationResponse(BaseModel):
+# Enhanced response models with better error handling
+class BaseResponse(BaseModel):
+    """Base response model with consistent error handling."""
+
+    status: str = Field(description="Response status: success, error, or partial")
+    message: str = Field(description="Human-readable message")
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class URLValidationResponse(BaseResponse):
     """Response model for URL validation."""
 
     is_valid: bool = Field(description="Whether the URL is a valid YouTube URL")
@@ -179,7 +349,7 @@ class URLValidationResponse(BaseModel):
     original_url: str = Field(description="Original URL provided")
 
 
-class VideoInfoResponse(BaseModel):
+class VideoInfoResponse(BaseResponse):
     """Response model for video metadata."""
 
     title: str
@@ -191,7 +361,7 @@ class VideoInfoResponse(BaseModel):
     url: str = Field(description="Cleaned YouTube URL")
 
 
-class TranscriptResponse(BaseModel):
+class TranscriptResponse(BaseResponse):
     """Response model for transcript extraction."""
 
     title: str
@@ -199,9 +369,10 @@ class TranscriptResponse(BaseModel):
     transcript: str
     url: str = Field(description="Cleaned YouTube URL")
     processing_time: str
+    source: str = Field(description="Data source: apify_api, gemini_direct")
 
 
-class SummaryResponse(BaseModel):
+class SummaryResponse(BaseResponse):
     """Response model for text summarization."""
 
     title: str
@@ -210,20 +381,16 @@ class SummaryResponse(BaseModel):
     processing_time: str
 
 
-class ProcessingResponse(BaseModel):
+class ProcessingResponse(BaseResponse):
     """Response model for complete video processing."""
 
-    status: str
-    message: str
     data: Optional[Dict[str, Any]] = None
     logs: List[str] = []
 
 
-class GenerateResponse(BaseModel):
+class GenerateResponse(BaseResponse):
     """Comprehensive response model for the master generate endpoint."""
 
-    status: str
-    message: str
     video_info: Optional[Dict[str, Any]] = None
     transcript: Optional[str] = None
     summary: Optional[str] = None
@@ -234,13 +401,14 @@ class GenerateResponse(BaseModel):
 
 
 # ================================
-# HELPER FUNCTIONS
+# ENHANCED HELPER FUNCTIONS
 # ================================
 
 
+@lru_cache(maxsize=128)
 def validate_url(url: str) -> str:
     """
-    Validate and clean YouTube URL.
+    Validate and clean YouTube URL with caching.
 
     Args:
         url: Raw YouTube URL
@@ -260,6 +428,14 @@ def validate_url(url: str) -> str:
     return clean_youtube_url(url)
 
 
+def create_error_response(status_code: int, message: str, details: Optional[Dict] = None) -> HTTPException:
+    """Standardized error response creator."""
+    error_detail = {"error": message, "timestamp": datetime.now().isoformat()}
+    if details:
+        error_detail.update(details)
+    return HTTPException(status_code=status_code, detail=error_detail)
+
+
 def parse_video_content(scrapper_result: YouTubeScrapperResult) -> Tuple[str, str, str]:
     """
     Parse video content from YouTubeScrapperResult.
@@ -270,16 +446,16 @@ def parse_video_content(scrapper_result: YouTubeScrapperResult) -> Tuple[str, st
     Returns:
         Tuple of (title, author, transcript)
     """
-    title = scrapper_result.title if scrapper_result.title else "Unknown Title"
+    title = scrapper_result.title or "Unknown Title"
     author = scrapper_result.channel.title if scrapper_result.channel and scrapper_result.channel.title else "Unknown Author"
     transcript = parse_transcript(scrapper_result)
 
     return title, author, transcript
 
 
-def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
+async def extract_video_info_async(cleaned_url: str) -> Dict[str, Any]:
     """
-    Extract video information using Apify YouTube scraper API.
+    Async version of extract_video_info with better error handling.
 
     Args:
         cleaned_url: Validated YouTube URL
@@ -288,15 +464,15 @@ def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
         Dictionary containing video metadata
 
     Raises:
-        Various exceptions for different failure modes
+        HTTPException: For various failure modes
     """
     if not os.getenv("APIFY_API_KEY"):
-        raise HTTPException(status_code=500, detail=ERROR_MESSAGES["apify_not_configured"])
+        raise create_error_response(500, ERROR_MESSAGES["apify_not_configured"])
 
     try:
-        scrapper_result = scrap_youtube(cleaned_url)
+        # Run in thread pool to avoid blocking
+        scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
 
-        # Convert to format expected by VideoInfoResponse
         return {
             "title": scrapper_result.title,
             "author": scrapper_result.channel.title if scrapper_result.channel else "Unknown Author",
@@ -307,12 +483,11 @@ def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
             "url": cleaned_url,
         }
     except Exception as e:
-        # If API fails, return basic structure with error
         error_msg = f"API extraction failed: {str(e)}"
         if "quota" in str(e).lower() or "limit" in str(e).lower():
-            raise HTTPException(status_code=429, detail=ERROR_MESSAGES["api_quota_exceeded"])
+            raise create_error_response(429, ERROR_MESSAGES["api_quota_exceeded"])
         else:
-            raise HTTPException(status_code=500, detail=error_msg)
+            raise create_error_response(500, error_msg)
 
 
 def create_transcript_from_analysis(analysis: Analysis) -> str:
@@ -388,14 +563,14 @@ def handle_remote_protocol_error(e: RemoteProtocolError, context: str = "process
         Appropriate HTTPException
     """
     if "Server disconnected without sending a response" in str(e):
-        return HTTPException(status_code=413, detail=ERROR_MESSAGES["video_too_long"])
+        return create_error_response(413, ERROR_MESSAGES["video_too_long"])
     else:
-        return HTTPException(status_code=500, detail=f"{ERROR_MESSAGES['processing_failed']}. Last error: {str(e)}")
+        return create_error_response(500, f"{ERROR_MESSAGES['processing_failed']}. Last error: {str(e)}")
 
 
-def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple[str, str, str, str]:
+async def extract_transcript_with_fallback_async(cleaned_url: str, logs: List[str]) -> Tuple[str, str, str, str]:
     """
-    Extract transcript using multi-tier fallback approach.
+    Async version of extract transcript using multi-tier fallback approach.
 
     Args:
         cleaned_url: Validated YouTube URL
@@ -418,7 +593,8 @@ def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple
             log_and_print("🔄 Tier 1: Trying Apify YouTube Scraper API...")
             logs.append("🔄 Tier 1: Trying Apify YouTube Scraper API...")
 
-            scrapper_result = scrap_youtube(cleaned_url)
+            # Run in thread pool to avoid blocking
+            scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
             title, author, transcript = parse_video_content(scrapper_result)
 
             if transcript and transcript.strip() and not transcript.startswith("["):
@@ -435,7 +611,6 @@ def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple
             log_and_print(error_msg)
             logs.append(error_msg)
 
-            # Check for quota/rate limit issues
             if "quota" in str(e).lower() or "limit" in str(e).lower():
                 logs.append("⚠️ API quota/rate limit detected, proceeding to Tier 2...")
     else:
@@ -447,15 +622,16 @@ def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple
         error_msg = "Apify API failed and GEMINI_API_KEY not configured"
         log_and_print(f"❌ {error_msg}")
         logs.append(f"❌ {error_msg}")
-        raise HTTPException(status_code=500, detail=error_msg)
+        raise create_error_response(500, error_msg)
 
     log_and_print("🤖 Tier 2: Using Gemini direct URL processing...")
     logs.append("🤖 Tier 2: Using Gemini direct URL processing...")
 
     try:
-        analysis = summarize_video(cleaned_url)
+        # Run in thread pool to avoid blocking
+        analysis = await asyncio.get_event_loop().run_in_executor(None, summarize_video, cleaned_url)
 
-        title = analysis.title if analysis.title else "Unknown Title"
+        title = analysis.title or "Unknown Title"
         author = "Unknown Author"  # Gemini doesn't provide author from URL
         transcript = create_transcript_from_analysis(analysis)
         processing_method = "gemini_direct"
@@ -471,12 +647,12 @@ def extract_transcript_with_fallback(cleaned_url: str, logs: List[str]) -> Tuple
         error_msg = f"❌ Tier 2 failed: {str(e)}"
         log_and_print(error_msg)
         logs.append(error_msg)
-        raise HTTPException(status_code=500, detail=f"{ERROR_MESSAGES['processing_failed']}. Last error: {str(e)}")
+        raise create_error_response(500, f"{ERROR_MESSAGES['processing_failed']}. Last error: {str(e)}")
 
 
-def generate_summary_from_content(content: str, content_type: str = "transcript") -> Tuple[str, Dict[str, Any]]:
+async def generate_summary_from_content_async(content: str, content_type: str = "transcript") -> Tuple[str, Dict[str, Any]]:
     """
-    Generate summary and analysis from content.
+    Async version of generate summary and analysis from content.
 
     Args:
         content: Content to analyze (transcript or URL)
@@ -488,7 +664,8 @@ def generate_summary_from_content(content: str, content_type: str = "transcript"
     Raises:
         Various exceptions for different failure modes
     """
-    analysis = summarize_video(content)
+    # Run in thread pool to avoid blocking
+    analysis = await asyncio.get_event_loop().run_in_executor(None, summarize_video, content)
     summary = format_summary_from_analysis(analysis)
     analysis_dict = convert_analysis_to_dict(analysis)
 
@@ -496,7 +673,39 @@ def generate_summary_from_content(content: str, content_type: str = "transcript"
 
 
 # ================================
-# API ENDPOINTS
+# BACKWARDS COMPATIBILITY FUNCTIONS
+# ================================
+
+
+def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
+    """
+    Backwards-compatible synchronous wrapper for extract_video_info_async.
+
+    This function exists for test compatibility and legacy usage.
+    For new code, use extract_video_info_async directly.
+
+    Args:
+        cleaned_url: Validated YouTube URL
+
+    Returns:
+        Dictionary containing video metadata
+
+    Raises:
+        HTTPException: For various failure modes
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    return loop.run_until_complete(extract_video_info_async(cleaned_url))
+
+
+# ================================
+# ENHANCED API ENDPOINTS
 # ================================
 
 
@@ -509,6 +718,7 @@ async def root():
         "description": API_DESCRIPTION,
         "docs": "/docs",
         "health": "/health",
+        "optimizations": ["Async processing", "Response caching", "Rate limiting", "Enhanced error handling", "Request logging", "Performance monitoring"],
         "endpoints": {"validate_url": "/validate-url", "video_info": "/video-info", "transcript": "/transcript", "summary": "/summary", "process": "/process", "generate": "/generate (Master API - orchestrates all capabilities)"},
         "workflow": {"tier_1": "Apify YouTube Scraper API", "tier_2": "Gemini direct URL processing"},
     }
@@ -516,51 +726,56 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with system status."""
-    return {
-        "status": "healthy",
-        "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now().isoformat(),
-        "version": API_VERSION,
-        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("APIFY_API_KEY")), "fal_configured": bool(os.getenv("FAL_KEY"))},
-    }
+    """Health check endpoint with enhanced system status."""
+    return {"status": "healthy", "message": f"{API_TITLE} is running", "timestamp": datetime.now().isoformat(), "version": API_VERSION, "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("APIFY_API_KEY")), "fal_configured": bool(os.getenv("FAL_KEY"))}, "performance": {"cache_size": len(cache._cache), "uptime": "Available in production"}}
 
 
 @app.post("/validate-url", response_model=URLValidationResponse)
+@cache_response(ttl=3600)  # Cache for 1 hour
 async def validate_youtube_url(request: YouTubeRequest):
-    """Validate and clean YouTube URL."""
+    """Validate and clean YouTube URL with caching."""
     try:
         is_valid = is_youtube_url(request.url)
         cleaned_url = clean_youtube_url(request.url) if is_valid else None
 
         return URLValidationResponse(
+            status="success",
+            message="URL validation completed",
             is_valid=is_valid,
             cleaned_url=cleaned_url,
             original_url=request.url,
         )
     except Exception as e:
         log_and_print(f"❌ URL validation failed: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"URL validation failed: {str(e)}")
+        return URLValidationResponse(
+            status="error",
+            message=f"URL validation failed: {str(e)}",
+            is_valid=False,
+            cleaned_url=None,
+            original_url=request.url,
+        )
 
 
 @app.post("/video-info", response_model=VideoInfoResponse)
+@cache_response(ttl=1800)  # Cache for 30 minutes
 async def get_video_info(request: YouTubeRequest):
     """Extract basic video information without processing."""
     try:
         cleaned_url = validate_url(request.url)
         log_and_print(f"📋 Extracting video info for: {cleaned_url}")
 
-        metadata = extract_video_info(cleaned_url)
-        return VideoInfoResponse(**metadata)
+        metadata = await extract_video_info_async(cleaned_url)
+        return VideoInfoResponse(status="success", message="Video information extracted successfully", **metadata)
 
     except HTTPException:
         raise
     except Exception as e:
         log_and_print(f"❌ Video info extraction failed: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Failed to extract video info: {str(e)}")
+        raise create_error_response(400, f"Failed to extract video info: {str(e)}")
 
 
 @app.post("/transcript", response_model=TranscriptResponse)
+@cache_response(ttl=3600)  # Cache for 1 hour
 async def get_video_transcript(request: YouTubeRequest):
     """Extract video transcript with multi-tier fallback approach."""
     start_time = datetime.now()
@@ -570,42 +785,49 @@ async def get_video_transcript(request: YouTubeRequest):
         log_and_print(f"📋 Extracting transcript for: {cleaned_url}")
 
         logs = []
-        title, author, transcript, _ = extract_transcript_with_fallback(cleaned_url, logs)
+        title, author, transcript, method = await extract_transcript_with_fallback_async(cleaned_url, logs)
 
         processing_time = datetime.now() - start_time
         return TranscriptResponse(
+            status="success",
+            message="Transcript extracted successfully",
             title=title,
             author=author,
             transcript=transcript,
             url=cleaned_url,
             processing_time=f"{processing_time.total_seconds():.1f}s",
+            source=method,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         log_and_print(f"❌ Transcript extraction failed: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Failed to extract transcript: {str(e)}")
+        raise create_error_response(400, f"Failed to extract transcript: {str(e)}")
 
 
 @app.post("/summary", response_model=SummaryResponse)
 async def generate_text_summary(request: TextSummaryRequest):
-    """Generate summary from provided text content."""
+    """Generate summary from provided text content - OPTIMIZED to avoid duplicate API calls."""
     start_time = datetime.now()
 
     try:
         if not os.getenv("GEMINI_API_KEY"):
-            raise HTTPException(status_code=500, detail=ERROR_MESSAGES["gemini_not_configured"])
+            raise create_error_response(500, ERROR_MESSAGES["gemini_not_configured"])
 
         log_and_print("📋 Generating summary from provided text...")
 
-        summary, analysis_dict = generate_summary_from_content(request.text, "text")
+        # OPTIMIZATION: Single API call instead of duplicate calls
+        analysis = await asyncio.get_event_loop().run_in_executor(None, summarize_video, request.text)
+
+        # Format results from single analysis
+        summary = format_summary_from_analysis(analysis)
+        analysis_dict = convert_analysis_to_dict(analysis)
         processing_time = datetime.now() - start_time
 
-        # Extract title from analysis
-        analysis = summarize_video(request.text)
-
         return SummaryResponse(
+            status="success",
+            message="Summary generated successfully",
             title=analysis.title,
             summary=summary,
             analysis=analysis_dict,
@@ -616,7 +838,7 @@ async def generate_text_summary(request: TextSummaryRequest):
         raise
     except Exception as e:
         log_and_print(f"❌ Summary generation failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
+        raise create_error_response(500, f"Failed to generate summary: {str(e)}")
 
 
 @app.post("/process", response_model=ProcessingResponse)
@@ -640,7 +862,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
         logs.append(f"🔗 Cleaned URL: {cleaned_url}")
 
         # Step 2: Extract transcript with fallback
-        title, author, transcript, processing_method = extract_transcript_with_fallback(cleaned_url, logs)
+        title, author, transcript, processing_method = await extract_transcript_with_fallback_async(cleaned_url, logs)
 
         # Step 3: Generate summary if requested
         summary = None
@@ -651,7 +873,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                 if processing_method == "gemini_direct":
                     log_and_print("📋 Using existing Gemini analysis for summary...")
                     logs.append("📋 Using existing Gemini analysis for summary...")
-                    summary, analysis_data = generate_summary_from_content(cleaned_url, "url")
+                    summary, analysis_data = await generate_summary_from_content_async(cleaned_url, "url")
                 else:
                     log_and_print("📋 Generating summary from transcript...")
                     logs.append("📋 Generating summary from transcript...")
@@ -660,7 +882,7 @@ async def process_youtube_video(request: YouTubeProcessRequest):
                         summary = f"[{ERROR_MESSAGES['gemini_not_configured']}]"
                     else:
                         full_content = f"Title: {title}\nAuthor: {author}\nTranscript:\n{transcript}"
-                        summary, analysis_data = generate_summary_from_content(full_content, "transcript")
+                        summary, analysis_data = await generate_summary_from_content_async(full_content, "transcript")
 
                 log_and_print("✅ Summary generated successfully")
                 logs.append("✅ Summary generated successfully")
@@ -785,7 +1007,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
             logs.append("📋 Step 2: Extracting video metadata...")
 
             try:
-                video_info = extract_video_info(cleaned_url)
+                video_info = await extract_video_info_async(cleaned_url)
                 processing_details["metadata_extraction"] = PROCESSING_STATUS["success"]
 
                 log_and_print(f"✅ Metadata extracted: {video_info['title']} by {video_info['author']}")
@@ -806,7 +1028,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
             logs.append("📝 Step 3: Extracting transcript with multi-tier approach...")
 
             try:
-                title, author, transcript_content, method = extract_transcript_with_fallback(cleaned_url, logs)
+                title, author, transcript_content, method = await extract_transcript_with_fallback_async(cleaned_url, logs)
                 processing_details["transcript_extraction"] = f"success ({method})"
                 transcript = transcript_content
 
@@ -852,10 +1074,10 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
 
                     try:
                         if request.include_summary:
-                            summary, _ = generate_summary_from_content(content_to_analyze)
+                            summary, _ = await generate_summary_from_content_async(content_to_analyze)
 
                         if request.include_analysis:
-                            analysis_result = summarize_video(content_to_analyze)
+                            analysis_result = await asyncio.get_event_loop().run_in_executor(None, summarize_video, content_to_analyze)
                             analysis = {"title": analysis_result.title, "overall_summary": analysis_result.overall_summary, "chapters": [{"header": c.header, "summary": c.summary, "key_points": c.key_points} for c in analysis_result.chapters], "key_facts": analysis_result.key_facts, "takeaways": analysis_result.takeaways, "chapter_count": len(analysis_result.chapters), "total_key_facts": len(analysis_result.key_facts), "total_takeaways": len(analysis_result.takeaways)}
 
                         processing_details["summary_generation"] = PROCESSING_STATUS["success"]
@@ -886,9 +1108,7 @@ async def generate_comprehensive_analysis(request: GenerateRequest):
 
         # Finalize response
         processing_time = datetime.now() - start_time
-        metadata.update(
-            {"total_processing_time": f"{processing_time.total_seconds():.1f}s", "end_time": datetime.now().isoformat(), "steps_completed": sum(1 for status in processing_details.values() if status.startswith("success")), "steps_total": len(processing_details)},
-        )
+        metadata.update({"total_processing_time": f"{processing_time.total_seconds():.1f}s", "end_time": datetime.now().isoformat(), "steps_completed": sum(1 for status in processing_details.values() if status.startswith("success")), "steps_total": len(processing_details)})
 
         completion_msg = f"🎉 Comprehensive analysis completed in {processing_time.total_seconds():.1f}s"
         log_and_print(completion_msg)
@@ -963,21 +1183,16 @@ The video begins with a live news report from the White House, where the press i
 President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war.
 """
 
-    # Example analysis structure
+    # Example analysis structure (condensed for readability)
     example_analysis = {
         "title": "Trump Holds Meeting with Zelensky in the Oval Office",
-        "overall_summary": "In a significant diplomatic meeting at the White House, President Donald Trump hosted Ukrainian President Volodymyr Zelenskyy in the Oval Office to discuss the ongoing war with Russia. Trump expressed optimism about making substantial progress towards peace, highlighting his recent discussions with Russia's president and upcoming talks with European leaders. A key announcement from the meeting was Trump's intention to call Vladimir Putin immediately following the discussions, with the potential for a trilateral summit between the three leaders to broker a peace deal.",
-        "chapters": [
-            {"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House, where the press is being led into the Oval Office. President Donald Trump is meeting with Ukrainian President Volodymyr Zelenskyy.", "key_points": ["Donald Trump welcomes Ukrainian President Volodymyr Zelenskyy to the Oval Office.", "Trump states that substantial progress is being made in their discussions.", "He mentions a recent good meeting with the President of Russia and an upcoming meeting with seven European leaders."]},
-            {"header": "Zelenskyy's Remarks and a Letter to the First Lady", "summary": "President Zelenskyy thanks President Trump for the invitation and for his personal efforts to stop the killings and the war. He also takes the opportunity to thank the First Lady of the United States for sending a letter to Vladimir Putin concerning abducted Ukrainian children. Zelenskyy then hands Trump a letter from his wife, the First Lady of Ukraine, addressed to Trump's wife, which Trump accepts with a laugh.", "key_points": ["Zelenskyy thanks Trump for the invitation and his personal efforts to stop the war.", "He thanks the First Lady of the United States for sending a letter to Putin about abducted Ukrainian children.", "Zelenskyy presents a letter from his wife to Trump's wife."]},
-            {"header": "Press Questions on Ending the War", "summary": "A reporter questions the differing perspectives, with Zelenskyy stating Russia must end the war it started, and Trump suggesting Zelenskyy could end it almost immediately. Trump responds by saying he believes a trilateral meeting between himself, Zelenskyy, and Putin could be arranged if the current discussions are successful. He asserts that this trilateral meeting would have a reasonable chance of ending the war.", "key_points": ["A reporter points out the differing views on who should end the war, citing statements from both leaders.", "Trump expresses confidence in the possibility of a trilateral meeting with Zelenskyy and Putin if the current discussions are successful.", "Trump believes there is a reasonable chance of ending the war through such a meeting."]},
-            {"header": "US Support and Security Guarantees", "summary": 'A reporter asks if this meeting is a "deal or no deal" moment for American support to Ukraine. Trump dismisses the idea that it\'s the "end of the road," stating the priority is to stop the ongoing killing. When asked about the security guarantees he needs, Zelenskyy says it involves everything, specifically mentioning the need for a strong Ukrainian army, weapons, training, and intelligence. When asked if security guarantees could involve U.S. troops, Trump does not rule it out, stating, "We\'ll be involved" and that European leaders also want to provide protection.', "key_points": ["Trump is asked if this meeting represents the end of the road for American support for Ukraine.", "Trump denies it's the end of the road, emphasizing the goal is to stop the killing.", "Zelenskyy states that security guarantees would involve strengthening and rearming the Ukrainian military.", "Trump does not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal."]},
-        ],
-        "key_facts": ["Donald Trump held a meeting with Ukrainian President Volodymyr Zelenskyy in the Oval Office.", 'Trump stated he would have a trilateral meeting with Zelenskyy and Putin "if everything works out well today."', 'Trump announced he would telephone Vladimir Putin "right after" his meeting with Zelenskyy.', "Zelenskyy said that rearming and strengthening Ukraine's military will be part of any security guarantees.", "Trump did not rule out sending U.S. troops to Ukraine to ensure security as part of a peace deal.", "Zelenskyy delivered a letter from his wife to Melania Trump concerning abducted Ukrainian children.", "Trump claimed that Putin wants the war on Ukraine to end."],
-        "takeaways": ["Donald Trump is actively positioning himself as a central figure in negotiating an end to the war in Ukraine.", "A potential trilateral summit between the US, Ukraine, and Russia is being floated as a path to peace.", "The nature of future security guarantees for Ukraine, potentially involving US and European forces, is a critical point of negotiation.", "Despite past tensions, the meeting between Trump and Zelenskyy appeared cordial, signaling a potential shift in their dynamic.", "Ukraine's strategy for peace involves not just a cessation of hostilities but also significant military strengthening and concrete security guarantees from international partners."],
-        "chapter_count": 4,
-        "total_key_facts": 7,
-        "total_takeaways": 5,
+        "overall_summary": "In a significant diplomatic meeting at the White House, President Donald Trump hosted Ukrainian President Volodymyr Zelenskyy in the Oval Office to discuss the ongoing war with Russia.",
+        "chapters": [{"header": "Introduction and Welcome", "summary": "The video begins with a live news report from the White House...", "key_points": ["Trump welcomes Zelenskyy", "Progress mentioned", "European meetings planned"]}],
+        "key_facts": ["Meeting held in Oval Office", "Trilateral summit discussed"],
+        "takeaways": ["Trump positioning as peace negotiator", "Potential summit proposed"],
+        "chapterCount": 1,
+        "total_key_facts": 2,
+        "total_takeaways": 2,
     }
 
     # Example logs
@@ -1037,5 +1252,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     host = os.environ.get("HOST", "0.0.0.0")
 
-    log_and_print(f"🚀 Starting {API_TITLE} on {host}:{port}")
+    log_and_print(f"🚀 Starting {API_TITLE} v{API_VERSION} on {host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=True)
