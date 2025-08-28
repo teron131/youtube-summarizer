@@ -358,6 +358,7 @@ class VideoInfoResponse(BaseModel):
     duration: Optional[str] = None
     thumbnail: Optional[str] = None
     view_count: Optional[int] = None
+    like_count: Optional[int] = None
     upload_date: Optional[str] = None
 
 
@@ -480,6 +481,7 @@ async def extract_video_info_async(cleaned_url: str) -> Dict[str, Any]:
             "duration": scrapper_result.durationFormatted,
             "thumbnail": scrapper_result.thumbnail,
             "view_count": scrapper_result.viewCountInt,
+            "like_count": scrapper_result.likeCountInt,
             "upload_date": scrapper_result.publishDateText,
         }
     except Exception as e:
@@ -1158,6 +1160,7 @@ async def generate_example_response(start_time: datetime) -> GenerateResponse:
         "duration": "00:31:22",
         "thumbnail": "https://img.youtube.com/vi/A5w-dEgIU1M/maxresdefault.jpg",
         "view_count": 13462116,
+        "like_count": 321234,
         "upload_date": "Feb 27, 2024",
     }
 
