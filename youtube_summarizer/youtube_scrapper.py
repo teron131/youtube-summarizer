@@ -105,6 +105,44 @@ class YouTubeScrapperResult(BaseModel):
     transcript_only_text: str
     language: str
 
+    @property
+    def parsed_transcript(self) -> str:
+        """Parse transcript into a single string with chapter formatting.
+
+        If chapters are present, the transcript is segmented by chapter, formatted as
+        '## <Chapter Title>' followed by the cleaned-up transcript text for that chapter.
+        If no chapters are available, the entire transcript is cleaned and returned as a single block.
+
+        Returns:
+            A formatted string with the transcript, organized by chapters if available.
+        """
+        if not self.chapters:
+            return clean_text(self.transcript_only_text)
+
+        # Create chapter windows and a list of their start times for binary search.
+        windows = [ChapterTranscript(title=chapter.title, start_ms=chapter.startSeconds * 1000) for chapter in self.chapters]
+        chapter_start_times = [window.start_ms for window in windows]
+
+        # Assign each transcript segment to its corresponding chapter window using binary search.
+        # This is efficient as it avoids nested loops for chapter lookups.
+        for seg in self.transcript:
+            if not seg.text or not seg.text.strip():
+                continue
+
+            seg_ms = int(seg.startMs)
+
+            # Find the index of the chapter this segment belongs to.
+            # bisect_right gives the insertion point, so we subtract 1 to get the current chapter.
+            idx = bisect.bisect_right(chapter_start_times, seg_ms) - 1
+
+            if idx >= 0:
+                windows[idx].transcript_parts.append(seg.text)
+
+        # Format each chapter window into its final string representation.
+        result_parts = [window.format_output() for window in windows]
+
+        return "\n\n".join(result_parts)
+
 
 def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """
@@ -130,44 +168,3 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
 
     result = json.loads(response.text)[0]
     return YouTubeScrapperResult.model_validate(result)
-
-
-def parse_transcript(result: YouTubeScrapperResult) -> str:
-    """Parse transcript into a single string with chapter formatting.
-
-    If chapters are present, the transcript is segmented by chapter, formatted as
-    '## <Chapter Title>' followed by the cleaned-up transcript text for that chapter.
-    If no chapters are available, the entire transcript is cleaned and returned as a single block.
-
-    Args:
-        result: The YouTubeScrapperResult containing transcript and chapter data.
-
-    Returns:
-        A formatted string with the transcript, organized by chapters if available.
-    """
-    if not result.chapters:
-        return clean_text(result.transcript_only_text)
-
-    # Create chapter windows and a list of their start times for binary search.
-    windows = [ChapterTranscript(title=chapter.title, start_ms=chapter.startSeconds * 1000) for chapter in result.chapters]
-    chapter_start_times = [window.start_ms for window in windows]
-
-    # Assign each transcript segment to its corresponding chapter window using binary search.
-    # This is efficient as it avoids nested loops for chapter lookups.
-    for seg in result.transcript:
-        if not seg.text or not seg.text.strip():
-            continue
-
-        seg_ms = int(seg.startMs)
-
-        # Find the index of the chapter this segment belongs to.
-        # bisect_right gives the insertion point, so we subtract 1 to get the current chapter.
-        idx = bisect.bisect_right(chapter_start_times, seg_ms) - 1
-
-        if idx >= 0:
-            windows[idx].transcript_parts.append(seg.text)
-
-    # Format each chapter window into its final string representation.
-    result_parts = [window.format_output() for window in windows]
-
-    return "\n\n".join(result_parts)

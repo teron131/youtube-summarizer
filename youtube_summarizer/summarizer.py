@@ -27,16 +27,16 @@ class Analysis(BaseModel):
     overall_summary: str = Field(description="A comprehensive summary synthesizing all chapters, facts, and themes")
 
 
-def summarize_video(url_or_caption: str) -> Analysis:
+def summarize_video(url_or_transcript: str) -> Analysis:
     """
     Summarize the text using the Gemini. Streaming seems to be less buggy with long videos.
     """
     # Log what we're sending to Gemini
-    if is_youtube_url(url_or_caption):
-        print(f"🔗 Sending YouTube URL to Gemini: {url_or_caption}")
+    if is_youtube_url(url_or_transcript):
+        print(f"🔗 Sending YouTube URL to Gemini: {url_or_transcript}")
     else:
-        print(f"📝 Sending transcript text to Gemini: {len(url_or_caption)} characters")
-        print(f"📝 Text preview: {url_or_caption[:200]}...")
+        print(f"📝 Sending transcript text to Gemini: {len(url_or_transcript)} characters")
+        print(f"📝 Text preview: {url_or_transcript[:200]}...")
 
     client = Client(
         api_key=os.getenv("GEMINI_API_KEY"),
@@ -47,7 +47,7 @@ def summarize_video(url_or_caption: str) -> Analysis:
         model="models/gemini-2.5-pro",
         contents=types.Content(
             parts=[
-                types.Part(file_data=types.FileData(file_uri=url_or_caption)) if is_youtube_url(url_or_caption) else types.Part(text=url_or_caption),
+                types.Part(file_data=types.FileData(file_uri=url_or_transcript)) if is_youtube_url(url_or_transcript) else types.Part(text=url_or_transcript),
             ]
         ),
         config=types.GenerateContentConfig(
