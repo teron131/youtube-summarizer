@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from google.genai import Client, types
 from pydantic import BaseModel, Field
 
-from .utils import is_youtube_url
+from youtube_summarizer.utils import is_youtube_url
 
 load_dotenv()
 
@@ -21,17 +21,17 @@ class Chapter(BaseModel):
 
 class Analysis(BaseModel):
     title: str = Field(description="The main title or topic of the video content")
-    chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
+    summary: str = Field(description="A comprehensive summary of the video content")
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
-    overall_summary: str = Field(description="A comprehensive summary synthesizing all chapters, facts, and themes")
+    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
+    chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
+    keywords: list[str] = Field(description="Keywords or topics mentioned in the video, max 3", max_length=3)
 
 
 def summarize_video(url_or_transcript: str) -> Analysis:
     """
     Summarize the text using the Gemini. Streaming seems to be less buggy with long videos.
     """
-    # Log what we're sending to Gemini
     if is_youtube_url(url_or_transcript):
         print(f"🔗 Sending YouTube URL to Gemini: {url_or_transcript}")
     else:
@@ -43,7 +43,7 @@ def summarize_video(url_or_transcript: str) -> Analysis:
         http_options={"timeout": 600000},
     )
 
-    response = client.models.generate_content_stream(
+    response = client.models.generate_content(
         model="models/gemini-2.5-pro",
         contents=types.Content(
             parts=[
@@ -51,7 +51,12 @@ def summarize_video(url_or_transcript: str) -> Analysis:
             ]
         ),
         config=types.GenerateContentConfig(
-            system_instruction="Analyze the video/transcript according to the schema and follow the original language.",
+            system_instruction="""Analyze the video/transcript according to the schema.
+The transcript provides starting timestamps for each sentence.
+Add the timestamps [TIMESTAMP] at the end of the takeaways and key facts if available.
+Consider the chapters (headers) if given but not necessary.
+Ignore the promotional and meaningless content.
+Follow the original language.""",
             temperature=0,
             response_mime_type="application/json",
             response_schema=Analysis,
@@ -59,8 +64,5 @@ def summarize_video(url_or_transcript: str) -> Analysis:
         ),
     )
 
-    result_parts = [chunk.text for chunk in response if chunk.text is not None]
-    final_result = "".join(result_parts)
-    final_result = Analysis.model_validate_json(final_result)  # Convert to Pydantic model
-
-    return final_result
+    print(response.usage_metadata)
+    return response.parsed

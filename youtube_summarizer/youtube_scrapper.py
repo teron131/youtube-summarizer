@@ -143,6 +143,57 @@ class YouTubeScrapperResult(BaseModel):
 
         return "\n\n".join(result_parts)
 
+    @property
+    def timestamped_transcript(self) -> str:
+        """Parse transcript into individual sentences with preserved starting timestamps.
+
+        Splits transcript by periods to create individual sentences, each with
+        its own timestamp based on when that sentence begins in the video.
+        Sentences are formatted as '[MM:SS] Individual sentence.'
+
+        Returns:
+            A formatted string with individual sentences and their corresponding timestamps.
+        """
+        if not self.transcript:
+            return ""
+
+        # Build segments with timestamps using list comprehension
+        valid_segments = [(seg.text.strip(), int(seg.startMs)) for seg in self.transcript if seg.text and seg.text.strip()]
+
+        if not valid_segments:
+            return ""
+
+        # Build character-to-timestamp mapping using comprehensions
+        text_parts = [" " + seg_text for seg_text, timestamp in valid_segments]
+
+        # Create position offsets for each segment using cumulative sum approach
+        segment_positions = [sum(len(text_parts[i]) for i in range(j)) for j in range(len(text_parts) + 1)]
+
+        # Build character-to-timestamp mapping using dict comprehension
+        char_to_timestamp = {segment_positions[idx] + i: timestamp for idx, (seg_text, timestamp) in enumerate(valid_segments) for i in range(len(" " + seg_text))}
+
+        # Clean the full text and split by periods using list comprehension
+        full_text = clean_text("".join(text_parts))
+        sentence_parts = [s.strip() for s in full_text.split(".") if s.strip()]
+
+        def _format_timestamp(timestamp_ms: int) -> str:
+            seconds = timestamp_ms // 1000
+            return f"[{seconds // 60:02d}:{seconds % 60:02d}]"
+
+        def _get_sentence_with_timestamp(sentence_data):
+            idx, sentence_text = sentence_data
+            current_pos = sum(len(s) + 1 for s in sentence_parts[:idx])  # Calculate position
+
+            # Find first available timestamp for this sentence using next()
+            sentence_timestamp = next((char_to_timestamp[i] for i in range(current_pos, min(current_pos + len(sentence_text), len(char_to_timestamp))) if i in char_to_timestamp), None)
+
+            return f"{_format_timestamp(sentence_timestamp)} {sentence_text}." if sentence_timestamp else None
+
+        # Generate all sentences using list comprehension and filter out None values
+        sentences = [result for result in map(_get_sentence_with_timestamp, enumerate(sentence_parts)) if result]
+
+        return "\n".join(sentences)
+
 
 def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """
