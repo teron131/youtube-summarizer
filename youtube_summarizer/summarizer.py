@@ -31,6 +31,13 @@ def summarize_video(url_or_caption: str) -> Analysis:
     """
     Summarize the text using the Gemini. Streaming seems to be less buggy with long videos.
     """
+    # Log what we're sending to Gemini
+    if is_youtube_url(url_or_caption):
+        print(f"🔗 Sending YouTube URL to Gemini: {url_or_caption}")
+    else:
+        print(f"📝 Sending transcript text to Gemini: {len(url_or_caption)} characters")
+        print(f"📝 Text preview: {url_or_caption[:200]}...")
+
     client = Client(
         api_key=os.getenv("GEMINI_API_KEY"),
         http_options={"timeout": 600000},

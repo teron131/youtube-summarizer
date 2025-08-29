@@ -273,7 +273,19 @@ async def enhanced_timeout_middleware(request: Request, call_next):
 
     # Determine timeout based on endpoint
     timeout = TIMEOUT_SHORT
-    if any(path in str(request.url) for path in ["/process", "/generate", "/summary", "/api/process", "/api/generate", "/api/summary"]):
+    if any(
+        path in str(request.url)
+        for path in [
+            "/process",
+            "/generate",
+            "/summary",
+            "/summarize",
+            "/api/process",
+            "/api/generate",
+            "/api/summary",
+            "/api/summarize",
+        ]
+    ):
         timeout = TIMEOUT_LONG
 
     try:
@@ -875,6 +887,8 @@ async def summarize_content(request: SummarizeRequest):
             raise create_error_response(500, ERROR_MESSAGES["gemini_not_configured"])
 
         log_and_print(f"🤖 Generating analysis for {request.content_type}")
+        log_and_print(f"📝 Content length: {len(request.content)} characters")
+        log_and_print(f"📝 Content preview: {request.content[:200]}...")
 
         # Use existing summarize_video function
         analysis_result = await asyncio.get_event_loop().run_in_executor(None, summarize_video, request.content)
