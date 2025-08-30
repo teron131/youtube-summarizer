@@ -115,6 +115,127 @@ def langchain_or_gemini(state: WorkflowState) -> str:
     return "gemini_analysis" if is_youtube_url(state.transcript_or_url) else "langchain_analysis"
 
 
+def langchain_analysis_node(state: WorkflowState) -> dict:
+    """Generate initial analysis using LangChain for transcript text."""
+    print(f"📝 Sending transcript text to LangChain LLM: {len(state.transcript_or_url)} characters")
+    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
+
+    # Use LangChain for transcript text
+    llm = langchain_llm(ANALYSIS_MODEL)
+    structured_llm = llm.with_structured_output(Analysis)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", ANALYSIS_PROMPT),
+            ("human", "{content}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    result = chain.invoke({"content": state.transcript_or_url})
+    print(f"📊 LangChain analysis completed")
+
+    return {
+        "analysis": result,
+        "iteration_count": state.iteration_count + 1,
+    }
+
+
+def langchain_quality_node(state: WorkflowState) -> dict:
+    """Check the quality of the generated analysis using LangChain."""
+    print("🔍 Performing quality check with LangChain...")
+
+    llm = langchain_llm(QUALITY_MODEL)
+    structured_llm = llm.with_structured_output(Quality)
+
+    # Convert analysis to text for evaluation
+    analysis_text = f"""
+Title: {state.analysis.title}
+Summary: {state.analysis.summary}
+Takeaways: {', '.join(state.analysis.takeaways)}
+Key Facts: {', '.join(state.analysis.key_facts)}
+Keywords: {', '.join(state.analysis.keywords)}
+Chapters: {len(state.analysis.chapters)} chapters
+"""
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", QUALITY_PROMPT),
+            ("human", "{analysis_text}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    quality: Quality = chain.invoke({"analysis_text": analysis_text})
+
+    print(f"📈 LangChain quality score: {quality.score}/100")
+
+    if quality.issues:
+        print(f"⚠️  Issues found: {', '.join(quality.issues)}")
+
+    return {
+        "quality": quality,
+        "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+    }
+
+
+def langchain_refinement_node(state: WorkflowState) -> dict:
+    """Refine the analysis based on quality feedback using LangChain."""
+    print("🔧 Refining analysis with LangChain...")
+
+    llm = langchain_llm(ANALYSIS_MODEL)
+    structured_llm = llm.with_structured_output(Analysis)
+
+    # chr(10) is '\n'
+    improvement_prompt = f"""# Improve this video analysis based on the following feedback:
+
+## Issues to Address:
+{chr(10).join(f"- {issue}" for issue in state.quality.issues)}
+
+## Suggestions:
+{chr(10).join(f"- {suggestion}" for suggestion in state.quality.suggestions)}
+
+## Original Analysis:
+
+### Title
+{state.analysis.title}
+
+### Summary
+{state.analysis.summary}
+
+### Key Takeaways
+{chr(10).join(f"- {takeaway}" for takeaway in state.analysis.takeaways)}
+
+### Key Facts
+{chr(10).join(f"- {fact}" for fact in state.analysis.key_facts)}
+
+Please provide an improved version that addresses these issues.
+"""
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "Improve the analysis based on the feedback while maintaining the same structure and format."),
+            ("human", "{improvement_prompt}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
+    print(f"✨ LangChain analysis refined (iteration {state.iteration_count + 1})")
+
+    return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
+
+def should_continue_langchain(state: WorkflowState) -> str:
+    """Determine next step in LangChain workflow."""
+    if state.is_complete:
+        return END
+    elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
+        return "langchain_refinement"
+    else:
+        return END
+
+
 def gemini_analysis_node(state: WorkflowState) -> dict:
     """Generate initial analysis using Gemini SDK for YouTube URLs."""
     print(f"🔗 Processing YouTube URL with Gemini SDK: {state.transcript_or_url}")
@@ -140,32 +261,6 @@ def gemini_analysis_node(state: WorkflowState) -> dict:
 
     result = response.parsed
     print(f"📊 Gemini SDK analysis completed")
-
-    return {
-        "analysis": result,
-        "iteration_count": state.iteration_count + 1,
-    }
-
-
-def langchain_analysis_node(state: WorkflowState) -> dict:
-    """Generate initial analysis using LangChain for transcript text."""
-    print(f"📝 Sending transcript text to LangChain LLM: {len(state.transcript_or_url)} characters")
-    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
-
-    # Use LangChain for transcript text
-    llm = langchain_llm(ANALYSIS_MODEL)
-    structured_llm = llm.with_structured_output(Analysis)
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", ANALYSIS_PROMPT),
-            ("human", "{content}"),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    result = chain.invoke({"content": state.transcript_or_url})
-    print(f"📊 LangChain analysis completed")
 
     return {
         "analysis": result,
@@ -208,44 +303,6 @@ Chapters: {len(state.analysis.chapters)} chapters
 
     quality = response.parsed
     print(f"📈 Gemini quality score: {quality.score}/100")
-
-    if quality.issues:
-        print(f"⚠️  Issues found: {', '.join(quality.issues)}")
-
-    return {
-        "quality": quality,
-        "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
-    }
-
-
-def langchain_quality_node(state: WorkflowState) -> dict:
-    """Check the quality of the generated analysis using LangChain."""
-    print("🔍 Performing quality check with LangChain...")
-
-    llm = langchain_llm(QUALITY_MODEL)
-    structured_llm = llm.with_structured_output(Quality)
-
-    # Convert analysis to text for evaluation
-    analysis_text = f"""
-Title: {state.analysis.title}
-Summary: {state.analysis.summary}
-Takeaways: {', '.join(state.analysis.takeaways)}
-Key Facts: {', '.join(state.analysis.key_facts)}
-Keywords: {', '.join(state.analysis.keywords)}
-Chapters: {len(state.analysis.chapters)} chapters
-"""
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", QUALITY_PROMPT),
-            ("human", "{analysis_text}"),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    quality: Quality = chain.invoke({"analysis_text": analysis_text})
-
-    print(f"📈 LangChain quality score: {quality.score}/100")
 
     if quality.issues:
         print(f"⚠️  Issues found: {', '.join(quality.issues)}")
@@ -310,69 +367,12 @@ Please provide an improved version that addresses these issues.
     return {"analysis": result, "iteration_count": state.iteration_count + 1}
 
 
-def langchain_refinement_node(state: WorkflowState) -> dict:
-    """Refine the analysis based on quality feedback using LangChain."""
-    print("🔧 Refining analysis with LangChain...")
-
-    llm = langchain_llm(ANALYSIS_MODEL)
-    structured_llm = llm.with_structured_output(Analysis)
-
-    # chr(10) is '\n'
-    improvement_prompt = f"""# Improve this video analysis based on the following feedback:
-
-## Issues to Address:
-{chr(10).join(f"- {issue}" for issue in state.quality.issues)}
-
-## Suggestions:
-{chr(10).join(f"- {suggestion}" for suggestion in state.quality.suggestions)}
-
-## Original Analysis:
-
-### Title
-{state.analysis.title}
-
-### Summary
-{state.analysis.summary}
-
-### Key Takeaways
-{chr(10).join(f"- {takeaway}" for takeaway in state.analysis.takeaways)}
-
-### Key Facts
-{chr(10).join(f"- {fact}" for fact in state.analysis.key_facts)}
-
-Please provide an improved version that addresses these issues.
-"""
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "Improve the analysis based on the feedback while maintaining the same structure and format."),
-            ("human", "{improvement_prompt}"),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
-    print(f"✨ LangChain analysis refined (iteration {state.iteration_count + 1})")
-
-    return {"analysis": result, "iteration_count": state.iteration_count + 1}
-
-
 def should_continue_gemini(state: WorkflowState) -> str:
     """Determine next step in Gemini workflow."""
     if state.is_complete:
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
         return "gemini_refinement"
-    else:
-        return END
-
-
-def should_continue_langchain(state: WorkflowState) -> str:
-    """Determine next step in LangChain workflow."""
-    if state.is_complete:
-        return END
-    elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        return "langchain_refinement"
     else:
         return END
 
