@@ -66,7 +66,7 @@ class WorkflowOutput(BaseModel):
     """Output from the summarization workflow."""
 
     analysis: Analysis
-    quality_score: int
+    quality: Quality
     iteration_count: int
 
 
@@ -254,14 +254,15 @@ def summarize_video(url_or_transcript: str) -> Analysis:
     # Run the workflow
     result = graph.invoke(WorkflowInput(content=url_or_transcript))
 
-    # Extract values from the result state
+    # Debug: print the actual result structure
+    print(f"🔍 Debug - Result keys: {list(result.keys())}")
+    print(f"🔍 Debug - Result: {result}")
+
+    # Extract values from the result state (result is a dict with the final state)
     analysis: Analysis = result.get("analysis")
     quality: Quality = result.get("quality")
-    iteration_count = result.get("iteration_count", 0)
+    iteration_count: int = result.get("iteration_count", 0)
 
-    # Get quality score from quality check
-    quality_score = quality.score if quality else 0
-
-    print(f"🎯 Final quality score: {quality_score}/100 (after {iteration_count} iterations)")
+    print(f"🎯 Final quality score: {quality.score}/100 (after {iteration_count} iterations)")
 
     return analysis
