@@ -18,6 +18,13 @@ from youtube_summarizer.utils import is_youtube_url
 load_dotenv()
 
 
+# Global configuration
+ANALYSIS_MODEL = "google/gemini-2.5-pro"
+QUALITY_MODEL = "google/gemini-2.5-flash"
+MIN_QUALITY_SCORE = 90
+MAX_ITERATIONS = 3
+
+
 class Chapter(BaseModel):
     header: str = Field(description="A descriptive title for the chapter")
     key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
@@ -83,13 +90,6 @@ class WorkflowState(BaseModel):
     # Control fields
     iteration_count: int = Field(default=0)
     is_complete: bool = Field(default=False)
-
-
-# Constants
-ANALYSIS_MODEL = "google/gemini-2.5-pro"
-QUALITY_MODEL = "google/gemini-2.5-flash"
-MIN_QUALITY_SCORE = 80
-MAX_ITERATIONS = 2
 
 
 def get_llm(model: str) -> BaseChatModel:
