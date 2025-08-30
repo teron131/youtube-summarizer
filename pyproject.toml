@@ -7,21 +7,22 @@ requires-python = ">=3.11"
 license = {text = "MIT"}
 
 dependencies = [
-    "fal-client>=0.6.0",
-    "fastapi>=0.115.12",
-    "google-genai>=1.31.0",
-    "langchain>=0.3.25",
+    "fal-client>=0.7.0",
+    "fastapi>=0.116.1",
+    "google-genai>=1.32.0",
+    "langchain>=0.3.27",
     "langchain-apify>=0.1.4",
-    "langchain-core>=0.3.15",
-    "langchain-openai>=0.2.8",
+    "langchain-core>=0.3.75",
+    "langchain-google-genai>=2.1.10",
+    "langchain-openai>=0.3.32",
     "langgraph>=0.6.6",
-    "opencc>=1.1.7",
-    "pydantic>=2.5.0",
+    "opencc>=1.1.9",
+    "pydantic>=2.11.7",
     "pydub>=0.25.1",
-    "python-dotenv>=1.0.0",
-    "requests>=2.31.0",
-    "uvicorn>=0.34.3",
-    "yt-dlp>=2024.8.6",
+    "python-dotenv>=1.1.1",
+    "requests>=2.32.5",
+    "uvicorn>=0.35.0",
+    "yt-dlp>=2025.8.27",
 ]
 
 [dependency-groups]
