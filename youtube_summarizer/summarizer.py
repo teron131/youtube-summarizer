@@ -3,7 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from google.genai import Client, types
@@ -41,11 +41,56 @@ class Analysis(BaseModel):
     keywords: list[str] = Field(description="Keywords or topics mentioned in the video, max 3", max_length=3)
 
 
+class Rate(BaseModel):
+    rate: Literal["Fail", "Refine", "Pass"] = Field(description="Score for the quality aspect (Fail=poor, Refine=adequate, Pass=excellent)")
+    reason: str = Field(description="Reason for the score")
+
+
 class Quality(BaseModel):
-    score: int = Field(description="Quality score from 0-100", ge=0, le=100)
-    issues: list[str] = Field(description="List of identified quality issues")
-    suggestions: list[str] = Field(description="Suggestions for improvement")
-    is_acceptable: bool = Field(description="Whether the analysis meets quality standards")
+    completeness: Rate = Field(description="Rate for completeness: The entire video has been considered")
+    structure: Rate = Field(description="Rate for structure: The result is in desired structures")
+    grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
+    timestamp: Rate = Field(description="Rate for timestamp: The timestamps added are in correct format")
+    no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
+    language: Rate = Field(description="Rate for language: Match the original language of the video or user requested")
+
+    # Computed properties
+    @property
+    def total_score(self) -> int:
+        """Calculate total score based on all quality aspects."""
+        score_map = {"Fail": 0, "Refine": 1, "Pass": 2}
+        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.language]
+        return sum(score_map[aspect.rate] for aspect in aspects)
+
+    @property
+    def max_possible_score(self) -> int:
+        """Calculate maximum possible score (all aspects = Pass)."""
+        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.language]) * 2
+
+    @property
+    def percentage_score(self) -> int:
+        """Calculate percentage score out of 100."""
+        return int((self.total_score / self.max_possible_score) * 100)
+
+    @property
+    def is_acceptable(self) -> bool:
+        """Whether the analysis meets quality standards (score >= 90%)."""
+        return self.percentage_score >= MIN_QUALITY_SCORE
+
+    def get_quality_aspects_data(self) -> list[list[str]]:
+        """Get quality aspects data for table display."""
+        return [
+            ["Completeness", self.completeness.rate, self.completeness.reason],
+            ["Structure", self.structure.rate, self.structure.reason],
+            ["Grammar", self.grammar.rate, self.grammar.reason],
+            ["Timestamp", self.timestamp.rate, self.timestamp.reason],
+            ["No Garbage", self.no_garbage.rate, self.no_garbage.reason],
+            ["Language", self.language.rate, self.language.reason],
+        ]
+
+    def get_total_score_data(self) -> list[list[str]]:
+        """Get total score data for table display."""
+        return [["Total", f"{self.total_score}/{self.max_possible_score}", f"{self.percentage_score}%"]]
 
 
 class WorkflowInput(BaseModel):
@@ -85,13 +130,22 @@ Consider the chapters (headers) if given but not necessary.
 Ignore the promotional and meaningless content.
 Follow the original language."""
 
-QUALITY_PROMPT = """Evaluate the quality of this video analysis on these aspects:
-1. Completeness (are all key points covered?)
-2. Accuracy (does it faithfully represent the content?)
-3. Structure (is it well-organized?)
-4. Clarity (is it easy to understand?)
-5. Actionability (are takeaways useful?)
-Provide an overall score from 0-100 and specific feedback."""
+QUALITY_PROMPT = """Evaluate the quality of this video analysis on these 6 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
+
+Scoring Guide:
+- "Fail" = Poor/Incomplete/Inaccurate (needs significant improvement)
+- "Refine" = Adequate/Partially complete/Somewhat accurate (needs some improvement)
+- "Pass" = Excellent/Complete/Accurate (meets quality standards)
+
+Aspects to evaluate:
+1. Completeness: The entire video has been considered
+2. Structure: The result is in desired structures
+3. Grammar: No typos, grammatical mistakes, appropriate wordings
+4. Timestamp: The timestamps added are in correct format
+5. No Garbage: The promotional and meaningless content are removed
+6. Language: Match the original language of the video or user requested
+
+Provide rates and reasons for each aspect. The total score will be calculated automatically."""
 
 
 IMPROVEMENT_PROMPT = """Improve the analysis based on the feedback while maintaining the same structure and format."""
@@ -122,11 +176,25 @@ class ContextProcessor:
         """Create improvement prompt from analysis and quality feedback."""
         return f"""# Improve this video analysis based on the following feedback:
 
-## Issues to Address:
-{chr(10).join(f"- {issue}" for issue in quality.issues)}
+## Quality Assessment (Total: {quality.total_score}/{quality.max_possible_score} - {quality.percentage_score}%):
 
-## Suggestions:
-{chr(10).join(f"- {suggestion}" for suggestion in quality.suggestions)}
+### Completeness: {quality.completeness.rate}
+{quality.completeness.reason}
+
+### Structure: {quality.structure.rate}
+{quality.structure.reason}
+
+### Grammar: {quality.grammar.rate}
+{quality.grammar.reason}
+
+### Timestamp: {quality.timestamp.rate}
+{quality.timestamp.reason}
+
+### No Garbage: {quality.no_garbage.rate}
+{quality.no_garbage.reason}
+
+### Language: {quality.language.rate}
+{quality.language.reason}
 
 ## Original Analysis:
 
@@ -142,7 +210,7 @@ class ContextProcessor:
 ### Key Facts
 {chr(10).join(f"- {fact}" for fact in analysis.key_facts)}
 
-Please provide an improved version that addresses these issues."""
+Please provide an improved version that addresses the specific issues identified above to improve the overall quality score."""
 
     @staticmethod
     def analysis_to_text(analysis: Analysis) -> str:
@@ -169,7 +237,12 @@ class LangChainProcessor(ContextProcessor):
         llm = langchain_llm(ANALYSIS_MODEL)
         structured_llm = llm.with_structured_output(Analysis)
 
-        prompt = ChatPromptTemplate.from_messages([("system", ANALYSIS_PROMPT), ("human", "{content}")])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", ANALYSIS_PROMPT),
+                ("human", "{content}"),
+            ]
+        )
 
         chain = prompt | structured_llm
         result: Analysis = chain.invoke({"content": transcript})
@@ -185,20 +258,28 @@ class LangChainProcessor(ContextProcessor):
         structured_llm = llm.with_structured_output(Quality)
 
         analysis_text = ContextProcessor.analysis_to_text(analysis)
-        prompt = ChatPromptTemplate.from_messages([("system", QUALITY_PROMPT), ("human", "{analysis_text}")])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", QUALITY_PROMPT),
+                ("human", "{analysis_text}"),
+            ]
+        )
 
         chain = prompt | structured_llm
         quality: Quality = chain.invoke({"analysis_text": analysis_text})
 
-        # Set is_acceptable based on MIN_QUALITY_SCORE
-        quality.is_acceptable = quality.score >= MIN_QUALITY_SCORE
+        # is_acceptable is now computed automatically by the Quality model
+        print(f"📈 LangChain quality breakdown:")
 
-        print(f"📈 LangChain quality score: {quality.score}/100")
-        if quality.issues:
-            print(f"⚠️  Issues found: {', '.join(quality.issues)}")
+        # Use the print_table helper function with dynamic data from Pydantic model
+        headers = ["Aspect", "Score", "Reason"]
+        print_table(quality.get_quality_aspects_data(), headers, "")
+
+        # Print total score
+        print_table(quality.get_total_score_data(), ["", "Score", "Percentage"], "")
 
         if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}/100), refinement needed")
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
 
         return quality
 
@@ -211,7 +292,12 @@ class LangChainProcessor(ContextProcessor):
         structured_llm = llm.with_structured_output(Analysis)
 
         improvement_prompt = ContextProcessor.create_improvement_prompt(analysis, quality)
-        prompt = ChatPromptTemplate.from_messages([("system", IMPROVEMENT_PROMPT), ("human", "{improvement_prompt}")])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", IMPROVEMENT_PROMPT),
+                ("human", "{improvement_prompt}"),
+            ]
+        )
 
         chain = prompt | structured_llm
         result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
@@ -230,7 +316,11 @@ class GeminiProcessor(ContextProcessor):
         client = Client(api_key=os.getenv("GEMINI_API_KEY"))
         response = client.models.generate_content(
             model=ANALYSIS_MODEL.split("/")[1] if "google/" in ANALYSIS_MODEL else "gemini-2.5-pro",
-            contents=types.Content(parts=[types.Part(file_data=types.FileData(file_uri=youtube_url))]),
+            contents=types.Content(
+                parts=[
+                    types.Part(file_data=types.FileData(file_uri=youtube_url)),
+                ]
+            ),
             config=types.GenerateContentConfig(
                 system_instruction=ANALYSIS_PROMPT,
                 temperature=0,
@@ -271,15 +361,18 @@ class GeminiProcessor(ContextProcessor):
 
         quality: Quality = response.parsed
 
-        # Set is_acceptable based on MIN_QUALITY_SCORE
-        quality.is_acceptable = quality.score >= MIN_QUALITY_SCORE
+        # is_acceptable is now computed automatically by the Quality model
+        print(f"📈 Gemini quality breakdown:")
 
-        print(f"📈 Gemini quality score: {quality.score}/100")
-        if quality.issues:
-            print(f"⚠️  Issues found: {', '.join(quality.issues)}")
+        # Use the print_table helper function with dynamic data from Pydantic model
+        headers = ["Aspect", "Score", "Reason"]
+        print_table(quality.get_quality_aspects_data(), headers, "")
+
+        # Print total score
+        print_table(quality.get_total_score_data(), ["", "Score", "Percentage"], "")
 
         if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}/100), refinement needed")
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
 
         return quality
 
@@ -333,7 +426,7 @@ def langchain_quality_node(state: WorkflowState) -> dict:
     quality: Quality = LangChainProcessor.check_quality(state.analysis, state.transcript_or_url)
     return {
         "quality": quality,
-        "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+        "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
     }
 
 
@@ -360,7 +453,7 @@ def gemini_quality_node(state: WorkflowState) -> dict:
     quality: Quality = GeminiProcessor.check_quality(state.analysis, state.transcript_or_url)
     return {
         "quality": quality,
-        "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+        "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
     }
 
 
@@ -380,10 +473,10 @@ def should_continue_langchain(state: WorkflowState) -> str:
         print(f"🔄 LangChain workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 LangChain quality {state.quality.score}/100 below threshold {MIN_QUALITY_SCORE}, continuing to refinement (iteration {state.iteration_count + 1})")
+        print(f"🔄 LangChain quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, continuing to refinement (iteration {state.iteration_count + 1})")
         return "langchain_refinement"
     else:
-        print(f"🔄 LangChain workflow ending (quality: {state.quality.score if state.quality else 'None'}, iterations: {state.iteration_count})")
+        print(f"🔄 LangChain workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
         return END
 
 
@@ -393,10 +486,10 @@ def should_continue_gemini(state: WorkflowState) -> str:
         print(f"🔄 Gemini workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 Gemini quality {state.quality.score}/100 below threshold {MIN_QUALITY_SCORE}, continuing to refinement (iteration {state.iteration_count + 1})")
+        print(f"🔄 Gemini quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, continuing to refinement (iteration {state.iteration_count + 1})")
         return "gemini_refinement"
     else:
-        print(f"🔄 Gemini workflow ending (quality: {state.quality.score if state.quality else 'None'}, iterations: {state.iteration_count})")
+        print(f"🔄 Gemini workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
         return END
 
 
@@ -474,5 +567,54 @@ def summarize_video(transcript_or_url: str) -> Analysis:
     result: dict = graph.invoke(WorkflowInput(transcript_or_url=transcript_or_url))
     result: WorkflowOutput = WorkflowOutput.model_validate(result)  # LangGraph returns a dictionary instead of Pydantic model
 
-    print(f"🎯 Final quality score: {result.quality.score}/100 (after {result.iteration_count} iterations)")
+    print(f"🎯 Final quality score: {result.quality.percentage_score}% (after {result.iteration_count} iterations)")
     return result.analysis
+
+
+def print_table(data, headers, title=None):
+    """Print a formatted table with headers and data.
+
+    Args:
+        data: List of lists, where each inner list is a row
+        headers: List of column header strings
+        title: Optional title for the table
+    """
+    if not data or not headers:
+        return
+
+    # Calculate column widths based on headers and data
+    col_widths = []
+    for i, header in enumerate(headers):
+        # Get max width from header and all data in this column
+        max_width = len(header)
+        for row in data:
+            if i < len(row):
+                max_width = max(max_width, len(str(row[i])))
+        col_widths.append(max_width)
+
+    # Print title if provided
+    if title:
+        print(f"\n{title}")
+
+    # Print header
+    header_row = []
+    separator_row = []
+    for header, width in zip(headers, col_widths):
+        header_row.append(f"{header:<{width}}")
+        separator_row.append("-" * width)
+
+    print(" | ".join(header_row))
+    print(" | ".join(separator_row))
+
+    # Print data rows
+    for row in data:
+        formatted_row = []
+        for i, (value, width) in enumerate(zip(row, col_widths)):
+            if i == 0:  # First column (usually names) - left align
+                formatted_row.append(f"{str(value):<{width}}")
+            else:  # Other columns (usually numbers) - right align
+                formatted_row.append(f"{str(value):>{width}}")
+        print(" | ".join(formatted_row))
+
+    # Print footer separator
+    print(" | ".join(separator_row))
