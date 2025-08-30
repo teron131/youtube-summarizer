@@ -133,7 +133,10 @@ def analysis_node(state: WorkflowState) -> dict:
     result = chain.invoke({"content": content})
 
     print(f"📊 Initial analysis completed")
-    return {"analysis": result, "iteration_count": state.iteration_count + 1}
+    return {
+        "analysis": result,
+        "iteration_count": state.iteration_count + 1,
+    }
 
 
 def quality_node(state: WorkflowState) -> dict:
@@ -168,7 +171,10 @@ Chapters: {len(state.analysis.chapters)} chapters
     if quality.issues:
         print(f"⚠️  Issues found: {', '.join(quality.issues)}")
 
-    return {"quality": quality, "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS}
+    return {
+        "quality": quality,
+        "is_complete": quality.score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+    }
 
 
 def refinement_node(state: WorkflowState) -> dict:
@@ -178,17 +184,28 @@ def refinement_node(state: WorkflowState) -> dict:
     llm = get_llm(ANALYSIS_MODEL)
     structured_llm = llm.with_structured_output(Analysis)
 
-    improvement_prompt = f"""
-Improve this video analysis based on the following feedback:
+    # chr(10) is '\n'
+    improvement_prompt = f"""# Improve this video analysis based on the following feedback:
 
-Issues: {', '.join(state.quality.issues)}
-Suggestions: {', '.join(state.quality.suggestions)}
+## Issues to Address:
+{chr(10).join(f"- {issue}" for issue in state.quality.issues)}
 
-Original Analysis:
-Title: {state.analysis.title}
-Summary: {state.analysis.summary}
-Takeaways: {', '.join(state.analysis.takeaways)}
-Key Facts: {', '.join(state.analysis.key_facts)}
+## Suggestions:
+{chr(10).join(f"- {suggestion}" for suggestion in state.quality.suggestions)}
+
+## Original Analysis:
+
+### Title
+{state.analysis.title}
+
+### Summary
+{state.analysis.summary}
+
+### Key Takeaways
+{chr(10).join(f"- {takeaway}" for takeaway in state.analysis.takeaways)}
+
+### Key Facts
+{chr(10).join(f"- {fact}" for fact in state.analysis.key_facts)}
 
 Please provide an improved version that addresses these issues.
 """
@@ -252,8 +269,8 @@ def summarize_video(url_or_transcript: str) -> Analysis:
     graph = create_compiled_graph()
 
     # Run the workflow
-    result: WorkflowState = graph.invoke(WorkflowInput(content=url_or_transcript))
+    result: WorkflowOutput = graph.invoke(WorkflowInput(content=url_or_transcript))
+    result = WorkflowOutput.model_validate(result)  # LangGraph returns a dictionary instead of Pydantic model
 
     print(f"🎯 Final quality score: {result.quality.score}/100 (after {result.iteration_count} iterations)")
-
     return result.analysis
