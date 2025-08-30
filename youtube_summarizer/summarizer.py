@@ -109,7 +109,7 @@ def get_llm(model: str) -> BaseChatModel:
         )
 
 
-def initial_analysis_node(state: WorkflowState) -> dict:
+def analysis_node(state: WorkflowState) -> dict:
     """Generate initial analysis of the content."""
     if is_youtube_url(state.content):
         print(f"🔗 Processing YouTube URL: {state.content}")
@@ -217,7 +217,7 @@ def create_summarization_graph() -> StateGraph:
     builder = StateGraph(WorkflowState, input=WorkflowInput, output=WorkflowOutput)
 
     # Add nodes
-    builder.add_node("initial_analysis", initial_analysis_node)
+    builder.add_node("initial_analysis", analysis_node)
     builder.add_node("quality", quality_node)
     builder.add_node("refinement", refinement_node)
 
@@ -252,17 +252,8 @@ def summarize_video(url_or_transcript: str) -> Analysis:
     graph = create_compiled_graph()
 
     # Run the workflow
-    result = graph.invoke(WorkflowInput(content=url_or_transcript))
+    result: WorkflowState = graph.invoke(WorkflowInput(content=url_or_transcript))
 
-    # Debug: print the actual result structure
-    print(f"🔍 Debug - Result keys: {list(result.keys())}")
-    print(f"🔍 Debug - Result: {result}")
+    print(f"🎯 Final quality score: {result.quality.score}/100 (after {result.iteration_count} iterations)")
 
-    # Extract values from the result state (result is a dict with the final state)
-    analysis: Analysis = result.get("analysis")
-    quality: Quality = result.get("quality")
-    iteration_count: int = result.get("iteration_count", 0)
-
-    print(f"🎯 Final quality score: {quality.score}/100 (after {iteration_count} iterations)")
-
-    return analysis
+    return result.analysis
