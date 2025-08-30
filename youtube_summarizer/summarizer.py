@@ -190,9 +190,15 @@ class LangChainProcessor(ContextProcessor):
         chain = prompt | structured_llm
         quality: Quality = chain.invoke({"analysis_text": analysis_text})
 
+        # Set is_acceptable based on MIN_QUALITY_SCORE
+        quality.is_acceptable = quality.score >= MIN_QUALITY_SCORE
+
         print(f"📈 LangChain quality score: {quality.score}/100")
         if quality.issues:
             print(f"⚠️  Issues found: {', '.join(quality.issues)}")
+
+        if not quality.is_acceptable:
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}/100), refinement needed")
 
         return quality
 
@@ -264,9 +270,16 @@ class GeminiProcessor(ContextProcessor):
         )
 
         quality: Quality = response.parsed
+
+        # Set is_acceptable based on MIN_QUALITY_SCORE
+        quality.is_acceptable = quality.score >= MIN_QUALITY_SCORE
+
         print(f"📈 Gemini quality score: {quality.score}/100")
         if quality.issues:
             print(f"⚠️  Issues found: {', '.join(quality.issues)}")
+
+        if not quality.is_acceptable:
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}/100), refinement needed")
 
         return quality
 
@@ -364,20 +377,26 @@ def gemini_refinement_node(state: WorkflowState) -> dict:
 def should_continue_langchain(state: WorkflowState) -> str:
     """Determine next step in LangChain workflow."""
     if state.is_complete:
+        print(f"🔄 LangChain workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
+        print(f"🔄 LangChain quality {state.quality.score}/100 below threshold {MIN_QUALITY_SCORE}, continuing to refinement (iteration {state.iteration_count + 1})")
         return "langchain_refinement"
     else:
+        print(f"🔄 LangChain workflow ending (quality: {state.quality.score if state.quality else 'None'}, iterations: {state.iteration_count})")
         return END
 
 
 def should_continue_gemini(state: WorkflowState) -> str:
     """Determine next step in Gemini workflow."""
     if state.is_complete:
+        print(f"🔄 Gemini workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
+        print(f"🔄 Gemini quality {state.quality.score}/100 below threshold {MIN_QUALITY_SCORE}, continuing to refinement (iteration {state.iteration_count + 1})")
         return "gemini_refinement"
     else:
+        print(f"🔄 Gemini workflow ending (quality: {state.quality.score if state.quality else 'None'}, iterations: {state.iteration_count})")
         return END
 
 
