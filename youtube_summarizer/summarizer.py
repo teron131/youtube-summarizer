@@ -20,10 +20,10 @@ load_dotenv()
 
 
 # Global configuration
-ANALYSIS_MODEL = "google/gemini-2.5-pro"
-QUALITY_MODEL = "google/gemini-2.5-flash"
+ANALYSIS_MODEL = "google/gemini-2.5-flash-lite"
+QUALITY_MODEL = "google/gemini-2.5-pro"
 MIN_QUALITY_SCORE = 90
-MAX_ITERATIONS = 3
+MAX_ITERATIONS = 2
 
 
 class Chapter(BaseModel):
@@ -545,12 +545,11 @@ def create_compiled_graph():
 
 def summarize_video(transcript_or_url: str) -> Analysis:
     """Summarize the text using LangChain with LangGraph self-checking workflow."""
-    # Create and run the workflow
     graph = create_compiled_graph()
 
-    # Run the workflow
+    # LangGraph returns a dictionary instead of Pydantic model
     result: dict = graph.invoke(WorkflowInput(transcript_or_url=transcript_or_url))
-    result: WorkflowOutput = WorkflowOutput.model_validate(result)  # LangGraph returns a dictionary instead of Pydantic model
+    result: WorkflowOutput = WorkflowOutput.model_validate(result)
 
     print(f"🎯 Final quality score: {result.quality.percentage_score}% (after {result.iteration_count} iterations)")
     return result.analysis
@@ -563,8 +562,9 @@ def stream_summarize_video(transcript_or_url: str) -> Generator[Dict, None, None
     """
     graph = create_compiled_graph()
 
+    # LangGraph returns a dictionary instead of Pydantic model
     for chunk in graph.stream(
         WorkflowInput(transcript_or_url=transcript_or_url),
-        stream_mode="updates",
+        stream_mode="values",
     ):
-        yield chunk
+        yield WorkflowState.model_validate(chunk)
