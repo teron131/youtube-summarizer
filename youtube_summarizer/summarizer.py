@@ -3,7 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-from typing import Literal, Optional
+from typing import Dict, Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
@@ -76,21 +76,6 @@ class Quality(BaseModel):
     def is_acceptable(self) -> bool:
         """Whether the analysis meets quality standards (score >= 90%)."""
         return self.percentage_score >= MIN_QUALITY_SCORE
-
-    def get_quality_aspects_data(self) -> list[list[str]]:
-        """Get quality aspects data for table display."""
-        return [
-            ["Completeness", self.completeness.rate, self.completeness.reason],
-            ["Structure", self.structure.rate, self.structure.reason],
-            ["Grammar", self.grammar.rate, self.grammar.reason],
-            ["Timestamp", self.timestamp.rate, self.timestamp.reason],
-            ["No Garbage", self.no_garbage.rate, self.no_garbage.reason],
-            ["Language", self.language.rate, self.language.reason],
-        ]
-
-    def get_total_score_data(self) -> list[list[str]]:
-        """Get total score data for table display."""
-        return [["Total", f"{self.total_score}/{self.max_possible_score}", f"{self.percentage_score}%"]]
 
 
 class WorkflowInput(BaseModel):
@@ -270,13 +255,13 @@ class LangChainProcessor(ContextProcessor):
 
         # is_acceptable is now computed automatically by the Quality model
         print(f"📈 LangChain quality breakdown:")
-
-        # Use the print_table helper function with dynamic data from Pydantic model
-        headers = ["Aspect", "Score", "Reason"]
-        print_table(quality.get_quality_aspects_data(), headers, "")
-
-        # Print total score
-        print_table(quality.get_total_score_data(), ["", "Score", "Percentage"], "")
+        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+        print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
+        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+        print(f"Language: {quality.language.rate} - {quality.language.reason}")
+        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 
         if not quality.is_acceptable:
             print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
@@ -363,13 +348,13 @@ class GeminiProcessor(ContextProcessor):
 
         # is_acceptable is now computed automatically by the Quality model
         print(f"📈 Gemini quality breakdown:")
-
-        # Use the print_table helper function with dynamic data from Pydantic model
-        headers = ["Aspect", "Score", "Reason"]
-        print_table(quality.get_quality_aspects_data(), headers, "")
-
-        # Print total score
-        print_table(quality.get_total_score_data(), ["", "Score", "Percentage"], "")
+        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+        print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
+        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+        print(f"Language: {quality.language.rate} - {quality.language.reason}")
+        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 
         if not quality.is_acceptable:
             print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
@@ -571,50 +556,28 @@ def summarize_video(transcript_or_url: str) -> Analysis:
     return result.analysis
 
 
-def print_table(data, headers, title=None):
-    """Print a formatted table with headers and data.
+def stream_summarize_video(transcript_or_url: str) -> Generator[Dict, None, Analysis]:
+    """Stream the summarization process with progress updates using LangGraph's stream_mode='updates'."""
 
-    Args:
-        data: List of lists, where each inner list is a row
-        headers: List of column header strings
-        title: Optional title for the table
-    """
-    if not data or not headers:
-        return
+    # Create and run the workflow with progress tracking
+    graph = create_compiled_graph()
 
-    # Calculate column widths based on headers and data
-    col_widths = []
-    for i, header in enumerate(headers):
-        # Get max width from header and all data in this column
-        max_width = len(header)
-        for row in data:
-            if i < len(row):
-                max_width = max(max_width, len(str(row[i])))
-        col_widths.append(max_width)
+    # Stream the workflow execution with progress updates
+    final_state = None
+    for chunk in graph.stream(
+        WorkflowInput(transcript_or_url=transcript_or_url),
+        stream_mode="updates",
+    ):
+        yield chunk
+        # Keep track of the final state
+        final_state = chunk
 
-    # Print title if provided
-    if title:
-        print(f"\n{title}")
+    # Extract final analysis from the last chunk
+    if final_state:
+        # The final state should contain the complete WorkflowState
+        for node_name, node_data in final_state.items():
+            if "analysis" in node_data:
+                return node_data["analysis"]
 
-    # Print header
-    header_row = []
-    separator_row = []
-    for header, width in zip(headers, col_widths):
-        header_row.append(f"{header:<{width}}")
-        separator_row.append("-" * width)
-
-    print(" | ".join(header_row))
-    print(" | ".join(separator_row))
-
-    # Print data rows
-    for row in data:
-        formatted_row = []
-        for i, (value, width) in enumerate(zip(row, col_widths)):
-            if i == 0:  # First column (usually names) - left align
-                formatted_row.append(f"{str(value):<{width}}")
-            else:  # Other columns (usually numbers) - right align
-                formatted_row.append(f"{str(value):>{width}}")
-        print(" | ".join(formatted_row))
-
-    # Print footer separator
-    print(" | ".join(separator_row))
+    # Fallback - shouldn't reach here in normal operation
+    return None
