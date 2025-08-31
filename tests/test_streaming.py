@@ -22,7 +22,7 @@ class TestLangGraphStreaming:
         from example_results import result_with_chapters
 
         resp = client.post(
-            "/api/summarize-stream",
+            "/stream",
             json={"content": result_with_chapters.transcript_only_text[:2000], "content_type": "transcript"},
         )
         assert resp.status_code == 200
@@ -44,7 +44,7 @@ class TestSSEContract:
 
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test", "OPENROUTER_API_KEY": "test"}):
             resp = client.post(
-                "/api/summarize-stream",
+                "/stream",
                 json={"content": "Valid content for SSE test", "content_type": "transcript"},
             )
 
