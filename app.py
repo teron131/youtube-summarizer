@@ -208,7 +208,7 @@ async def root():
         "endpoints": {
             "scrap": "/scrap - Extract video metadata and transcript",
             "summarize": "/summarize - Full LangGraph workflow analysis",
-            "stream": "/stream - Streaming analysis with progress",
+            "stream-summarize": "/stream-summarize - Streaming analysis with progress",
         },
     }
 
@@ -257,7 +257,7 @@ async def scrap_video(request: YouTubeRequest):
 
 
 @app.post("/summarize", response_model=SummarizeResponse)
-async def summarize_content(request: SummarizeRequest):
+async def summarize(request: SummarizeRequest):
     """Generate AI analysis using LangGraph workflow."""
     if not os.getenv("GEMINI_API_KEY"):
         create_error_response(500, "config_missing")
@@ -277,8 +277,8 @@ async def summarize_content(request: SummarizeRequest):
         create_error_response(500, "processing_failed", e)
 
 
-@app.post("/stream")
-async def stream_analysis(request: SummarizeRequest):
+@app.post("/stream-summarize")
+async def stream_summarize(request: SummarizeRequest):
     """Stream analysis with real-time progress updates."""
     if not os.getenv("GEMINI_API_KEY"):
         create_error_response(500, "config_missing")
