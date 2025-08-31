@@ -13,14 +13,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.utils import is_youtube_url
 
 load_dotenv()
 
 
 # Global configuration
-ANALYSIS_MODEL = "google/gemini-2.5-flash-lite"
+ANALYSIS_MODEL = "google/gemini-2.5-pro"
 QUALITY_MODEL = "google/gemini-2.5-pro"
 MIN_QUALITY_SCORE = 90
 MAX_ITERATIONS = 2
