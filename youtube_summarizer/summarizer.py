@@ -555,7 +555,7 @@ def summarize_video(transcript_or_url: str) -> Analysis:
     return result.analysis
 
 
-def stream_summarize_video(transcript_or_url: str) -> Generator[Dict, None, None]:
+def stream_summarize_video(transcript_or_url: str) -> Generator[WorkflowState, None, None]:
     """Stream the summarization process with progress updates using LangGraph's stream_mode='updates'.
 
     The final chunk will contain the complete graph state with the final analysis.
