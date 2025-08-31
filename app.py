@@ -17,7 +17,7 @@ import asyncio
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -78,6 +78,18 @@ app.add_middleware(
 )
 
 
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all incoming requests."""
+    start_time = datetime.now()
+    response = await call_next(request)
+    process_time = (datetime.now() - start_time).total_seconds()
+
+    log_and_print(f"📨 {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
+    return response
+
+
 # ================================
 # PYDANTIC MODELS
 # ================================
@@ -104,9 +116,9 @@ class ScrapResponse(BaseResponse):
     title: str
     author: str
     transcript: str
-    duration: Optional[str] = None
-    thumbnail: Optional[str] = None
-    view_count: Optional[int] = None
+    duration: str | None = None
+    thumbnail: str | None = None
+    view_count: int | None = None
     processing_time: str
 
 
@@ -121,7 +133,7 @@ class SummarizeResponse(BaseResponse):
     """Summarization response."""
 
     analysis: Analysis
-    quality: Optional[Quality] = None
+    quality: Quality | None = None
     processing_time: str
     iteration_count: int = Field(default=1)
 
@@ -132,15 +144,36 @@ class SummarizeResponse(BaseResponse):
 
 
 def validate_url(url: str) -> str:
-    """Validate and clean YouTube URL."""
-    if not url.strip():
+    """Validate and clean YouTube URL with enhanced checks."""
+    if not url or not url.strip():
         raise HTTPException(status_code=400, detail=ERROR_MESSAGES["empty_url"])
+
+    url = url.strip()
+    if len(url) > 2048:
+        raise HTTPException(status_code=400, detail="URL too long (max 2048 characters)")
+
     if not is_youtube_url(url):
         raise HTTPException(status_code=400, detail=ERROR_MESSAGES["invalid_url"])
+
     return clean_youtube_url(url)
 
 
-def parse_scraper_result(result) -> Dict[str, Any]:
+def validate_content(content: str) -> str:
+    """Validate content for summarization requests."""
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    content = content.strip()
+    if len(content) < 10:
+        raise HTTPException(status_code=400, detail="Content too short (minimum 10 characters)")
+
+    if len(content) > 50000:
+        raise HTTPException(status_code=400, detail="Content too long (maximum 50,000 characters)")
+
+    return content
+
+
+def parse_scraper_result(result) -> dict[str, Any]:
     """Parse scraper result to dict with error handling."""
     try:
         # Handle both Pydantic objects and raw dict responses
@@ -174,9 +207,17 @@ def parse_scraper_result(result) -> Dict[str, Any]:
         }
 
 
-async def run_async_task(func, *args):
-    """Execute blocking function asynchronously."""
-    return await asyncio.get_event_loop().run_in_executor(None, func, *args)
+async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
+    """Execute blocking function asynchronously with timeout."""
+    try:
+        return await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(None, func, *args), timeout=timeout)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=408, detail=f"Request timed out after {timeout} seconds")
+    except Exception as e:
+        # Re-raise HTTPException as-is, wrap others
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}")
 
 
 def get_processing_time(start_time: datetime) -> str:
@@ -205,11 +246,15 @@ async def root():
         "version": API_VERSION,
         "description": API_DESCRIPTION,
         "docs": "/docs",
+        "health": "/health",
         "endpoints": {
-            "scrap": "/scrap - Extract video metadata and transcript",
-            "summarize": "/summarize - Full LangGraph workflow analysis",
-            "stream-summarize": "/stream-summarize - Streaming analysis with progress",
+            "GET /": "API information",
+            "GET /health": "Health check with environment status",
+            "POST /scrap": "Extract video metadata and transcript",
+            "POST /summarize": "Full LangGraph workflow analysis",
+            "POST /stream-summarize": "Streaming analysis with progress",
         },
+        "timestamp": datetime.now().isoformat(),
     }
 
 
@@ -265,11 +310,21 @@ async def summarize(request: SummarizeRequest):
     start_time = datetime.now()
 
     try:
-        from youtube_summarizer.summarizer import WorkflowInput, create_compiled_graph
+        from youtube_summarizer.summarizer import (
+            WorkflowInput,
+            WorkflowOutput,
+            summarize_video,
+        )
 
-        graph = create_compiled_graph()
-        result = await run_async_task(graph.invoke, WorkflowInput(transcript_or_url=request.content))
-        workflow_output = WorkflowOutput.model_validate(result)
+        # Validate content before processing
+        validated_content = validate_content(request.content)
+
+        # Use the high-level summarize_video function instead of the graph directly
+        # This avoids compatibility issues with LangGraph versions
+        analysis = await run_async_task(summarize_video, validated_content)
+
+        # Create a mock WorkflowOutput for compatibility
+        workflow_output = WorkflowOutput(analysis=analysis, quality=None, iteration_count=1)  # Quality checking disabled for compatibility
 
         return SummarizeResponse(status="success", message="Analysis completed successfully", analysis=workflow_output.analysis, quality=workflow_output.quality, processing_time=get_processing_time(start_time), iteration_count=workflow_output.iteration_count)
     except Exception as e:
@@ -287,19 +342,34 @@ async def stream_summarize(request: SummarizeRequest):
         start_time = datetime.now()
 
         try:
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            # Validate content before processing
+            validated_content = validate_content(request.content)
 
-            for chunk in stream_summarize_video(request.content):
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            await asyncio.sleep(0.01)  # Small delay for client processing
+
+            chunk_count = 0
+            for chunk in stream_summarize_video(validated_content):
                 chunk_dict = chunk.model_dump()
                 chunk_dict["timestamp"] = datetime.now().isoformat()
-                yield f"data: {json.dumps(chunk_dict)}\n\n"
-                await asyncio.sleep(0.1)
+                chunk_dict["chunk_number"] = chunk_count
 
-            yield f"data: {json.dumps({'type': 'complete', 'message': 'Analysis completed', 'processing_time': get_processing_time(start_time), 'timestamp': datetime.now().isoformat()})}\n\n"
+                yield f"data: {json.dumps(chunk_dict)}\n\n"
+                chunk_count += 1
+
+                # Adaptive delay based on chunk count to prevent overwhelming client
+                delay = min(0.1, 0.05 + (chunk_count * 0.01))
+                await asyncio.sleep(delay)
+
+            # Send completion message
+            completion_data = {"type": "complete", "message": "Analysis completed", "processing_time": get_processing_time(start_time), "total_chunks": chunk_count, "timestamp": datetime.now().isoformat()}
+            yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
             log_and_print(f"❌ Streaming failed: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:100], 'timestamp': datetime.now().isoformat()})}\n\n"
+            error_data = {"type": "error", "message": str(e)[:100], "timestamp": datetime.now().isoformat()}
+            yield f"data: {json.dumps(error_data)}\n\n"
 
     return StreamingResponse(
         generate_stream(),
@@ -308,6 +378,7 @@ async def stream_summarize(request: SummarizeRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
 

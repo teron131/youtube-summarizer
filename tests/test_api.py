@@ -80,7 +80,7 @@ class TestSummarize:
         from example_results import result_with_chapters
 
         resp = client.post(
-            "/stream",
+            "/stream-summarize",
             json={"content": result_with_chapters.transcript_only_text[:2000], "content_type": "transcript"},
         )
 
