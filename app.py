@@ -41,6 +41,7 @@ Backend-only package for programmatic use and frontend integration.
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -53,16 +54,20 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import StreamingResponse
 from httpx import RemoteProtocolError
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
-from youtube_summarizer.summarizer import Analysis, summarize_video
-from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
-from youtube_summarizer.youtube_scrapper import (
-    YouTubeScrapperResult,
-    parse_transcript,
-    scrap_youtube,
+
+from youtube_summarizer.summarizer import (
+    Analysis,
+    Quality,
+    WorkflowOutput,
+    stream_summarize_video,
+    summarize_video,
 )
+from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
+from youtube_summarizer.youtube_scrapper import YouTubeScrapperResult, scrap_youtube
 
 load_dotenv()
 
@@ -273,6 +278,20 @@ async def enhanced_timeout_middleware(request: Request, call_next):
 
     # Determine timeout based on endpoint
     timeout = TIMEOUT_SHORT
+
+    # Streaming endpoints get unlimited timeout (they manage their own connection)
+    if any(
+        path in str(request.url)
+        for path in [
+            "/stream-summarize",
+            "/stream-process",
+            "/api/stream-summarize",
+            "/api/stream-process",
+        ]
+    ):
+        # No timeout for streaming endpoints
+        return await call_next(request)
+
     if any(
         path in str(request.url)
         for path in [
@@ -306,7 +325,8 @@ class YouTubeRequest(BaseModel):
 
     url: str = Field(..., description="YouTube video URL", min_length=1, max_length=2048)
 
-    @validator("url")
+    @field_validator("url")
+    @classmethod
     def validate_youtube_url(cls, v):
         """Enhanced URL validation."""
         if not v.strip():
@@ -326,7 +346,8 @@ class YouTubeProcessRequest(BaseModel):
     url: str = Field(..., description="YouTube video URL", min_length=1, max_length=2048)
     generate_summary: bool = Field(default=True, description="Generate AI summary")
 
-    @validator("url")
+    @field_validator("url")
+    @classmethod
     def validate_youtube_url(cls, v):
         return YouTubeRequest.validate_youtube_url(v)
 
@@ -421,7 +442,8 @@ class ScrapRequest(BaseModel):
 
     url: str = Field(..., description="YouTube video URL", min_length=1, max_length=2048)
 
-    @validator("url")
+    @field_validator("url")
+    @classmethod
     def validate_youtube_url(cls, v):
         return YouTubeRequest.validate_youtube_url(v)
 
@@ -443,10 +465,19 @@ class SummarizeRequest(BaseModel):
 
 
 class SummarizeResponse(BaseResponse):
-    """Response model for the summarize endpoint."""
+    """Response model for the summarize endpoint using full LangGraph workflow."""
 
-    analysis: Dict[str, Any] = Field(description="Structured analysis data")
+    analysis: Analysis = Field(description="Structured analysis data")
+    quality: Optional[Quality] = Field(default=None, description="Quality assessment")
     processing_time: str = Field(description="Processing duration")
+    iteration_count: int = Field(default=1, description="Number of refinement iterations")
+
+
+class StreamSummarizeRequest(BaseModel):
+    """Request model for the streaming summarize endpoint."""
+
+    content: str = Field(..., description="Content to analyze (URL or transcript)", min_length=10, max_length=100000)
+    content_type: str = Field(default="url", description="Type of content: 'url' or 'transcript'")
 
 
 # ================================
@@ -497,7 +528,7 @@ def parse_video_content(scrapper_result: YouTubeScrapperResult) -> Tuple[str, st
     """
     title = scrapper_result.title or "Unknown Title"
     author = scrapper_result.channel.title if scrapper_result.channel and scrapper_result.channel.title else "Unknown Author"
-    transcript = parse_transcript(scrapper_result)
+    transcript = scrapper_result.parsed_transcript
 
     return title, author, transcript
 
@@ -520,7 +551,7 @@ async def extract_video_info_async(cleaned_url: str) -> Dict[str, Any]:
 
     try:
         # Run in thread pool to avoid blocking
-        scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
+        scrapper_result = await run_in_executor(scrap_youtube, cleaned_url)
 
         return {
             "url": cleaned_url,
@@ -550,7 +581,7 @@ def create_transcript_from_analysis(analysis: Analysis) -> str:
     Returns:
         Formatted transcript string
     """
-    transcript_parts = [f"Video Analysis: {analysis.title}", "", "Overall Summary:", analysis.overall_summary, "", "Key Points:"]
+    transcript_parts = [f"Video Analysis: {analysis.title}", "", "Summary:", analysis.summary, "", "Key Points:"]
 
     for chapter in analysis.chapters:
         transcript_parts.extend([f"\n{chapter.header}:", chapter.summary])
@@ -568,7 +599,7 @@ def format_summary_from_analysis(analysis: Analysis) -> str:
     Returns:
         Formatted markdown summary
     """
-    summary_parts = [f"**{analysis.title}**", "", "**Overall Summary:**", analysis.overall_summary, "", "**Key Takeaways:**"]
+    summary_parts = [f"**{analysis.title}**", "", "**Summary:**", analysis.summary, "", "**Key Takeaways:**"]
     summary_parts.extend([f"• {takeaway}" for takeaway in analysis.takeaways])
 
     if analysis.key_facts:
@@ -583,21 +614,21 @@ def format_summary_from_analysis(analysis: Analysis) -> str:
     return "\n".join(summary_parts)
 
 
+# Legacy helper function - kept for backward compatibility in other endpoints
 def convert_analysis_to_dict(analysis: Analysis) -> Dict[str, Any]:
     """
     Convert analysis result to dictionary format.
 
-    Args:
-        analysis: Gemini analysis result
-
-    Returns:
-        Dictionary representation of analysis
+    NOTE: This is kept for backward compatibility in non-workflow endpoints.
+    The /api/summarize endpoint now returns the Analysis object directly.
     """
     return {
+        "title": analysis.title,
+        "summary": analysis.summary,
         "chapters": [{"header": c.header, "summary": c.summary, "key_points": c.key_points} for c in analysis.chapters],
         "key_facts": analysis.key_facts,
         "takeaways": analysis.takeaways,
-        "overall_summary": analysis.overall_summary,
+        "keywords": analysis.keywords,
     }
 
 
@@ -644,7 +675,7 @@ async def extract_transcript_with_fallback_async(cleaned_url: str, logs: List[st
             logs.append("🔄 Tier 1: Trying Apify YouTube Scraper API...")
 
             # Run in thread pool to avoid blocking
-            scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
+            scrapper_result = await run_in_executor(scrap_youtube, cleaned_url)
             title, author, transcript = parse_video_content(scrapper_result)
 
             if transcript and transcript.strip() and not transcript.startswith("["):
@@ -680,7 +711,7 @@ async def extract_transcript_with_fallback_async(cleaned_url: str, logs: List[st
 
         try:
             # Run in thread pool to avoid blocking
-            analysis = await asyncio.get_event_loop().run_in_executor(None, summarize_video, cleaned_url)
+            analysis = await run_in_executor(summarize_video, cleaned_url)
 
             title = analysis.title or "Unknown Title"
             author = "Unknown Author"  # Gemini doesn't provide author from URL
@@ -701,6 +732,11 @@ async def extract_transcript_with_fallback_async(cleaned_url: str, logs: List[st
             raise create_error_response(500, f"{ERROR_MESSAGES['processing_failed']}. Last error: {str(e)}")
 
 
+async def run_in_executor(func, *args):
+    """Helper function to run CPU-bound operations in thread pool."""
+    return await asyncio.get_event_loop().run_in_executor(None, func, *args)
+
+
 async def generate_summary_from_content_async(content: str, content_type: str = "transcript") -> Tuple[str, Dict[str, Any]]:
     """
     Async version of generate summary and analysis from content.
@@ -716,43 +752,11 @@ async def generate_summary_from_content_async(content: str, content_type: str = 
         Various exceptions for different failure modes
     """
     # Run in thread pool to avoid blocking
-    analysis = await asyncio.get_event_loop().run_in_executor(None, summarize_video, content)
+    analysis = await run_in_executor(summarize_video, content)
     summary = format_summary_from_analysis(analysis)
     analysis_dict = convert_analysis_to_dict(analysis)
 
     return summary, analysis_dict
-
-
-# ================================
-# BACKWARDS COMPATIBILITY FUNCTIONS
-# ================================
-
-
-def extract_video_info(cleaned_url: str) -> Dict[str, Any]:
-    """
-    Backwards-compatible synchronous wrapper for extract_video_info_async.
-
-    This function exists for test compatibility and legacy usage.
-    For new code, use extract_video_info_async directly.
-
-    Args:
-        cleaned_url: Validated YouTube URL
-
-    Returns:
-        Dictionary containing video metadata
-
-    Raises:
-        HTTPException: For various failure modes
-    """
-    import asyncio
-
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    return loop.run_until_complete(extract_video_info_async(cleaned_url))
 
 
 # ================================
@@ -784,8 +788,10 @@ async def root():
             "summary": "/api/summary",
             "process": "/api/process",
             "generate": "/api/generate (Master API - orchestrates all capabilities)",
-            "scrap": "/api/scrap",
-            "summarize": "/api/summarize",
+            "scrap": "/api/scrap (Extract video metadata and transcript)",
+            "summarize": "/api/summarize (🔧 UPGRADED: Full LangGraph workflow with quality assessment)",
+            "stream_process": "/api/stream-process (Streaming video processing with progress)",
+            "summarize_stream": "/api/summarize-stream (LangGraph streaming with real-time progress)",
         },
         "workflow": {
             "tier_1": "Apify YouTube Scraper API",
@@ -832,7 +838,7 @@ async def scrap_video(request: ScrapRequest):
             raise create_error_response(500, ERROR_MESSAGES["apify_not_configured"])
 
         # Use existing scrap_youtube function
-        scrapper_result = await asyncio.get_event_loop().run_in_executor(None, scrap_youtube, cleaned_url)
+        scrapper_result = await run_in_executor(scrap_youtube, cleaned_url)
 
         # Extract video info
         video_info = VideoInfoResponse(
@@ -847,7 +853,7 @@ async def scrap_video(request: ScrapRequest):
         )
 
         # Extract transcript using existing parser
-        transcript = parse_transcript(scrapper_result)
+        transcript = scrapper_result.parsed_transcript
 
         processing_time = datetime.now() - start_time
 
@@ -871,14 +877,17 @@ async def scrap_video(request: ScrapRequest):
 @api_router.post("/summarize", response_model=SummarizeResponse)
 async def summarize_content(request: SummarizeRequest):
     """
-    Generate AI analysis using Gemini.
+    Generate comprehensive AI analysis using the full LangGraph workflow.
 
-    This endpoint directly uses the summarize_video() function to generate:
-    - Structured chapters
-    - Key facts and takeaways
+    This endpoint uses the complete LangGraph workflow to provide:
+    - Structured chapters with key points
+    - Key facts and takeaways with timestamps
     - Overall summary
+    - Quality assessment with scoring details
+    - Processing metadata (iterations, refinement cycles)
 
     Content can be either a YouTube URL or transcript text.
+    The workflow includes automatic quality checking and refinement iterations.
     """
     start_time = datetime.now()
 
@@ -886,21 +895,28 @@ async def summarize_content(request: SummarizeRequest):
         if not os.getenv("GEMINI_API_KEY"):
             raise create_error_response(500, ERROR_MESSAGES["gemini_not_configured"])
 
-        log_and_print(f"🤖 Generating analysis for {request.content_type}")
+        log_and_print(f"🔧 Running full LangGraph workflow for {request.content_type}")
         log_and_print(f"📝 Content length: {len(request.content)} characters")
         log_and_print(f"📝 Content preview: {request.content[:200]}...")
 
-        # Use existing summarize_video function
-        analysis_result = await asyncio.get_event_loop().run_in_executor(None, summarize_video, request.content)
+        # Use the LangGraph workflow directly to get complete result
+        def run_workflow():
+            from youtube_summarizer.summarizer import (
+                WorkflowInput,
+                create_compiled_graph,
+            )
 
-        # Convert to dictionary format
-        analysis = {"title": analysis_result.title, "overall_summary": analysis_result.overall_summary, "chapters": [{"header": c.header, "summary": c.summary, "key_points": c.key_points} for c in analysis_result.chapters], "key_facts": analysis_result.key_facts, "takeaways": analysis_result.takeaways, "chapter_count": len(analysis_result.chapters), "total_key_facts": len(analysis_result.key_facts), "total_takeaways": len(analysis_result.takeaways)}
+            graph = create_compiled_graph()
+            result = graph.invoke(WorkflowInput(transcript_or_url=request.content))
+            return WorkflowOutput.model_validate(result)
+
+        workflow_result = await run_in_executor(run_workflow)
 
         processing_time = datetime.now() - start_time
 
-        log_and_print(f"✅ Analysis generated successfully")
+        log_and_print(f"✅ Analysis completed with {workflow_result.quality.percentage_score}% quality after {workflow_result.iteration_count} iterations")
 
-        return SummarizeResponse(status="success", message="Analysis generated successfully", analysis=analysis, processing_time=f"{processing_time.total_seconds():.1f}s")
+        return SummarizeResponse(status="success", message="Analysis completed successfully", analysis=workflow_result.analysis, quality=workflow_result.quality, processing_time=f"{processing_time.total_seconds():.1f}s", iteration_count=workflow_result.iteration_count)
 
     except HTTPException:
         raise
@@ -915,10 +931,176 @@ async def summarize_content(request: SummarizeRequest):
         raise create_error_response(413, error_msg)
     except Exception as e:
         processing_time = datetime.now() - start_time
-        error_msg = f"Analysis failed: {str(e)}"
+        error_msg = f"Full workflow analysis failed: {str(e)}"
         log_and_print(f"❌ {error_msg}")
 
         raise create_error_response(500, error_msg)
+
+
+@api_router.post("/stream-process")
+async def stream_process_video(request: YouTubeProcessRequest):
+    """
+    Stream complete video processing with real-time updates.
+
+    This endpoint combines transcript extraction and analysis with streaming:
+    - Real-time progress for transcript extraction
+    - Streaming analysis with partial results
+    - Quality checks and refinement iterations
+    - Complete final result
+    """
+    start_time = datetime.now()
+    cleaned_url = validate_url(request.url)
+    logs = []
+
+    async def generate_stream():
+        try:
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'step': 'start', 'message': 'Starting video processing...', 'url': cleaned_url, 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            # Step 1: Extract transcript
+            yield f"data: {json.dumps({'type': 'progress', 'step': 'transcript', 'message': 'Extracting transcript...', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            title, author, transcript, processing_method = await extract_transcript_with_fallback_async(cleaned_url, logs)
+
+            yield f"data: {json.dumps({'type': 'transcript_complete', 'step': 'transcript', 'data': {'title': title, 'author': author, 'method': processing_method, 'transcript_length': len(transcript)}, 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            if not request.generate_summary:
+                # Just return transcript
+                result = {"video_info": {"title": title, "author": author, "url": cleaned_url}, "transcript": transcript, "processing_method": processing_method, "logs": logs}
+                yield f"data: {json.dumps({'type': 'final_result', 'step': 'complete', 'data': result, 'timestamp': datetime.now().isoformat()})}\n\n"
+                return
+
+            # Step 2: Stream the analysis
+            yield f"data: {json.dumps({'type': 'progress', 'step': 'analysis', 'message': 'Starting AI analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            # Stream the LangGraph analysis
+            analysis_result = None
+            for chunk in stream_summarize_video(transcript):
+                # Convert Pydantic model to dict and add timestamp
+                chunk_dict = chunk.model_dump()
+                chunk_dict["timestamp"] = datetime.now().isoformat()
+                chunk_dict["type"] = "analysis_progress"
+
+                yield f"data: {json.dumps(chunk_dict)}\n\n"
+
+                # Capture final result
+                if chunk.is_complete and chunk.analysis:
+                    analysis_result = chunk_dict.get("analysis")
+
+                await asyncio.sleep(0.1)
+
+            # Send complete result
+            processing_time = datetime.now() - start_time
+            complete_result = {"video_info": {"title": title, "author": author, "url": cleaned_url}, "transcript": transcript, "analysis": analysis_result, "processing_method": processing_method, "processing_time": f"{processing_time.total_seconds():.1f}s", "logs": logs}
+
+            yield f"data: {json.dumps({'type': 'complete', 'step': 'done', 'data': complete_result, 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            log_and_print(f"✅ Streaming video processing completed in {processing_time.total_seconds():.1f}s")
+
+        except Exception as e:
+            error_msg = f"Streaming processing failed: {str(e)}"
+            log_and_print(f"❌ {error_msg}")
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg, 'logs': logs, 'timestamp': datetime.now().isoformat()})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
+
+
+@api_router.post("/summarize-stream")
+async def stream_summarize_content(request: StreamSummarizeRequest):
+    """
+    Stream AI analysis using LangGraph with real-time progress updates.
+
+    This endpoint uses the verified LangGraph streaming approach to provide:
+    - Real-time progress updates for each workflow step
+    - Partial results as they become available
+    - Quality checks and refinement iterations
+    - Final complete analysis with full graph state
+
+    The streaming prevents timeouts while providing comprehensive results.
+    """
+    if not os.getenv("GEMINI_API_KEY"):
+        raise create_error_response(500, ERROR_MESSAGES["gemini_not_configured"])
+
+    log_and_print(f"🌊 Starting LangGraph streaming analysis for {request.content_type}")
+    log_and_print(f"📝 Content length: {len(request.content)} characters")
+    log_and_print(f"📝 Content preview: {request.content[:200]}...")
+
+    async def generate_langgraph_stream():
+        start_time = datetime.now()
+
+        try:
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting LangGraph analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            # Stream the LangGraph workflow with progress updates
+            chunk_count = 0
+            final_result = None
+
+            for chunk in stream_summarize_video(request.content):
+                chunk_count += 1
+
+                # Convert Pydantic model to dict for JSON serialization
+                chunk_dict = chunk.model_dump()
+                chunk_dict["chunk_number"] = chunk_count
+                chunk_dict["timestamp"] = datetime.now().isoformat()
+
+                # Add progress information
+                if chunk.quality:
+                    chunk_dict["progress"] = {"iteration": chunk.iteration_count, "quality_score": chunk.quality.percentage_score, "is_acceptable": chunk.quality.is_acceptable, "total_score": f"{chunk.quality.total_score}/{chunk.quality.max_possible_score}"}
+                else:
+                    chunk_dict["progress"] = {"iteration": chunk.iteration_count, "status": "analysis_in_progress"}
+
+                # Add step identification
+                if chunk.analysis and not chunk.quality:
+                    chunk_dict["step"] = "initial_analysis"
+                elif chunk.analysis and chunk.quality and not chunk.is_complete:
+                    chunk_dict["step"] = "quality_check"
+                elif chunk.is_complete:
+                    chunk_dict["step"] = "final_result"
+                    final_result = chunk_dict
+
+                # Send the chunk
+                yield f"data: {json.dumps(chunk_dict)}\n\n"
+
+                # Small delay for streaming visibility
+                await asyncio.sleep(0.1)
+
+            # Send completion summary
+            processing_time = datetime.now() - start_time
+            completion_data = {"type": "complete", "message": "LangGraph analysis completed successfully", "processing_time": f"{processing_time.total_seconds():.1f}s", "total_chunks": chunk_count, "timestamp": datetime.now().isoformat()}
+
+            if final_result:
+                completion_data["final_analysis"] = {"title": final_result.get("analysis", {}).get("title"), "quality_score": final_result.get("quality", {}).get("percentage_score"), "chapters_count": len(final_result.get("analysis", {}).get("chapters", [])), "is_acceptable": final_result.get("quality", {}).get("is_acceptable")}
+
+            yield f"data: {json.dumps(completion_data)}\n\n"
+
+            log_and_print(f"✅ LangGraph streaming analysis completed in {processing_time.total_seconds():.1f}s")
+            log_and_print(f"📊 Total chunks processed: {chunk_count}")
+
+        except Exception as e:
+            error_msg = f"LangGraph streaming analysis failed: {str(e)}"
+            log_and_print(f"❌ {error_msg}")
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg, 'timestamp': datetime.now().isoformat()})}\n\n"
+
+    return StreamingResponse(
+        generate_langgraph_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
 
 
 # ================================

@@ -8,6 +8,8 @@ from youtube_summarizer.youtube_scrapper import (
     YouTubeScrapperResult,
 )
 
+example_url = "https://youtu.be/mJqnG6-7kSs"
+
 result_with_chapters = YouTubeScrapperResult(
     id="iYT2haVIgSM",
     thumbnail="https://img.youtube.com/vi/iYT2haVIgSM/maxresdefault.jpg",
