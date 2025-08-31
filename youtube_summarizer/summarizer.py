@@ -480,7 +480,11 @@ def should_continue_gemini(state: WorkflowState) -> str:
 
 def create_summarization_graph() -> StateGraph:
     """Create the summarization workflow graph with conditional routing."""
-    builder = StateGraph(WorkflowState, input=WorkflowInput, output=WorkflowOutput)
+    builder = StateGraph(
+        WorkflowState,
+        input_schema=WorkflowInput,
+        output_schema=WorkflowOutput,
+    )
 
     # Add nodes
     builder.add_node("gemini_analysis", gemini_analysis_node)

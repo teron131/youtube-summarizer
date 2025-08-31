@@ -783,15 +783,13 @@ async def root():
         ],
         "endpoints": {
             "validate_url": "/api/validate-url",
-            "video_info": "/api/video-info",
-            "transcript": "/api/transcript",
-            "summary": "/api/summary",
-            "process": "/api/process",
-            "generate": "/api/generate (Master API - orchestrates all capabilities)",
             "scrap": "/api/scrap (Extract video metadata and transcript)",
             "summarize": "/api/summarize (🔧 UPGRADED: Full LangGraph workflow with quality assessment)",
             "stream_process": "/api/stream-process (Streaming video processing with progress)",
             "summarize_stream": "/api/summarize-stream (LangGraph streaming with real-time progress)",
+            "process": "/api/process (Legacy - complete workflow)",
+            "generate": "/api/generate (Legacy - master API)",
+            "summary": "/api/summary (Legacy - basic summary)",
         },
         "workflow": {
             "tier_1": "Apify YouTube Scraper API",

@@ -35,18 +35,6 @@ class TestHealthAndInfo:
 class TestVideoAndScrap:
     """Video info and scraping tests using example_results.py."""
 
-    def test_video_info_success(self, client):
-        if not os.getenv("APIFY_API_KEY"):
-            pytest.skip("APIFY_API_KEY not set; skipping integration test")
-
-        from example_results import result_with_chapters
-
-        resp = client.post("/api/video-info", json={"url": result_with_chapters.url})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert isinstance(data["title"], str)
-        assert isinstance(data["author"], str)
-
     def test_scrap_success(self, client):
         if not os.getenv("APIFY_API_KEY"):
             pytest.skip("APIFY_API_KEY not set; skipping integration test")
@@ -60,6 +48,10 @@ class TestVideoAndScrap:
         assert data["cleaned_url"].startswith("https://www.youtube.com/watch?v=")
         assert "video_info" in data
         assert "transcript" in data
+        # Test that video_info contains expected fields
+        video_info = data["video_info"]
+        assert isinstance(video_info["title"], str)
+        assert isinstance(video_info["author"], str)
 
 
 @pytest.mark.integration

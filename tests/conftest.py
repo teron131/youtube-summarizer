@@ -12,6 +12,14 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def pytest_configure(config):
+    """Register custom pytest markers."""
+    config.addinivalue_line("markers", "integration: marks tests as integration tests (may require API keys)")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests (no external dependencies)")
+    config.addinivalue_line("markers", "slow: marks tests as slow running")
+    config.addinivalue_line("markers", "skip: marks tests to be skipped")
+
+
 @pytest.fixture
 def client():
     """FastAPI test client fixture."""
