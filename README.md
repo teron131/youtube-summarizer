@@ -5,53 +5,100 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 ## 🌟 Key Features
 
 - **🎯 Master API Endpoint**: Single `/api/generate` endpoint orchestrating all processing capabilities
-- **🔄 Multi-Tier Processing**: Hybrid approach with yt-dlp + Gemini AI fallbacks
-- **🎤 Smart Transcription**: Prioritizes existing captions, falls back to AI transcription
-- **🤖 AI Summarization**: Structured analysis using Google Gemini with thinking capabilities
+- **🔄 Multi-Tier Processing**: Apify scraper → yt-dlp + Fal.ai → LangGraph AI workflow
+- **🎤 Smart Transcription**: Prioritizes Apify transcript, falls back to yt-dlp + Fal.ai transcription
+- **🤖 AI Summarization**: LangGraph-powered self-checking workflow with dual AI provider support
 - **📊 Comprehensive APIs**: Granular endpoints for specific tasks plus master orchestrator
 - **🛡️ Robust Error Handling**: Graceful degradation with detailed logging
 - **⚡ High Performance**: FastAPI with async processing and optimized audio handling
 
 ## 🏗️ Architecture & Workflow
 
+### 📊 Overall System Architecture
+
 ```mermaid
 graph TD
     A[YouTube URL] --> B[Validate URL]
-    B --> C[Get Video Info<br/>📋 yt-dlp]
-    C --> D[Extract Transcript<br/>📝 yt-dlp captions]
-    D --> E{Transcript Found?}
-    E -->|Yes| F[AI Analysis<br/>🤖 Gemini]
+    B --> C[Apify Scraper<br/>📋 Extract Video Data]
+    C --> D[Get Transcript<br/>📝 Direct from YouTube]
+    D --> E{Transcript Available?}
+    E -->|Yes| F[LangGraph AI Workflow<br/>🔄 Self-Checking Analysis]
     E -->|No| G[Download Audio<br/>🎵 yt-dlp]
-    G --> H[Transcribe Audio<br/>🎤 Fal.ai]
+    G --> H[Transcribe Audio<br/>🎤 Fal.ai API]
     H --> F
-    F --> I[Generate Summary<br/>🤖 Gemini]
-    I --> J[Return Results]
+    F --> I[Return Complete Results]
     
-    style A fill:#e1f5fe
-    style B fill:#e1f5fe
-    style C fill:#2196F3,color:#fff
-    style D fill:#2196F3,color:#fff
-    style E fill:#e1f5fe
-    style G fill:#FF9800,color:#fff
-    style H fill:#FF9800,color:#fff
-    style F fill:#9C27B0,color:#fff
-    style I fill:#9C27B0,color:#fff
-    style J fill:#e8f5e8
+    style A fill:#424242,color:#fff
+    style B fill:#424242,color:#fff
+    style C fill:#1E88E5,color:#fff
+    style D fill:#1E88E5,color:#fff
+    style E fill:#424242,color:#fff
+    style G fill:#F9A825,color:#000
+    style H fill:#F9A825,color:#000
+    style F fill:#2E7D32,color:#fff
+    style I fill:#424242,color:#fff
+```
+
+### 🔄 LangGraph AI Workflow Detail
+
+The heart of our system is a sophisticated LangGraph workflow that ensures high-quality analysis through iterative refinement:
+
+```mermaid
+graph TD
+    START([Start]) --> ROUTE{Input Type?}
+    ROUTE -->|YouTube URL| GA[Gemini Analysis<br/>🤖 Direct URL Processing]
+    ROUTE -->|Text/Transcript| LA[LangChain Analysis<br/>🤖 Text Processing]
+    
+    GA --> GQ[Gemini Quality Check<br/>📊 Aspects Assessment]
+    LA --> LQ[LangChain Quality Check<br/>📊 Aspects Assessment]
+    
+    GQ --> GC{Quality >= Thresholdx<br/>OR Max Iterations?}
+    LQ --> LC{Quality >= Threshold<br/>OR Max Iterations?}
+    
+    GC -->|No| GR[Gemini Refinement<br/>🔧 Improve Analysis]
+    LC -->|No| LR[LangChain Refinement<br/>🔧 Improve Analysis]
+    
+    GR --> GQ
+    LR --> LQ
+    
+    GC -->|Yes| END([Final Analysis])
+    LC -->|Yes| END
+    
+    style START fill:#424242,color:#fff
+    style ROUTE fill:#424242,color:#fff
+    style GA fill:#8E24AA,color:#fff
+    style LA fill:#8E24AA,color:#fff
+    style GQ fill:#D84315,color:#fff
+    style LQ fill:#D84315,color:#fff
+    style GC fill:#424242,color:#fff
+    style LC fill:#424242,color:#fff
+    style GR fill:#26C6DA,color:#000
+    style LR fill:#26C6DA,color:#000
+    style END fill:#424242,color:#fff
 ```
 
 **🎨 Color Legend:**
-- 🔵 **Blue**: yt-dlp (metadata & captions)
-- 🟠 **Orange**: yt-dlp + Fal.ai (audio processing)
-- 🟣 **Purple**: Gemini AI (analysis & summarization)
-- ⚪ **Light**: Generic processing steps
+- 🔵 **Blue**: Apify Scraper (metadata & transcript extraction)
+- 🟠 **Amber**: Fallback processing (yt-dlp + Fal.ai transcription)
+- 🟣 **Purple**: AI Analysis (Gemini/LangChain)
+- 🟥 **Deep Orange**: Quality Assessment
+- 🟢 **Dark Green**: LangGraph Final Processing
+- 🔷 **Cyan**: Refinement steps (improve analysis)
+- ⚫ **Dark Gray**: Decision points & flow control
+
+### 🧠 LangGraph Workflow Features
+
+- **🎯 Dual AI Provider Support**: Automatically routes between Gemini SDK (for YouTube URLs) and LangChain (for text)
+- **🔄 Iterative Refinement**: Quality checking with optional improvement cycles
+- **⚡ Streaming Support**: Real-time progress updates through workflow states
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- FFmpeg (for audio processing)
-- API Keys: `FAL_KEY`, `GEMINI_API_KEY`
+- FFmpeg (for audio processing fallback)
+- API Keys: `APIFY_API_KEY`, `GEMINI_API_KEY`, `FAL_KEY`, `OPENROUTER_API_KEY` (optional)
 
 ### 1. Installation
 
@@ -80,8 +127,10 @@ cp .env_example .env
 
 Required environment variables:
 ```env
-FAL_KEY=your_fal_api_key
+APIFY_API_KEY=your_apify_api_key
 GEMINI_API_KEY=your_gemini_api_key
+FAL_KEY=your_fal_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key  # Optional
 PORT=8080
 HOST=0.0.0.0
 ```
@@ -110,17 +159,13 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 
 ### 🌟 Master Endpoint
 
-#### POST `/api/generate` - Comprehensive Video Analysis
-**The one-stop-shop for complete YouTube video processing**
+#### POST `/scrap` - Video Scraping and Transcript Extraction
+**Extract video metadata and transcript using Apify scraper**
 
 **Request:**
 ```json
 {
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "include_transcript": true,
-  "include_summary": true,
-  "include_analysis": true,
-  "include_metadata": true
+  "url": "https://www.youtube.com/watch?v=VIDEO_ID"
 }
 ```
 
@@ -128,158 +173,85 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 ```json
 {
   "status": "success",
-  "message": "Comprehensive video analysis completed successfully",
-  "video_info": {
-    "title": "Video Title",
-    "author": "Channel Name",
-    "duration": "574s",
-    "duration_seconds": 574,
-    "thumbnail": "thumbnail_url",
-    "view_count": 123456,
-    "upload_date": "2024-01-01",
-    "url": "cleaned_url"
-  },
-  "transcript": "Full transcript text (8767 characters)...",
-  "summary": "**Video Title**\n\n**Overall Summary:**\nDetailed summary...",
+  "message": "Video scraped successfully",
+  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "title": "Video Title",
+  "author": "Channel Name",
+  "transcript": "Full transcript text with chapter formatting...",
+  "duration": "00:06:32",
+  "thumbnail": "https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg",
+  "view_count": 13462116,
+  "processing_time": "7.5s",
+  "timestamp": "2025-01-01T12:00:00.000Z"
+}
+```
+
+### 📋 Analysis Endpoints
+
+#### POST `/summarize` - LangGraph Analysis
+Generate AI summary from provided text content using LangGraph workflow.
+
+**Request:**
+```json
+{
+  "content": "Long text content to summarize...",
+  "content_type": "transcript"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Analysis completed successfully",
   "analysis": {
-    "title": "Video Title",
-    "overall_summary": "Comprehensive overview...",
+    "title": "Extracted Title",
+    "summary": "Comprehensive summary...",
+    "takeaways": ["Key insight 1", "Key insight 2"],
+    "key_facts": ["Important fact 1", "Important fact 2"],
     "chapters": [
       {
-        "header": "Chapter 1 Title",
+        "header": "Chapter Title",
         "summary": "Chapter content...",
         "key_points": ["Point 1", "Point 2"]
       }
     ],
-    "key_facts": ["Fact 1", "Fact 2"],
-    "takeaways": ["Takeaway 1", "Takeaway 2"],
-    "chapter_count": 3,
-    "total_key_facts": 5,
-    "total_takeaways": 4
+    "keywords": ["keyword1", "keyword2", "keyword3"]
   },
-  "metadata": {
-    "total_processing_time": "36.7s",
-    "start_time": "2025-01-01T12:00:00",
-    "end_time": "2025-01-01T12:00:37",
-    "api_version": "2.0.0",
-    "original_url": "original_input",
-    "cleaned_url": "normalized_url",
-    "steps_completed": 4,
-    "steps_total": 4
-  },
-  "processing_details": {
-    "url_validation": "success",
-    "metadata_extraction": "success",
-    "transcript_extraction": "success (hybrid_loader)",
-    "summary_generation": "success"
-  },
-  "logs": ["🚀 Starting comprehensive analysis...", "✅ URL validated...", "..."]
+  "quality": null,
+  "processing_time": "15.2s",
+  "iteration_count": 1,
+  "timestamp": "2025-01-01T12:00:00.000Z"
 }
 ```
 
-### 📋 Granular Endpoints
-
-#### POST `/api/process` - Legacy Full Processing
-Complete processing with original format (maintained for compatibility).
+#### POST `/stream-summarize` - Streaming Analysis
+Real-time streaming updates of the LangGraph workflow progress.
 
 **Request:**
 ```json
 {
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "generate_summary": true
+  "content": "Long text content to summarize...",
+  "content_type": "transcript"
 }
 ```
 
-#### POST `/api/transcript` - Transcript Only
-Extract transcript using multi-tier approach without AI analysis.
-
-**Request:**
+**Response Stream (Server-Sent Events):**
 ```json
-{
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID"
-}
+// Initial status
+data: {"type": "status", "message": "Starting analysis...", "timestamp": "2025-01-01T12:00:00.000Z"}
+
+// Workflow progress updates
+data: {"transcript_or_url": "content...", "analysis": null, "quality": null, "iteration_count": 0, "is_complete": false, "timestamp": "2025-01-01T12:00:01.000Z", "chunk_number": 0}
+
+data: {"transcript_or_url": "content...", "analysis": {...}, "quality": {"percentage_score": 85}, "iteration_count": 1, "is_complete": false, "timestamp": "2025-01-01T12:00:15.000Z", "chunk_number": 1}
+
+// Final completion
+data: {"type": "complete", "message": "Analysis completed", "processing_time": "25.3s", "total_chunks": 3, "timestamp": "2025-01-01T12:00:25.000Z"}
 ```
 
-**Response:**
-```json
-{
-  "title": "Video Title",
-  "author": "Channel Name",
-  "transcript": "Full transcript text...",
-  "url": "cleaned_url",
-  "processing_time": "7.5s"
-}
-```
-
-#### POST `/api/summary` - Text Summarization
-Generate AI summary from provided text content.
-
-**Request:**
-```json
-{
-  "text": "Long text content to summarize..."
-}
-```
-
-**Response:**
-```json
-{
-  "title": "Extracted Title",
-  "summary": "Formatted summary with chapters...",
-  "analysis": {
-    "chapters": [...],
-    "key_facts": [...],
-    "takeaways": [...],
-    "overall_summary": "..."
-  },
-  "processing_time": "15.2s"
-}
-```
-
-#### POST `/api/video-info` - Metadata Only
-Extract basic video information without processing content.
-
-**Request:**
-```json
-{
-  "url": "https://www.youtube.com/watch?v=VIDEO_ID"
-}
-```
-
-**Response:**
-```json
-{
-  "title": "Video Title",
-  "author": "Channel Name",
-  "duration": "574s",
-  "thumbnail": "thumbnail_url",
-  "view_count": 123456,
-  "upload_date": "2024-01-01",
-  "url": "cleaned_url"
-}
-```
-
-#### POST `/api/validate-url` - URL Validation
-Validate and clean YouTube URL format.
-
-**Request:**
-```json
-{
-  "url": "https://youtu.be/VIDEO_ID?t=123"
-}
-```
-
-**Response:**
-```json
-{
-  "is_valid": true,
-  "cleaned_url": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "original_url": "https://youtu.be/VIDEO_ID?t=123"
-}
-```
-
-#### GET `/api/health` - Health Check
-System status and API availability.
+#### GET `/health` - Health Check
+System status and API availability with environment configuration.
 
 **Response:**
 ```json
@@ -287,42 +259,158 @@ System status and API availability.
   "status": "healthy",
   "message": "YouTube Summarizer API is running",
   "timestamp": "2025-01-01T12:00:00.000Z",
-  "version": "2.0.0"
+  "version": "3.0.0",
+  "environment": {
+    "gemini_configured": true,
+    "apify_configured": true
+  }
 }
 ```
 
-## 🔄 Multi-Tier Processing Architecture
+## 🔄 Processing Architecture
 
-### Tier 1: Hybrid Loader (pytubefix + yt-dlp)
-- **Primary Method**: Fast caption extraction when available
-- **Fallback**: Audio download and transcription if captions fail
-- **Advantages**: Fastest processing, handles most videos
-- **Success Rate**: ~85% of videos
+### Tier 1: Apify YouTube Scraper
+- **Primary Method**: Direct transcript and metadata extraction via Apify API
+- **Data Extracted**: Title, author, duration, view count, thumbnail, full transcript with timestamps
+- **Chapter Support**: Automatic chapter detection and transcript organization
+- **Fallback**: yt-dlp audio download + Fal.ai transcription when transcript unavailable
 
-### Tier 2: Gemini Direct URL Processing
-- **Method**: Direct YouTube URL analysis by Gemini AI
-- **Use Case**: When traditional methods fail
-- **Advantages**: Works with any accessible video
-- **Success Rate**: ~95% combined with Tier 1
+### Tier 2: LangGraph AI Analysis
+- **Method**: Dual-provider AI processing with quality assessment
+- **Gemini Path**: Direct YouTube URL processing for maximum context
+- **LangChain Path**: Text-based analysis with OpenRouter model access
+- **Quality Control**: Automated quality checking with iterative refinement
 
 ### Tier 3: Graceful Degradation
 - **Method**: Partial processing with available components
-- **Response**: Detailed error information and processing logs
-- **Advantages**: Never completely fails, always provides useful information
+- **Error Handling**: Detailed logging and user-friendly error messages
+
+## 🔄 LangGraph AI Workflow Architecture
+
+### 🎯 Core Components
+
+The LangGraph workflow implements a sophisticated self-checking analysis system with the following components:
+
+#### 📊 Quality Assessment Framework
+- Evaluates analysis completeness, structure, grammar, timestamps, content filtering, and language consistency
+
+#### 🔀 Dual Processing Paths
+
+**🤖 Gemini Path (YouTube URLs)**
+- Direct URL processing using Gemini SDK
+- File URI integration for efficient video analysis
+- Thinking capabilities with configurable budget
+- Native structured output with Pydantic schemas
+
+**🔗 LangChain Path (Text/Transcripts)**
+- OpenRouter API integration for flexible model access
+- Prompt templates for consistent analysis structure
+- Structured output parsing with validation
+- Support for multiple LLM providers
+
+#### ⚙️ Workflow Configuration
+
+```python
+# Global workflow settings
+ANALYSIS_MODEL = "google/gemini-2.5-flash-lite"
+QUALITY_MODEL = "google/gemini-2.5-pro"
+MIN_QUALITY_SCORE = 90  # 90% quality threshold
+MAX_ITERATIONS = 2      # Maximum refinement cycles
+```
+
+#### 🔄 Processing States
+
+```python
+class WorkflowState(BaseModel):
+    # Input
+    transcript_or_url: str
+    
+    # Analysis results
+    analysis: Optional[Analysis] = None
+    quality: Optional[Quality] = None
+    
+    # Control fields
+    iteration_count: int = Field(default=0)
+    is_complete: bool = Field(default=False)
+```
+
+### 🚀 Workflow Execution
+
+#### Standard Processing
+```python
+from youtube_summarizer.summarizer import summarize_video
+
+# Single execution with final result
+analysis = summarize_video("https://www.youtube.com/watch?v=VIDEO_ID")
+print(f"Quality Score: {analysis.quality_score}%")
+```
+
+#### Streaming Processing
+```python
+from youtube_summarizer.summarizer import stream_summarize_video
+
+# Real-time progress updates
+for state in stream_summarize_video("transcript text"):
+    print(f"Iteration {state.iteration_count}: {state.quality.percentage_score if state.quality else 'Processing'}%")
+```
+
+### 🔧 Technical Implementation Details
+
+#### Node Functions
+- **`langchain_or_gemini()`**: Routes input based on type (URL vs text)
+- **`*_analysis_node()`**: Initial AI analysis generation
+- **`*_quality_node()`**: Quality assessment and scoring
+- **`*_refinement_node()`**: Iterative improvement based on feedback
+- **`should_continue_*()`**: Conditional routing for workflow control
+
+#### Graph Structure
+```python
+# Conditional routing from START
+builder.add_conditional_edges(
+    START,
+    langchain_or_gemini,
+    {
+        "langchain_analysis": "langchain_analysis",
+        "gemini_analysis": "gemini_analysis",
+    },
+)
+
+# Quality-based refinement loops
+builder.add_conditional_edges(
+    "gemini_quality",
+    should_continue_gemini,
+    {
+        "gemini_refinement": "gemini_refinement",
+        END: END,
+    },
+)
+```
+
+### 📈 Processing Configuration
+
+- **Quality Threshold**: 90% minimum score for acceptance
+- **Max Iterations**: 2 refinement cycles maximum
+- **Processing Time**: 15-45 seconds depending on content complexity
 
 ## 🛠️ Development
 
 ### Package Usage
 
 ```python
-from youtube_summarizer.youtube_loader import youtube_loader
-from youtube_summarizer.summarizer import summarize_video, is_youtube_url, clean_youtube_url
+from youtube_summarizer.youtube_scrapper import scrap_youtube
+from youtube_summarizer.summarizer import summarize_video, stream_summarize_video
+from youtube_summarizer.utils import is_youtube_url, clean_youtube_url
 
-# Multi-tier video processing
-content = youtube_loader("https://www.youtube.com/watch?v=VIDEO_ID")
+# Video scraping with Apify
+result = scrap_youtube("https://www.youtube.com/watch?v=VIDEO_ID")
+print(result.title, result.author, len(result.transcript))
 
-# AI summarization
-analysis = summarize_video("video content or URL")
+# AI summarization (LangGraph workflow)
+analysis = summarize_video("transcript content or YouTube URL")
+
+# Streaming analysis with progress updates
+for state in stream_summarize_video("transcript content"):
+    print(f"Iteration {state.iteration_count}, Complete: {state.is_complete}")
 
 # URL utilities
 is_valid = is_youtube_url(url)
@@ -351,38 +439,37 @@ ruff check .
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| `FAL_KEY` | ✅ | Fal.ai API key for transcription | - |
+| `APIFY_API_KEY` | ✅ | Apify API key for YouTube scraping | - |
 | `GEMINI_API_KEY` | ✅ | Google Gemini API key for AI analysis | - |
+| `FAL_KEY` | ✅ | Fal.ai API key for audio transcription fallback | - |
+| `OPENROUTER_API_KEY` | ❌ | OpenRouter API key for LangChain models | - |
 | `PORT` | ❌ | Server port | 8080 |
 | `HOST` | ❌ | Server host | 0.0.0.0 |
 
 ### Core Dependencies
 
-- **FastAPI**: Modern web framework with automatic API documentation
-- **yt-dlp**: Robust video downloader for audio extraction
-- **google-genai**: Official Google Gemini AI client
-- **fal-client**: High-quality transcription service
+- **FastAPI**: Web framework with automatic API documentation
+- **requests**: HTTP client for Apify API integration
+- **yt-dlp**: Video downloader for audio extraction fallback
+- **google-genai**: Google Gemini AI client for direct URL processing
+- **langchain**: LLM framework for flexible AI provider integration
+- **langgraph**: Workflow orchestration for analysis pipeline
+- **fal-client**: Audio transcription service
 - **pydantic**: Data validation and settings management
-- **uvicorn**: Lightning-fast ASGI server
+- **uvicorn**: ASGI server
 
-## 📊 Performance & Reliability
+## 📊 Performance & Processing
 
 ### Processing Times
-- **Caption Extraction**: 5-10 seconds (Tier 1)
-- **Audio Transcription**: 30-60 seconds (Tier 1 fallback)
-- **Direct AI Analysis**: 20-40 seconds (Tier 2)
-- **Complete Processing**: 25-70 seconds total
-
-### Success Rates
-- **Tier 1 (Hybrid)**: ~85% success rate
-- **Tier 2 (Gemini)**: ~95% combined success rate
-- **Overall Reliability**: 99%+ with graceful degradation
+- **Apify Scraping**: 5-15 seconds (metadata + transcript extraction)
+- **Audio Transcription**: 30-60 seconds (yt-dlp + Fal.ai fallback)
+- **LangGraph AI Analysis**: 15-45 seconds (with quality checking)
+- **Complete Processing**: 20-90 seconds total depending on method
 
 ### Error Handling
 - Comprehensive logging for debugging
 - Step-by-step processing status tracking
 - Graceful degradation when components fail
-- Detailed error messages with suggested solutions
 
 ## 🔍 Troubleshooting
 
@@ -405,8 +492,10 @@ sudo apt update && sudo apt install ffmpeg
 cat .env
 
 # Ensure keys are set
-echo $FAL_KEY
+echo $APIFY_API_KEY
 echo $GEMINI_API_KEY
+echo $FAL_KEY
+echo $OPENROUTER_API_KEY
 ```
 
 **Import Errors:**
@@ -420,66 +509,6 @@ python -c "import youtube_summarizer; print('OK')"
 
 **Processing Failures:**
 - Check logs in API response for detailed error information
-- Verify video is publicly accessible
+- Verify video is publicly accessible and not age-restricted
 - Ensure API keys have sufficient credits
-- Try the `/api/validate-url` endpoint first
-
-## 📚 Project Structure
-
-```
-youtube-summarizer/
-├── app.py                    # FastAPI application with all endpoints
-├── youtube_summarizer/       # Core processing modules
-│   ├── __init__.py          # Package initialization
-│   ├── youtube_loader.py    # Multi-tier video processing
-│   ├── transcriber.py       # Audio transcription (Fal.ai)
-│   ├── summarizer.py        # AI analysis (Gemini)
-│   └── utils.py            # Utility functions
-├── pyproject.toml          # Modern package configuration
-├── requirements.txt        # Dependencies
-├── .env_example           # Environment template
-└── start.sh              # Production startup script
-```
-
-### API Architecture
-
-- **`app.py`**: Complete FastAPI application with comprehensive endpoints
-- **Request/Response Models**: Full Pydantic validation for all endpoints
-- **Error Handling**: Detailed error reporting with processing logs
-- **Async Processing**: Non-blocking request handling
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass (`pytest`)
-6. Format code (`black .` and `ruff check .`)
-7. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🔗 Quick Reference
-
-### Essential URLs
-- **API Server**: http://localhost:8080
-- **Interactive Docs**: http://localhost:8080/api/docs
-- **Alternative Docs**: http://localhost:8080/api/redoc
-- **Health Check**: http://localhost:8080/api/health
-- **OpenAPI Schema**: http://localhost:8080/openapi.json
-
-### Key Endpoints
-- **🌟 Master API**: `POST /api/generate` - Complete video analysis
-- **📝 Transcript**: `POST /api/transcript` - Text extraction only
-- **📋 Summary**: `POST /api/summary` - AI analysis only
-- **📊 Info**: `POST /api/video-info` - Metadata only
-- **✅ Validate**: `POST /api/validate-url` - URL validation
-
-### Quick Test
-```bash
-curl -X POST "http://localhost:8080/api/generate" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.youtube.com/watch?v=VIDEO_ID"}'
+- Test with `/health` endpoint to verify API configuration
