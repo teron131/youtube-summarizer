@@ -556,28 +556,15 @@ def summarize_video(transcript_or_url: str) -> Analysis:
     return result.analysis
 
 
-def stream_summarize_video(transcript_or_url: str) -> Generator[Dict, None, Analysis]:
-    """Stream the summarization process with progress updates using LangGraph's stream_mode='updates'."""
+def stream_summarize_video(transcript_or_url: str) -> Generator[Dict, None, None]:
+    """Stream the summarization process with progress updates using LangGraph's stream_mode='updates'.
 
-    # Create and run the workflow with progress tracking
+    The final chunk will contain the complete graph state with the final analysis.
+    """
     graph = create_compiled_graph()
 
-    # Stream the workflow execution with progress updates
-    final_state = None
     for chunk in graph.stream(
         WorkflowInput(transcript_or_url=transcript_or_url),
         stream_mode="updates",
     ):
         yield chunk
-        # Keep track of the final state
-        final_state = chunk
-
-    # Extract final analysis from the last chunk
-    if final_state:
-        # The final state should contain the complete WorkflowState
-        for node_name, node_data in final_state.items():
-            if "analysis" in node_data:
-                return node_data["analysis"]
-
-    # Fallback - shouldn't reach here in normal operation
-    return None
