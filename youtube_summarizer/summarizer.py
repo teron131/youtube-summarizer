@@ -20,7 +20,7 @@ load_dotenv()
 
 # Global configuration
 ANALYSIS_MODEL = "google/gemini-2.5-pro"
-QUALITY_MODEL = "google/gemini-2.5-pro"
+QUALITY_MODEL = "google/gemini-2.5-flash"
 MIN_QUALITY_SCORE = 90
 MAX_ITERATIONS = 2
 
