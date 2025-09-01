@@ -443,7 +443,24 @@ async def stream_summarize(request: SummarizeRequest):
 
             chunk_count = 0
             for chunk in graph.stream(graph_input, stream_mode="values"):
-                chunk_dict = chunk.model_dump()
+                # Handle both dictionary (from LangGraph) and Pydantic model cases
+                if isinstance(chunk, dict):
+                    chunk_dict = chunk.copy()
+                else:
+                    chunk_dict = chunk.model_dump()
+
+                # Ensure all nested Pydantic models are serialized to dict
+                def serialize_nested(obj):
+                    if isinstance(obj, dict):
+                        return {k: serialize_nested(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [serialize_nested(item) for item in obj]
+                    elif hasattr(obj, "model_dump"):
+                        return obj.model_dump()
+                    else:
+                        return obj
+
+                chunk_dict = serialize_nested(chunk_dict)
                 chunk_dict["timestamp"] = datetime.now().isoformat()
                 chunk_dict["chunk_number"] = chunk_count
 
