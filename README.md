@@ -177,7 +177,7 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
   "url": "https://www.youtube.com/watch?v=VIDEO_ID",
   "title": "Video Title",
   "author": "Channel Name",
-  "transcript": "Full transcript text with chapter formatting...",
+  "transcript": "Transcript with chapter formatting...",
   "duration": "00:06:32",
   "thumbnail": "https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg",
   "view_count": 13462116,
@@ -271,7 +271,7 @@ System status and API availability with environment configuration.
 
 ### Tier 1: Apify YouTube Scraper
 - **Primary Method**: Direct transcript and metadata extraction via Apify API
-- **Data Extracted**: Title, author, duration, view count, thumbnail, full transcript with timestamps
+- **Data Extracted**: Title, author, duration, view count, thumbnail, transcript with timestamps
 - **Chapter Support**: Automatic chapter detection and transcript organization
 - **Fallback**: yt-dlp audio download + Fal.ai transcription when transcript unavailable
 
