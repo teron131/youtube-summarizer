@@ -26,7 +26,7 @@ MAX_ITERATIONS = 2
 
 # Translation configuration
 ENABLE_TRANSLATION = False
-TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
+TARGET_LANGUAGE = "zh"  # ISO language code (en, es, fr, de, etc.)
 
 
 class Chapter(BaseModel):

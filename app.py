@@ -25,8 +25,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from youtube_summarizer.summarizer import (
-    AVAILABLE_MODELS,
-    SUPPORTED_LANGUAGES,
     Analysis,
     GraphOutput,
     Quality,
