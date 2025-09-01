@@ -24,7 +24,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.summarizer import (
     Analysis,
     Quality,
@@ -119,6 +118,8 @@ class ScrapResponse(BaseResponse):
     duration: str | None = None
     thumbnail: str | None = None
     view_count: int | None = None
+    like_count: int | None = None
+    upload_date: str | None = None
     processing_time: str
 
 
@@ -184,6 +185,10 @@ def parse_scraper_result(result) -> dict[str, Any]:
             # Raw dict
             result_dict = result if isinstance(result, dict) else {}
 
+        # Map strictly to canonical fields defined in youtube_scrapper.py docs
+        like_count = result_dict.get("likeCountInt")
+        upload_date = result_dict.get("publishDateText")
+
         return {
             "url": result_dict.get("url", ""),
             "title": result_dict.get("title", "Unknown Title") or "Unknown Title",
@@ -192,6 +197,8 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "duration": result_dict.get("durationFormatted"),
             "thumbnail": result_dict.get("thumbnail"),
             "view_count": result_dict.get("viewCountInt"),
+            "like_count": like_count,
+            "upload_date": upload_date,
         }
     except Exception as e:
         # Fallback parsing for malformed results
@@ -201,9 +208,12 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "title": getattr(result, "title", "Unknown Title"),
             "author": "Unknown Author",
             "transcript": getattr(result, "transcript_only_text", ""),
-            "duration": None,
+            "duration": getattr(result, "durationFormatted", None),
             "thumbnail": getattr(result, "thumbnail", None),
             "view_count": getattr(result, "viewCountInt", None),
+            "like_count": getattr(result, "likeCountInt", None),
+            # Best effort; do not transform
+            "upload_date": getattr(result, "publishDateText", None),
         }
 
 
@@ -288,7 +298,7 @@ async def scrap_video(request: YouTubeRequest):
         result = await run_async_task(scrap_youtube, url)
         data = parse_scraper_result(result)
 
-        return ScrapResponse(status="success", message="Video scraped successfully", url=data["url"], title=data["title"], author=data["author"], transcript=data["transcript"], duration=data["duration"], thumbnail=data["thumbnail"], view_count=data["view_count"], processing_time=get_processing_time(start_time))
+        return ScrapResponse(status="success", message="Video scraped successfully", url=data["url"], title=data["title"], author=data["author"], transcript=data["transcript"], duration=data["duration"], thumbnail=data["thumbnail"], view_count=data["view_count"], like_count=data["like_count"], upload_date=data["upload_date"], processing_time=get_processing_time(start_time))
     except HTTPException:
         raise
     except Exception as e:
