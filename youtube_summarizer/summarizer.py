@@ -3,7 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-from typing import Dict, Generator, Literal, Optional, Union
+from typing import Generator, Literal, Optional
 
 from dotenv import load_dotenv
 from google.genai import Client, types
