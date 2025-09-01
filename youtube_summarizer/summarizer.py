@@ -24,11 +24,33 @@ QUALITY_MODEL = "google/gemini-2.5-flash"
 MIN_QUALITY_SCORE = 90
 MAX_ITERATIONS = 2
 
+# Translation configuration
+ENABLE_TRANSLATION = False
+TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
+
+# Model selection options (for UI dropdowns)
+# OpenRouter format, Gemini models will also work with Gemini SDK
+AVAILABLE_MODELS = {
+    "google/gemini-2.5-pro": "Gemini 2.5 Pro (Recommended)",
+    "google/gemini-2.5-flash": "Gemini 2.5 Flash (Fast)",
+    "anthropic/claude-sonnet-4": "Claude Sonnet 4",
+}
+
+# Supported languages for translation
+SUPPORTED_LANGUAGES = {
+    "zh": "Chinese",
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "de": "German",
+    "ru": "Russian",
+}
+
 
 class Chapter(BaseModel):
     header: str = Field(description="A descriptive title for the chapter")
-    key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
     summary: str = Field(description="A comprehensive summary of the chapter content")
+    key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
 
 
 class Analysis(BaseModel):
@@ -38,6 +60,7 @@ class Analysis(BaseModel):
     key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
     keywords: list[str] = Field(description="Keywords or topics mentioned in the video, max 3", max_length=3)
+    target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
 class Rate(BaseModel):
@@ -46,25 +69,25 @@ class Rate(BaseModel):
 
 
 class Quality(BaseModel):
-    completeness: Rate = Field(description="Rate for completeness: The entire video has been considered")
+    completeness: Rate = Field(description="Rate for completeness: The entire transcript has been considered")
     structure: Rate = Field(description="Rate for structure: The result is in desired structures")
     grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
     timestamp: Rate = Field(description="Rate for timestamp: The timestamps added are in correct format")
     no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
-    language: Rate = Field(description="Rate for language: Match the original language of the video or user requested")
+    correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
 
     # Computed properties
     @property
     def total_score(self) -> int:
         """Calculate total score based on all quality aspects."""
         score_map = {"Fail": 0, "Refine": 1, "Pass": 2}
-        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.language]
+        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.correct_language]
         return sum(score_map[aspect.rate] for aspect in aspects)
 
     @property
     def max_possible_score(self) -> int:
         """Calculate maximum possible score (all aspects = Pass)."""
-        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.language]) * 2
+        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.correct_language]) * 2
 
     @property
     def percentage_score(self) -> int:
@@ -77,13 +100,21 @@ class Quality(BaseModel):
         return self.percentage_score >= MIN_QUALITY_SCORE
 
 
-class WorkflowInput(BaseModel):
+class GraphInput(BaseModel):
     """Input for the summarization workflow."""
 
     transcript_or_url: str
 
+    # Model selection
+    analysis_model: str = Field(default=ANALYSIS_MODEL)
+    quality_model: str = Field(default=QUALITY_MODEL)
 
-class WorkflowOutput(BaseModel):
+    # Translation options
+    enable_translation: bool = Field(default=ENABLE_TRANSLATION)
+    target_language: str = Field(default=TARGET_LANGUAGE)
+
+
+class GraphOutput(BaseModel):
     """Output from the summarization workflow."""
 
     analysis: Analysis
@@ -91,11 +122,19 @@ class WorkflowOutput(BaseModel):
     iteration_count: int
 
 
-class WorkflowState(BaseModel):
+class GraphState(BaseModel):
     """Flattened state for the summarization workflow."""
 
     # Input
     transcript_or_url: str
+
+    # Model selection
+    analysis_model: str = Field(default=ANALYSIS_MODEL)
+    quality_model: str = Field(default=QUALITY_MODEL)
+
+    # Translation options
+    enable_translation: bool = Field(default=ENABLE_TRANSLATION)
+    target_language: str = Field(default=TARGET_LANGUAGE)
 
     # Analysis results
     analysis: Optional[Analysis] = None
@@ -106,15 +145,24 @@ class WorkflowState(BaseModel):
     is_complete: bool = Field(default=False)
 
 
-# Prompts
-ANALYSIS_PROMPT = """Analyze the video/transcript according to the schema.
+# Prompt templates
+def get_analysis_prompt(state: GraphState) -> str:
+    """Generate analysis prompt with optional translation instructions."""
+    base_prompt = """Analyze the video/transcript according to the schema.
 The transcript provides starting timestamps for each sentence.
 Add the timestamps [TIMESTAMP] at the end of the takeaways and key facts if available.
 Consider the chapters (headers) if given but not necessary.
-Ignore the promotional and meaningless content.
-Follow the original language."""
+Ignore the promotional and meaningless content."""
 
-QUALITY_PROMPT = """Evaluate the quality of this video analysis on these 6 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
+    if state.enable_translation:
+        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        base_prompt += f"\n\nIMPORTANT: Translate the entire analysis to {language_name} ({state.target_language}) while maintaining structure and natural fluency."
+    return base_prompt
+
+
+def get_quality_prompt(state: GraphState) -> str:
+    """Generate quality evaluation prompt with optional translation context."""
+    base_prompt = """Evaluate the quality of this video analysis on these 6 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
 
 Scoring Guide:
 - "Fail" = Poor/Incomplete/Inaccurate (needs significant improvement)
@@ -126,13 +174,34 @@ Aspects to evaluate:
 2. Structure: The result is in desired structures
 3. Grammar: No typos, grammatical mistakes, appropriate wordings
 4. Timestamp: The timestamps added are in correct format
-5. No Garbage: The promotional and meaningless content are removed
-6. Language: Match the original language of the video or user requested
+5. No Garbage: The promotional and meaningless content are removed"""
+
+    if state.enable_translation:
+        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        base_prompt += f"""
+6. Correct Language: Content is properly translated to {language_name} and maintains quality"""
+    else:
+        base_prompt += """
+6. Correct Language: Match the original language of the video or user requested"""
+
+    base_prompt += """
 
 Provide rates and reasons for each aspect. The total score will be calculated automatically."""
+    return base_prompt
 
 
-IMPROVEMENT_PROMPT = """Improve the analysis based on the feedback while maintaining the same structure and format."""
+def get_improvement_prompt(state: GraphState) -> str:
+    """Generate improvement prompt with optional translation context."""
+    base_prompt = """Improve the analysis based on the feedback while maintaining the same structure and format."""
+
+    if state.enable_translation:
+        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        base_prompt += f"""
+IMPORTANT: Ensure all improvements maintain proper translation to {language_name} ({state.target_language}).
+- Keep all content translated to {language_name}
+- Maintain translation quality while addressing the specific feedback issues"""
+
+    return base_prompt
 
 
 def langchain_llm(model: str) -> BaseChatModel:
@@ -177,8 +246,8 @@ class ContextProcessor:
 ### No Garbage: {quality.no_garbage.rate}
 {quality.no_garbage.reason}
 
-### Language: {quality.language.rate}
-{quality.language.reason}
+### Correct Language: {quality.correct_language.rate}
+{quality.correct_language.reason}
 
 ## Original Analysis:
 
@@ -209,241 +278,229 @@ Chapters: {len(analysis.chapters)} chapters
 """
 
 
-class LangChainProcessor(ContextProcessor):
-    """Handles analysis processing using LangChain."""
-
-    @staticmethod
-    def generate_analysis(transcript: str) -> Analysis:
-        """Generate initial analysis using LangChain."""
-        print(f"📝 Sending transcript text to LangChain LLM: {len(transcript)} characters")
-        print(f"📝 Text preview: {transcript[:200]}...")
-
-        llm = langchain_llm(ANALYSIS_MODEL)
-        structured_llm = llm.with_structured_output(Analysis)
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", ANALYSIS_PROMPT),
-                ("human", "{content}"),
-            ]
-        )
-
-        chain = prompt | structured_llm
-        result: Analysis = chain.invoke({"content": transcript})
-        print(f"📊 LangChain analysis completed")
-        return result
-
-    @staticmethod
-    def check_quality(analysis: Analysis, transcript: str) -> Quality:
-        """Check the quality of the generated analysis."""
-        print("🔍 Performing quality check with LangChain...")
-
-        llm = langchain_llm(QUALITY_MODEL)
-        structured_llm = llm.with_structured_output(Quality)
-
-        analysis_text = ContextProcessor.analysis_to_text(analysis)
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", QUALITY_PROMPT),
-                ("human", "{analysis_text}"),
-            ]
-        )
-
-        chain = prompt | structured_llm
-        quality: Quality = chain.invoke({"analysis_text": analysis_text})
-
-        # is_acceptable is now computed automatically by the Quality model
-        print(f"📈 LangChain quality breakdown:")
-        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-        print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
-        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-        print(f"Language: {quality.language.rate} - {quality.language.reason}")
-        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
-
-        if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
-
-        return quality
-
-    @staticmethod
-    def refine_analysis(analysis: Analysis, quality: Quality, transcript: str) -> Analysis:
-        """Refine the analysis based on quality feedback."""
-        print("🔧 Refining analysis with LangChain...")
-
-        llm = langchain_llm(ANALYSIS_MODEL)
-        structured_llm = llm.with_structured_output(Analysis)
-
-        improvement_prompt = ContextProcessor.create_improvement_prompt(analysis, quality)
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", IMPROVEMENT_PROMPT),
-                ("human", "{improvement_prompt}"),
-            ]
-        )
-
-        chain = prompt | structured_llm
-        result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
-        print(f"✨ LangChain analysis refined")
-        return result
-
-
-class GeminiProcessor(ContextProcessor):
-    """Handles analysis processing using Gemini SDK."""
-
-    @staticmethod
-    def generate_analysis(youtube_url: str) -> Analysis:
-        """Generate initial analysis using Gemini SDK."""
-        print(f"🔗 Processing YouTube URL with Gemini SDK: {youtube_url}")
-
-        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        response = client.models.generate_content(
-            model=ANALYSIS_MODEL.split("/")[1] if "google/" in ANALYSIS_MODEL else "gemini-2.5-pro",
-            contents=types.Content(
-                parts=[
-                    types.Part(file_data=types.FileData(file_uri=youtube_url)),
-                ]
-            ),
-            config=types.GenerateContentConfig(
-                system_instruction=ANALYSIS_PROMPT,
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=Analysis,
-                thinking_config=types.ThinkingConfig(thinking_budget=2048),
-            ),
-        )
-
-        result = response.parsed
-        print(f"📊 Gemini SDK analysis completed")
-        return result
-
-    @staticmethod
-    def check_quality(analysis: Analysis, youtube_url: str) -> Quality:
-        """Check quality using Gemini SDK."""
-        print("🔍 Performing quality check with Gemini SDK...")
-
-        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        analysis_text = ContextProcessor.analysis_to_text(analysis)
-
-        response = client.models.generate_content(
-            model=QUALITY_MODEL.split("/")[1] if "google/" in QUALITY_MODEL else "gemini-2.5-flash",
-            contents=types.Content(
-                parts=[
-                    types.Part(file_data=types.FileData(file_uri=youtube_url)),
-                    types.Part(text=analysis_text),
-                ]
-            ),
-            config=types.GenerateContentConfig(
-                system_instruction=QUALITY_PROMPT,
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=Quality,
-                thinking_config=types.ThinkingConfig(thinking_budget=1024),
-            ),
-        )
-
-        quality: Quality = response.parsed
-
-        # is_acceptable is now computed automatically by the Quality model
-        print(f"📈 Gemini quality breakdown:")
-        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-        print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
-        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-        print(f"Language: {quality.language.rate} - {quality.language.reason}")
-        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
-
-        if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
-
-        return quality
-
-    @staticmethod
-    def refine_analysis(analysis: Analysis, quality: Quality, youtube_url: str) -> Analysis:
-        """Refine analysis using Gemini SDK."""
-        print("🔧 Refining analysis with Gemini SDK...")
-
-        client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-        improvement_prompt = ContextProcessor.create_improvement_prompt(analysis, quality)
-
-        response = client.models.generate_content(
-            model=ANALYSIS_MODEL.split("/")[1] if "google/" in ANALYSIS_MODEL else "gemini-2.5-pro",
-            contents=types.Content(
-                parts=[
-                    types.Part(file_data=types.FileData(file_uri=youtube_url)),
-                    types.Part(text=improvement_prompt),
-                ]
-            ),
-            config=types.GenerateContentConfig(
-                system_instruction=IMPROVEMENT_PROMPT,
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=Analysis,
-                thinking_config=types.ThinkingConfig(thinking_budget=2048),
-            ),
-        )
-
-        result: Analysis = response.parsed
-        print(f"✨ Gemini SDK analysis refined")
-        return result
-
-
 # Workflow node functions
-def langchain_or_gemini(state: WorkflowState) -> str:
+def langchain_or_gemini(state: GraphState) -> str:
     """Determine whether to use Gemini SDK or LangChain based on input type."""
     return "gemini_analysis" if is_youtube_url(state.transcript_or_url) else "langchain_analysis"
 
 
-def langchain_analysis_node(state: WorkflowState) -> dict:
+def langchain_analysis_node(state: GraphState) -> dict:
     """Generate initial analysis using LangChain for transcript text."""
-    result: Analysis = LangChainProcessor.generate_analysis(state.transcript_or_url)
+    print(f"📝 Sending transcript text to LangChain LLM: {len(state.transcript_or_url)} characters")
+    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
+    print(f"📝 Using model: {state.analysis_model}")
+    if state.enable_translation:
+        print(f"🌐 Translation enabled: {SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)}")
+
+    llm = langchain_llm(state.analysis_model)
+    structured_llm = llm.with_structured_output(Analysis)
+
+    analysis_prompt = get_analysis_prompt(state)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", analysis_prompt),
+            ("human", "{content}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    result: Analysis = chain.invoke({"content": state.transcript_or_url})
+
+    result.target_language = state.target_language if state.enable_translation else None
+
+    print(f"📊 LangChain analysis completed")
     return {
         "analysis": result,
         "iteration_count": state.iteration_count + 1,
     }
 
 
-def langchain_quality_node(state: WorkflowState) -> dict:
+def langchain_quality_node(state: GraphState) -> dict:
     """Check the quality of the generated analysis using LangChain."""
-    quality: Quality = LangChainProcessor.check_quality(state.analysis, state.transcript_or_url)
+    print("🔍 Performing quality check with LangChain...")
+    print(f"🔍 Using model: {state.quality_model}")
+
+    llm = langchain_llm(state.quality_model)
+    structured_llm = llm.with_structured_output(Quality)
+
+    analysis_text = ContextProcessor.analysis_to_text(state.analysis)
+    quality_prompt = get_quality_prompt(state)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", quality_prompt),
+            ("human", "{analysis_text}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    quality: Quality = chain.invoke({"analysis_text": analysis_text})
+
+    # is_acceptable is now computed automatically by the Quality model
+    print(f"📈 LangChain quality breakdown:")
+    print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+    print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+    print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+    print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
+    print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
+    print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
+
+    if not quality.is_acceptable:
+        print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
+
     return {
         "quality": quality,
         "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
     }
 
 
-def langchain_refinement_node(state: WorkflowState) -> dict:
+def langchain_refinement_node(state: GraphState) -> dict:
     """Refine the analysis based on quality feedback using LangChain."""
-    result: Analysis = LangChainProcessor.refine_analysis(state.analysis, state.quality, state.transcript_or_url)
+    print("🔧 Refining analysis with LangChain...")
+    print(f"🔧 Using model: {state.analysis_model}")
+
+    llm = langchain_llm(state.analysis_model)
+    structured_llm = llm.with_structured_output(Analysis)
+
+    improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
+    improvement_system_prompt = get_improvement_prompt(state)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", improvement_system_prompt),
+            ("human", "{improvement_prompt}"),
+        ]
+    )
+
+    chain = prompt | structured_llm
+    result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
+
+    # Update translation metadata
+    result.target_language = state.target_language if state.enable_translation else None
+
+    print(f"✨ LangChain analysis refined")
     return {
         "analysis": result,
         "iteration_count": state.iteration_count + 1,
     }
 
 
-def gemini_analysis_node(state: WorkflowState) -> dict:
+def gemini_analysis_node(state: GraphState) -> dict:
     """Generate initial analysis using Gemini SDK for YouTube URLs."""
-    result: Analysis = GeminiProcessor.generate_analysis(state.transcript_or_url)
+    print(f"🔗 Processing YouTube URL with Gemini SDK: {state.transcript_or_url}")
+    print(f"🔗 Using model: {state.analysis_model}")
+    if state.enable_translation:
+        print(f"🌐 Translation enabled: {SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)}")
+
+    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+    analysis_prompt = get_analysis_prompt(state)
+
+    response = client.models.generate_content(
+        model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
+        contents=types.Content(
+            parts=[
+                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+            ]
+        ),
+        config=types.GenerateContentConfig(
+            system_instruction=analysis_prompt,
+            temperature=0,
+            response_mime_type="application/json",
+            response_schema=Analysis,
+            thinking_config=types.ThinkingConfig(thinking_budget=2048),
+        ),
+    )
+
+    result: Analysis = response.parsed
+
+    # Update translation metadata
+    result.target_language = state.target_language if state.enable_translation else None
+
+    print(f"📊 Gemini SDK analysis completed")
     return {
         "analysis": result,
         "iteration_count": state.iteration_count + 1,
     }
 
 
-def gemini_quality_node(state: WorkflowState) -> dict:
+def gemini_quality_node(state: GraphState) -> dict:
     """Check quality using Gemini SDK."""
-    quality: Quality = GeminiProcessor.check_quality(state.analysis, state.transcript_or_url)
+    print("🔍 Performing quality check with Gemini SDK...")
+    print(f"🔍 Using model: {state.quality_model}")
+
+    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+    analysis_text = ContextProcessor.analysis_to_text(state.analysis)
+    quality_prompt = get_quality_prompt(state)
+
+    response = client.models.generate_content(
+        model=state.quality_model.split("/")[1] if "google/" in state.quality_model else "gemini-2.5-flash",
+        contents=types.Content(
+            parts=[
+                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+                types.Part(text=analysis_text),
+            ]
+        ),
+        config=types.GenerateContentConfig(
+            system_instruction=quality_prompt,
+            temperature=0,
+            response_mime_type="application/json",
+            response_schema=Quality,
+            thinking_config=types.ThinkingConfig(thinking_budget=1024),
+        ),
+    )
+
+    quality: Quality = response.parsed
+
+    # is_acceptable is now computed automatically by the Quality model
+    print(f"📈 Gemini quality breakdown:")
+    print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+    print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+    print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+    print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
+    print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
+    print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
+
+    if not quality.is_acceptable:
+        print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
+
     return {
         "quality": quality,
         "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
     }
 
 
-def gemini_refinement_node(state: WorkflowState) -> dict:
+def gemini_refinement_node(state: GraphState) -> dict:
     """Refine analysis using Gemini SDK."""
-    result: Analysis = GeminiProcessor.refine_analysis(state.analysis, state.quality, state.transcript_or_url)
+    print("🔧 Refining analysis with Gemini SDK...")
+    print(f"🔧 Using model: {state.analysis_model}")
+
+    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+    improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
+    improvement_system_prompt = get_improvement_prompt(state)
+
+    response = client.models.generate_content(
+        model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
+        contents=types.Content(
+            parts=[
+                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+                types.Part(text=improvement_prompt),
+            ]
+        ),
+        config=types.GenerateContentConfig(
+            system_instruction=improvement_system_prompt,
+            temperature=0,
+            response_mime_type="application/json",
+            response_schema=Analysis,
+            thinking_config=types.ThinkingConfig(thinking_budget=2048),
+        ),
+    )
+
+    result: Analysis = response.parsed
+
+    # Update translation metadata
+    result.target_language = state.target_language if state.enable_translation else None
+
+    print(f"✨ Gemini SDK analysis refined")
     return {
         "analysis": result,
         "iteration_count": state.iteration_count + 1,
@@ -451,7 +508,7 @@ def gemini_refinement_node(state: WorkflowState) -> dict:
 
 
 # Conditional routing functions
-def should_continue_langchain(state: WorkflowState) -> str:
+def should_continue_langchain(state: GraphState) -> str:
     """Determine next step in LangChain workflow."""
     if state.is_complete:
         print(f"🔄 LangChain workflow complete (is_complete=True)")
@@ -464,7 +521,7 @@ def should_continue_langchain(state: WorkflowState) -> str:
         return END
 
 
-def should_continue_gemini(state: WorkflowState) -> str:
+def should_continue_gemini(state: GraphState) -> str:
     """Determine next step in Gemini workflow."""
     if state.is_complete:
         print(f"🔄 Gemini workflow complete (is_complete=True)")
@@ -479,11 +536,7 @@ def should_continue_gemini(state: WorkflowState) -> str:
 
 def create_summarization_graph() -> StateGraph:
     """Create the summarization workflow graph with conditional routing."""
-    builder = StateGraph(
-        WorkflowState,
-        input_schema=WorkflowInput,
-        output_schema=WorkflowOutput,
-    )
+    builder = StateGraph(GraphState)
 
     # Add nodes
     builder.add_node("gemini_analysis", gemini_analysis_node)
@@ -551,14 +604,14 @@ def summarize_video(transcript_or_url: str) -> Analysis:
     graph = create_compiled_graph()
 
     # LangGraph returns a dictionary instead of Pydantic model
-    result: dict = graph.invoke(WorkflowInput(transcript_or_url=transcript_or_url))
-    result: WorkflowOutput = WorkflowOutput.model_validate(result)
+    result: dict = graph.invoke(GraphInput(transcript_or_url=transcript_or_url))
+    result: GraphOutput = GraphOutput.model_validate(result)
 
     print(f"🎯 Final quality score: {result.quality.percentage_score}% (after {result.iteration_count} iterations)")
     return result.analysis
 
 
-def stream_summarize_video(transcript_or_url: str) -> Generator[WorkflowState, None, None]:
+def stream_summarize_video(transcript_or_url: str) -> Generator[GraphState, None, None]:
     """Stream the summarization process with progress updates using LangGraph's stream_mode='values'.
 
     This allows for both getting adhoc progress status updates and the final result.
@@ -569,7 +622,7 @@ def stream_summarize_video(transcript_or_url: str) -> Generator[WorkflowState, N
 
     # LangGraph returns a dictionary instead of Pydantic model
     for chunk in graph.stream(
-        WorkflowInput(transcript_or_url=transcript_or_url),
+        GraphInput(transcript_or_url=transcript_or_url),
         stream_mode="values",
     ):
-        yield WorkflowState.model_validate(chunk)
+        yield GraphState.model_validate(chunk)

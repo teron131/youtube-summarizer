@@ -30,6 +30,26 @@ class TestHealthAndInfo:
         assert data["status"] == "healthy"
         assert "environment" in data
 
+    def test_config_endpoint(self, client):
+        response = client.get("/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "available_models" in data
+        assert "supported_languages" in data
+        assert "default_analysis_model" in data
+        assert "default_quality_model" in data
+        assert "default_target_language" in data
+
+        # Check that models and languages are dictionaries
+        assert isinstance(data["available_models"], dict)
+        assert isinstance(data["supported_languages"], dict)
+
+        # Check that defaults are strings
+        assert isinstance(data["default_analysis_model"], str)
+        assert isinstance(data["default_quality_model"], str)
+        assert isinstance(data["default_target_language"], str)
+
 
 @pytest.mark.integration
 class TestVideoAndScrap:
@@ -65,13 +85,18 @@ class TestSummarize:
 
         from example_results import result_with_chapters
 
-        payload = {"content": result_with_chapters.transcript_only_text[:5000], "content_type": "transcript"}
+        payload = {"content": result_with_chapters.transcript_only_text[:5000], "content_type": "transcript", "enable_translation": False, "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"}
         resp = client.post("/summarize", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
         assert "analysis" in data and "quality" in data
         assert "iteration_count" in data
+        # Check new fields are present
+        assert "target_language" in data
+        assert "enable_translation" in data
+        assert "analysis_model" in data
+        assert "quality_model" in data
 
     def test_summarize_stream_success(self, client):
         if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
@@ -79,10 +104,15 @@ class TestSummarize:
 
         from example_results import result_with_chapters
 
-        resp = client.post(
-            "/stream-summarize",
-            json={"content": result_with_chapters.transcript_only_text[:2000], "content_type": "transcript"},
-        )
+        payload = {
+            "content": result_with_chapters.transcript_only_text[:2000],
+            "content_type": "transcript",
+            "enable_translation": False,
+            "target_language": "en",
+            "analysis_model": "google/gemini-2.5-pro",
+            "quality_model": "google/gemini-2.5-flash",
+        }
+        resp = client.post("/stream-summarize", json=payload)
 
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/event-stream")
@@ -106,7 +136,17 @@ class TestTwoStepWorkflow:
         d1 = s1.json()
 
         # Step 2: summarize using transcript
-        s2 = client.post("/summarize", json={"content": d1["transcript"], "content_type": "transcript"})
+        s2 = client.post(
+            "/summarize",
+            json={
+                "content": d1["transcript"],
+                "content_type": "transcript",
+                "enable_translation": False,
+                "target_language": "en",
+                "analysis_model": "google/gemini-2.5-pro",
+                "quality_model": "google/gemini-2.5-flash",
+            },
+        )
         assert s2.status_code == 200
         d2 = s2.json()
         assert d1["status"] == "success"
@@ -149,23 +189,53 @@ class TestEdgeCases:
         from unittest.mock import patch
 
         with patch.dict("os.environ", {"GEMINI_API_KEY": ""}):
-            response = client.post("/summarize", json={"content": "test content", "content_type": "transcript"})
+            response = client.post("/summarize", json={"content": "test content", "content_type": "transcript", "enable_translation": False, "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"})
             assert response.status_code == 500
             data = response.json()
             assert data["detail"] == "Required API key missing"
 
     def test_invalid_content_type(self, client):
         """Test summarization with invalid content type."""
-        response = client.post("/summarize", json={"content": "test", "content_type": "invalid"})
+        response = client.post(
+            "/summarize",
+            json={
+                "content": "test",
+                "content_type": "invalid",
+                "enable_translation": False,
+                "target_language": "en",
+                "analysis_model": "google/gemini-2.5-pro",
+                "quality_model": "google/gemini-2.5-flash",
+            },
+        )
         assert response.status_code == 422  # Pydantic validation error
 
     def test_content_too_short(self, client):
         """Test summarization with content too short."""
-        response = client.post("/summarize", json={"content": "hi", "content_type": "transcript"})
+        response = client.post(
+            "/summarize",
+            json={
+                "content": "hi",
+                "content_type": "transcript",
+                "enable_translation": False,
+                "target_language": "en",
+                "analysis_model": "google/gemini-2.5-pro",
+                "quality_model": "google/gemini-2.5-flash",
+            },
+        )
         assert response.status_code == 422  # Pydantic validation error
 
     def test_content_too_long(self, client):
         """Test summarization with content too long."""
         long_content = "word " * 15000  # Exceeds 50k limit
-        response = client.post("/summarize", json={"content": long_content, "content_type": "transcript"})
+        response = client.post(
+            "/summarize",
+            json={
+                "content": long_content,
+                "content_type": "transcript",
+                "enable_translation": False,
+                "target_language": "en",
+                "analysis_model": "google/gemini-2.5-pro",
+                "quality_model": "google/gemini-2.5-flash",
+            },
+        )
         assert response.status_code == 422  # Pydantic validation error

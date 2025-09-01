@@ -25,9 +25,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from youtube_summarizer.summarizer import (
+    AVAILABLE_MODELS,
+    SUPPORTED_LANGUAGES,
     Analysis,
+    GraphOutput,
     Quality,
-    WorkflowOutput,
     stream_summarize_video,
 )
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
@@ -129,6 +131,14 @@ class SummarizeRequest(BaseModel):
     content: str = Field(..., min_length=10, max_length=50000, description="Content to analyze")
     content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
 
+    # Model selection
+    analysis_model: str = Field(default="google/gemini-2.5-pro", description="Model for analysis generation")
+    quality_model: str = Field(default="google/gemini-2.5-flash", description="Model for quality evaluation")
+
+    # Translation options
+    enable_translation: bool = Field(default=False, description="Enable translation to target language")
+    target_language: str = Field(default="en", description="Target language for translation", min_length=2, max_length=5)
+
 
 class SummarizeResponse(BaseResponse):
     """Summarization response."""
@@ -137,6 +147,24 @@ class SummarizeResponse(BaseResponse):
     quality: Quality | None = None
     processing_time: str
     iteration_count: int = Field(default=1)
+
+    # Model metadata
+    analysis_model: str = Field(description="Model used for analysis")
+    quality_model: str = Field(description="Model used for quality evaluation")
+
+    # Translation metadata
+    target_language: str | None = Field(default=None, description="Target language used for translation")
+    enable_translation: bool = Field(default=False, description="Whether translation was enabled")
+
+
+class ConfigurationResponse(BaseResponse):
+    """Configuration response with available options."""
+
+    available_models: dict[str, str] = Field(description="Available models for selection")
+    supported_languages: dict[str, str] = Field(description="Supported languages for translation")
+    default_analysis_model: str = Field(description="Default analysis model")
+    default_quality_model: str = Field(description="Default quality model")
+    default_target_language: str = Field(description="Default target language")
 
 
 # ================================
@@ -260,6 +288,7 @@ async def root():
         "endpoints": {
             "GET /": "API information",
             "GET /health": "Health check with environment status",
+            "GET /config": "Get available models and languages",
             "POST /scrap": "Extract video metadata and transcript",
             "POST /summarize": "Full LangGraph workflow analysis",
             "POST /stream-summarize": "Streaming analysis with progress",
@@ -283,6 +312,26 @@ async def health_check():
         "version": API_VERSION,
         "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("APIFY_API_KEY"))},
     }
+
+
+@app.get("/config", response_model=ConfigurationResponse)
+async def get_configuration():
+    """Get available models and languages for frontend configuration."""
+    from youtube_summarizer.summarizer import (
+        ANALYSIS_MODEL,
+        QUALITY_MODEL,
+        TARGET_LANGUAGE,
+    )
+
+    return ConfigurationResponse(
+        status="success",
+        message="Configuration retrieved successfully",
+        available_models=AVAILABLE_MODELS,
+        supported_languages=SUPPORTED_LANGUAGES,
+        default_analysis_model=ANALYSIS_MODEL,
+        default_quality_model=QUALITY_MODEL,
+        default_target_language=TARGET_LANGUAGE,
+    )
 
 
 @app.post("/scrap", response_model=ScrapResponse)
@@ -321,22 +370,42 @@ async def summarize(request: SummarizeRequest):
 
     try:
         from youtube_summarizer.summarizer import (
-            WorkflowInput,
-            WorkflowOutput,
-            summarize_video,
+            GraphInput,
+            GraphOutput,
+            create_compiled_graph,
         )
 
         # Validate content before processing
         validated_content = validate_content(request.content)
 
-        # Use the high-level summarize_video function instead of the graph directly
-        # This avoids compatibility issues with LangGraph versions
-        analysis = await run_async_task(summarize_video, validated_content)
+        # Create GraphInput with new parameters
+        graph_input = GraphInput(
+            transcript_or_url=validated_content,
+            enable_translation=request.enable_translation,
+            target_language=request.target_language,
+            analysis_model=request.analysis_model,
+            quality_model=request.quality_model,
+        )
 
-        # Create a mock WorkflowOutput for compatibility
-        workflow_output = WorkflowOutput(analysis=analysis, quality=None, iteration_count=1)  # Quality checking disabled for compatibility
+        # Use the LangGraph workflow
+        graph = create_compiled_graph()
+        result = await run_async_task(graph.invoke, graph_input)
 
-        return SummarizeResponse(status="success", message="Analysis completed successfully", analysis=workflow_output.analysis, quality=workflow_output.quality, processing_time=get_processing_time(start_time), iteration_count=workflow_output.iteration_count)
+        # Convert to GraphOutput for type safety
+        graph_output: GraphOutput = GraphOutput.model_validate(result)
+
+        return SummarizeResponse(
+            status="success",
+            message="Analysis completed successfully",
+            analysis=graph_output.analysis,
+            quality=graph_output.quality,
+            processing_time=get_processing_time(start_time),
+            iteration_count=graph_output.iteration_count,
+            target_language=request.target_language if request.enable_translation else None,
+            enable_translation=request.enable_translation,
+            analysis_model=request.analysis_model,
+            quality_model=request.quality_model,
+        )
     except Exception as e:
         log_and_print(f"❌ Analysis failed: {str(e)}")
         create_error_response(500, "processing_failed", e)
@@ -359,8 +428,21 @@ async def stream_summarize(request: SummarizeRequest):
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
             await asyncio.sleep(0.01)  # Small delay for client processing
 
+            # Create GraphInput with new parameters for streaming
+            from youtube_summarizer.summarizer import GraphInput, create_compiled_graph
+
+            graph_input = GraphInput(
+                transcript_or_url=validated_content,
+                enable_translation=request.enable_translation,
+                target_language=request.target_language,
+                analysis_model=request.analysis_model,
+                quality_model=request.quality_model,
+            )
+
+            graph = create_compiled_graph()
+
             chunk_count = 0
-            for chunk in stream_summarize_video(validated_content):
+            for chunk in graph.stream(graph_input, stream_mode="values"):
                 chunk_dict = chunk.model_dump()
                 chunk_dict["timestamp"] = datetime.now().isoformat()
                 chunk_dict["chunk_number"] = chunk_count
