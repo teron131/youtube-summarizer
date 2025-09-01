@@ -28,24 +28,6 @@ MAX_ITERATIONS = 2
 ENABLE_TRANSLATION = False
 TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
 
-# Model selection options (for UI dropdowns)
-# OpenRouter format, Gemini models will also work with Gemini SDK
-AVAILABLE_MODELS = {
-    "google/gemini-2.5-pro": "Gemini 2.5 Pro (Recommended)",
-    "google/gemini-2.5-flash": "Gemini 2.5 Flash (Fast)",
-    "anthropic/claude-sonnet-4": "Claude Sonnet 4",
-}
-
-# Supported languages for translation
-SUPPORTED_LANGUAGES = {
-    "zh": "Chinese",
-    "en": "English",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "de": "German",
-    "ru": "Russian",
-}
-
 
 class Chapter(BaseModel):
     header: str = Field(description="A descriptive title for the chapter")
@@ -155,7 +137,7 @@ Consider the chapters (headers) if given but not necessary.
 Ignore the promotional and meaningless content."""
 
     if state.enable_translation:
-        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        language_name = state.target_language
         base_prompt += f"\n\nIMPORTANT: Translate the entire analysis to {language_name} ({state.target_language}) while maintaining structure and natural fluency."
     return base_prompt
 
@@ -177,7 +159,7 @@ Aspects to evaluate:
 5. No Garbage: The promotional and meaningless content are removed"""
 
     if state.enable_translation:
-        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        language_name = state.target_language
         base_prompt += f"""
 6. Correct Language: Content is properly translated to {language_name} and maintains quality"""
     else:
@@ -195,7 +177,7 @@ def get_improvement_prompt(state: GraphState) -> str:
     base_prompt = """Improve the analysis based on the feedback while maintaining the same structure and format."""
 
     if state.enable_translation:
-        language_name = SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)
+        language_name = state.target_language
         base_prompt += f"""
 IMPORTANT: Ensure all improvements maintain proper translation to {language_name} ({state.target_language}).
 - Keep all content translated to {language_name}
@@ -290,7 +272,7 @@ def langchain_analysis_node(state: GraphState) -> dict:
     print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
     print(f"📝 Using model: {state.analysis_model}")
     if state.enable_translation:
-        print(f"🌐 Translation enabled: {SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)}")
+        print(f"🌐 Translation enabled: {state.target_language}")
 
     llm = langchain_llm(state.analysis_model)
     structured_llm = llm.with_structured_output(Analysis)
@@ -389,7 +371,7 @@ def gemini_analysis_node(state: GraphState) -> dict:
     print(f"🔗 Processing YouTube URL with Gemini SDK: {state.transcript_or_url}")
     print(f"🔗 Using model: {state.analysis_model}")
     if state.enable_translation:
-        print(f"🌐 Translation enabled: {SUPPORTED_LANGUAGES.get(state.target_language, state.target_language)}")
+        print(f"🌐 Translation enabled: {state.target_language}")
 
     client = Client(api_key=os.getenv("GEMINI_API_KEY"))
     analysis_prompt = get_analysis_prompt(state)

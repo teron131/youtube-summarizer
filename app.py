@@ -323,11 +323,27 @@ async def get_configuration():
         TARGET_LANGUAGE,
     )
 
+    # Simple configuration for API response
+    available_models = {
+        "google/gemini-2.5-pro": "Gemini 2.5 Pro (Recommended)",
+        "google/gemini-2.5-flash": "Gemini 2.5 Flash (Fast)",
+        "anthropic/claude-sonnet-4": "Claude Sonnet 4",
+    }
+
+    supported_languages = {
+        "zh": "Chinese",
+        "en": "English",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "de": "German",
+        "ru": "Russian",
+    }
+
     return ConfigurationResponse(
         status="success",
         message="Configuration retrieved successfully",
-        available_models=AVAILABLE_MODELS,
-        supported_languages=SUPPORTED_LANGUAGES,
+        available_models=available_models,
+        supported_languages=supported_languages,
         default_analysis_model=ANALYSIS_MODEL,
         default_quality_model=QUALITY_MODEL,
         default_target_language=TARGET_LANGUAGE,
