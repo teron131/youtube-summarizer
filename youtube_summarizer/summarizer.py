@@ -29,19 +29,25 @@ ENABLE_TRANSLATION = False
 TARGET_LANGUAGE = "zh"  # ISO language code (en, es, fr, de, etc.)
 
 
+class TimestampedText(BaseModel):
+    text: str = Field(description="The text")
+    timestamp: Optional[str] = Field(default=None, description="The starting timestamp of the point")
+
+
 class Chapter(BaseModel):
     header: str = Field(description="A descriptive title for the chapter")
     summary: str = Field(description="A comprehensive summary of the chapter content")
     key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
+    timestamp: Optional[str] = Field(default=None, description="The starting timestamp of the chapter")
 
 
 class Analysis(BaseModel):
     title: str = Field(description="The main title or topic of the video content")
     summary: str = Field(description="A comprehensive summary of the video content")
-    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
-    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
+    takeaways: list[TimestampedText] = Field(description="Key insights and actionable takeaways for the audience")
+    key_facts: list[TimestampedText] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    keywords: list[str] = Field(description="Keywords or topics mentioned in the video, max 3", max_length=3)
+    keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting, max 3", max_length=3)
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
@@ -56,6 +62,7 @@ class Quality(BaseModel):
     grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
     timestamp: Rate = Field(description="Rate for timestamp: The timestamps added are in correct format")
     no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
+    useful_keywords: Rate = Field(description="Rate for keywords: The keywords are useful for highlighting the analysis")
     correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
 
     # Computed properties
@@ -63,13 +70,13 @@ class Quality(BaseModel):
     def total_score(self) -> int:
         """Calculate total score based on all quality aspects."""
         score_map = {"Fail": 0, "Refine": 1, "Pass": 2}
-        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.correct_language]
+        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.useful_keywords, self.correct_language]
         return sum(score_map[aspect.rate] for aspect in aspects)
 
     @property
     def max_possible_score(self) -> int:
         """Calculate maximum possible score (all aspects = Pass)."""
-        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.correct_language]) * 2
+        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.useful_keywords, self.correct_language]) * 2
 
     @property
     def percentage_score(self) -> int:
@@ -86,6 +93,7 @@ class GraphInput(BaseModel):
     """Input for the summarization workflow."""
 
     transcript_or_url: str
+    chapters: list[dict] = Field(default_factory=list)  # YouTube video chapters
 
     # Model selection
     analysis_model: str = Field(default=ANALYSIS_MODEL)
@@ -109,6 +117,7 @@ class GraphState(BaseModel):
 
     # Input
     transcript_or_url: str
+    chapters: list[dict] = Field(default_factory=list)  # YouTube video chapters
 
     # Model selection
     analysis_model: str = Field(default=ANALYSIS_MODEL)
@@ -133,8 +142,28 @@ def get_analysis_prompt(state: GraphState) -> str:
     base_prompt = """Analyze the video/transcript according to the schema.
 The transcript provides starting timestamps for each sentence.
 Add the timestamps [TIMESTAMP] at the end of the takeaways and key facts if available.
-Consider the chapters (headers) if given but not necessary.
-Ignore the promotional and meaningless content."""
+
+IMPORTANT CHAPTER GUIDANCE:
+"""
+
+    # Add chapter-specific instructions if chapters are available
+    if state.chapters:
+        chapters_text = "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        base_prompt += f"""You MUST use the following video chapters as the basis for your chapter breakdown:
+{chapters_text}
+
+REQUIREMENTS:
+- Create chapters that directly correspond to these video sections
+- Use the chapter titles and timing as your primary structure
+- Only create additional chapters if there are significant content gaps
+- Maintain the logical flow and timing of the original video chapters
+"""
+    else:
+        base_prompt += """No video chapters provided. Create thematic chapters based on content structure."""
+
+    base_prompt += """
+Ignore the promotional and meaningless content.
+Finally, provide the exact keywords in the analysis worthy of highlighting, max 3."""
 
     if state.enable_translation:
         language_name = state.target_language
@@ -144,7 +173,7 @@ Ignore the promotional and meaningless content."""
 
 def get_quality_prompt(state: GraphState) -> str:
     """Generate quality evaluation prompt with optional translation context."""
-    base_prompt = """Evaluate the quality of this video analysis on these 6 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
+    base_prompt = """Evaluate the quality of this video analysis on these 7 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
 
 Scoring Guide:
 - "Fail" = Poor/Incomplete/Inaccurate (needs significant improvement)
@@ -156,18 +185,18 @@ Aspects to evaluate:
 2. Structure: The result is in desired structures
 3. Grammar: No typos, grammatical mistakes, appropriate wordings
 4. Timestamp: The timestamps added are in correct format
-5. No Garbage: The promotional and meaningless content are removed"""
+5. No Garbage: The promotional and meaningless content are removed
+6. Useful Keywords: The keywords are useful for highlighting the analysis"""
 
     if state.enable_translation:
         language_name = state.target_language
         base_prompt += f"""
-6. Correct Language: Content is properly translated to {language_name} and maintains quality"""
+7. Correct Language: Content is properly translated to {language_name} and maintains quality"""
     else:
         base_prompt += """
-6. Correct Language: Match the original language of the video or user requested"""
+7. Correct Language: Match the original language of the video or user requested"""
 
     base_prompt += """
-
 Provide rates and reasons for each aspect. The total score will be calculated automatically."""
     return base_prompt
 
@@ -240,22 +269,25 @@ class ContextProcessor:
 {analysis.summary}
 
 ### Key Takeaways
-{chr(10).join(f"- {takeaway}" for takeaway in analysis.takeaways)}
+{chr(10).join(f"- {takeaway.text}" for takeaway in analysis.takeaways)}
 
 ### Key Facts
-{chr(10).join(f"- {fact}" for fact in analysis.key_facts)}
+{chr(10).join(f"- {fact.text}" for fact in analysis.key_facts)}
 
 Please provide an improved version that addresses the specific issues identified above to improve the overall quality score."""
 
     @staticmethod
     def analysis_to_text(analysis: Analysis) -> str:
         """Convert analysis to text format for quality evaluation."""
+        # Convert TimestampedText objects to strings for display
+        takeaways_text = ", ".join([item.text for item in analysis.takeaways])
+        key_facts_text = ", ".join([item.text for item in analysis.key_facts])
+
         return f"""
 Title: {analysis.title}
 Summary: {analysis.summary}
-Takeaways: {', '.join(analysis.takeaways)}
-Key Facts: {', '.join(analysis.key_facts)}
-Keywords: {', '.join(analysis.keywords)}
+Takeaways: {takeaways_text}
+Key Facts: {key_facts_text}
 Chapters: {len(analysis.chapters)} chapters
 """
 
@@ -274,6 +306,13 @@ def langchain_analysis_node(state: GraphState) -> dict:
     if state.enable_translation:
         print(f"🌐 Translation enabled: {state.target_language}")
 
+    # Prepare content with chapters information if available
+    content = state.transcript_or_url
+    if state.chapters:
+        chapters_info = "\n\nVIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        content += chapters_info
+        print(f"📋 Including {len(state.chapters)} video chapters in analysis")
+
     llm = langchain_llm(state.analysis_model)
     structured_llm = llm.with_structured_output(Analysis)
 
@@ -286,7 +325,7 @@ def langchain_analysis_node(state: GraphState) -> dict:
     )
 
     chain = prompt | structured_llm
-    result: Analysis = chain.invoke({"content": state.transcript_or_url})
+    result: Analysis = chain.invoke({"content": content})
 
     result.target_language = state.target_language if state.enable_translation else None
 
@@ -324,6 +363,7 @@ def langchain_quality_node(state: GraphState) -> dict:
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
     print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
     print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 
@@ -376,13 +416,20 @@ def gemini_analysis_node(state: GraphState) -> dict:
     client = Client(api_key=os.getenv("GEMINI_API_KEY"))
     analysis_prompt = get_analysis_prompt(state)
 
+    # Prepare content parts
+    content_parts = [
+        types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+    ]
+
+    # Add chapters information if available
+    if state.chapters:
+        chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        content_parts.append(types.Part(text=chapters_info))
+        print(f"📋 Including {len(state.chapters)} video chapters in Gemini analysis")
+
     response = client.models.generate_content(
         model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-        contents=types.Content(
-            parts=[
-                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-            ]
-        ),
+        contents=types.Content(parts=content_parts),
         config=types.GenerateContentConfig(
             system_instruction=analysis_prompt,
             temperature=0,
@@ -439,6 +486,7 @@ def gemini_quality_node(state: GraphState) -> dict:
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
     print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
     print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 

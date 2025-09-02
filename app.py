@@ -215,6 +215,11 @@ def parse_scraper_result(result) -> dict[str, Any]:
         like_count = result_dict.get("likeCountInt")
         upload_date = result_dict.get("publishDateText")
 
+        # Extract chapters if available
+        chapters = []
+        if result_dict.get("chapters"):
+            chapters = [{"title": chapter.get("title", ""), "timeDescription": chapter.get("timeDescription", ""), "startSeconds": chapter.get("startSeconds", 0)} for chapter in result_dict["chapters"]]
+
         return {
             "url": result_dict.get("url", ""),
             "title": result_dict.get("title", "Unknown Title") or "Unknown Title",
@@ -225,10 +230,17 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "view_count": result_dict.get("viewCountInt"),
             "like_count": like_count,
             "upload_date": upload_date,
+            "chapters": chapters,  # Include chapters in parsed result
         }
     except Exception as e:
         # Fallback parsing for malformed results
         log_and_print(f"⚠️ Warning: Error parsing scraper result: {str(e)}")
+
+        # Extract chapters from fallback result if available
+        chapters = []
+        if hasattr(result, "chapters") and getattr(result, "chapters", []):
+            chapters = [{"title": getattr(chapter, "title", ""), "timeDescription": getattr(chapter, "timeDescription", ""), "startSeconds": getattr(chapter, "startSeconds", 0)} for chapter in getattr(result, "chapters", [])]
+
         return {
             "url": getattr(result, "url", ""),
             "title": getattr(result, "title", "Unknown Title"),
@@ -240,6 +252,7 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "like_count": getattr(result, "likeCountInt", None),
             # Best effort; do not transform
             "upload_date": getattr(result, "publishDateText", None),
+            "chapters": chapters,  # Include chapters in fallback
         }
 
 
@@ -392,9 +405,27 @@ async def summarize(request: SummarizeRequest):
         # Validate content before processing
         validated_content = validate_content(request.content)
 
+        # Extract chapters if content is a YouTube URL
+        chapters = []
+        if is_youtube_url(validated_content):
+            try:
+                print(f"🔗 Detected YouTube URL, scraping to get chapters...")
+                from youtube_summarizer.youtube_scrapper import scrap_youtube
+
+                scrap_result = await run_async_task(scrap_youtube, validated_content)
+                parsed_data = parse_scraper_result(scrap_result)
+                chapters = parsed_data.get("chapters", [])
+                print(f"📋 Found {len(chapters)} chapters in YouTube video")
+                if chapters:
+                    print(f"📝 Chapter titles: {[ch['title'] for ch in chapters[:3]]}{'...' if len(chapters) > 3 else ''}")
+            except Exception as e:
+                print(f"⚠️ Failed to extract chapters from YouTube URL: {str(e)}")
+                chapters = []
+
         # Create GraphInput with new parameters
         graph_input = GraphInput(
             transcript_or_url=validated_content,
+            chapters=chapters,
             enable_translation=request.enable_translation,
             target_language=request.target_language,
             analysis_model=request.analysis_model,
@@ -438,6 +469,21 @@ async def stream_summarize(request: SummarizeRequest):
             # Validate content before processing
             validated_content = validate_content(request.content)
 
+            # Extract chapters if content is a YouTube URL
+            chapters = []
+            if is_youtube_url(validated_content):
+                try:
+                    print(f"🔗 Detected YouTube URL in streaming, scraping to get chapters...")
+                    from youtube_summarizer.youtube_scrapper import scrap_youtube
+
+                    scrap_result = await run_async_task(scrap_youtube, validated_content)
+                    parsed_data = parse_scraper_result(scrap_result)
+                    chapters = parsed_data.get("chapters", [])
+                    print(f"📋 Found {len(chapters)} chapters in YouTube video for streaming")
+                except Exception as e:
+                    print(f"⚠️ Failed to extract chapters from YouTube URL in streaming: {str(e)}")
+                    chapters = []
+
             # Send initial status
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
             await asyncio.sleep(0.01)  # Small delay for client processing
@@ -447,6 +493,7 @@ async def stream_summarize(request: SummarizeRequest):
 
             graph_input = GraphInput(
                 transcript_or_url=validated_content,
+                chapters=chapters,
                 enable_translation=request.enable_translation,
                 target_language=request.target_language,
                 analysis_model=request.analysis_model,

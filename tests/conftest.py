@@ -31,9 +31,8 @@ def client():
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
     try:
-        from fastapi.testclient import TestClient
-
         from app import app
+        from fastapi.testclient import TestClient
 
         return TestClient(app)
     except ImportError as e:
@@ -86,19 +85,23 @@ def mock_youtube_scrapper_result(mock_channel):
 @pytest.fixture
 def mock_analysis_result():
     """Mock analysis result for Gemini API responses."""
-    # Create a mock object that mimics the Analysis structure
+    from youtube_summarizer.summarizer import Chapter, TimestampedText
+
+    # Create mock objects that mimic the new structure
     mock = MagicMock()
     mock.title = "Test Video Analysis"
     mock.summary = "This is a comprehensive analysis of the video content."
-    mock.key_facts = ["Fact 1", "Fact 2"]
-    mock.takeaways = ["Takeaway 1", "Takeaway 2"]
-    mock.keywords = ["test", "video", "analysis"]
 
-    # Mock chapter
+    # Create TimestampedText objects for key_facts and takeaways
+    mock.key_facts = [TimestampedText(text="Fact 1", timestamp="00:01:23"), TimestampedText(text="Fact 2", timestamp="00:02:45")]
+    mock.takeaways = [TimestampedText(text="Takeaway 1", timestamp="00:03:12"), TimestampedText(text="Takeaway 2", timestamp="00:04:56")]
+
+    # Mock chapter with optional timestamp
     mock_chapter = MagicMock()
     mock_chapter.header = "Main Content"
     mock_chapter.key_points = ["Point 1", "Point 2", "Point 3"]
     mock_chapter.summary = "This is a comprehensive analysis of the video content."
+    mock_chapter.timestamp = "00:00:30"
 
     mock.chapters = [mock_chapter]
     return mock

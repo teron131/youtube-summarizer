@@ -34,12 +34,32 @@ class TestSSEContract:
 
     @patch("app.stream_summarize_video")
     def test_sse_basic_contract(self, mock_stream, client):
-        from youtube_summarizer.summarizer import Analysis, GraphState
+        from youtube_summarizer.summarizer import (
+            Analysis,
+            Chapter,
+            GraphState,
+            Quality,
+            Rate,
+            TimestampedText,
+        )
 
-        analysis = Analysis(title="SSE Test", summary="Test", takeaways=["t"], key_facts=["f"], chapters=[], keywords=["k"])
+        # Create TimestampedText objects for takeaways and key_facts
+        takeaways = [TimestampedText(text="Test takeaway")]
+        key_facts = [TimestampedText(text="Test fact")]
+        chapters = []
+
+        # Create Rate objects for quality assessment
+        test_rate = Rate(rate="Pass", reason="Test")
+
+        # Create Quality object with keywords
+        quality = Quality(completeness=test_rate, structure=test_rate, grammar=test_rate, timestamp=test_rate, no_garbage=test_rate, correct_language=test_rate, keywords=["test", "sse"])
+
+        analysis = Analysis(title="SSE Test", summary="Test summary", takeaways=takeaways, key_facts=key_facts, chapters=chapters)
+
         chunk = GraphState(
             transcript_or_url="valid",
             analysis=analysis,
+            quality=quality,
             iteration_count=1,
             is_complete=True,
             enable_translation=False,
