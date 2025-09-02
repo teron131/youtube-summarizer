@@ -151,8 +151,8 @@ CORE REQUIREMENTS:
 CONTENT STRUCTURE:
 - TITLE: Descriptive, accurate (2-15 words)
 - SUMMARY: Comprehensive overview of main points and structure
-- TAKEAWAYS: Key actionable insights with timestamps
-- KEY FACTS: Important statistics and data points
+- TAKEAWAYS: JSON array of objects with "text" and "timestamp" fields
+- KEY FACTS: JSON array of objects with "text" and "timestamp" fields
 - KEYWORDS: Exactly 3 most relevant terms
 
 CONTENT FILTERING:
@@ -205,20 +205,21 @@ ASPECTS:
 1. TRANSCRIPT ACCURACY: Content directly supported by transcript (no external additions)
 2. CONTENT LENGTH: Balanced length following guidelines (not too short/long)
 3. COMPLETENESS: Entire content properly analyzed
-4. STRUCTURE: Follows required schema perfectly
+4. STRUCTURE: Follows required schema perfectly with takeaways/key_facts as JSON arrays
 5. GRAMMAR: No typos/mistakes (semicolon usage in lists acceptable)
 6. WRITING STYLE: Objective, article-like tone (no video references)
 7. TIMESTAMPS: Accurate format and placement
 8. PROMOTIONAL REMOVAL: All promotional content completely removed
-9. KEYWORDS: Highly relevant and useful"""
+9. JSON VALIDITY: Takeaways/key_facts are valid JSON arrays with required fields
+10. KEYWORDS: Highly relevant and useful"""
 
     if state.enable_translation:
         language_name = state.target_language
         base_prompt += f"""
-10. TRANSLATION QUALITY: Content is properly translated to {language_name} with natural fluency and maintained quality"""
+11. TRANSLATION QUALITY: Content is properly translated to {language_name} with natural fluency and maintained quality"""
     else:
         base_prompt += """
-10. LANGUAGE CONSISTENCY: Content matches original language"""
+11. LANGUAGE CONSISTENCY: Content matches original language"""
 
     base_prompt += """
 
@@ -251,13 +252,14 @@ IMPROVEMENT PRIORITIES:
 4. WRITING STYLE: Use objective, article-like tone (avoid "This video...", "The speaker...")
 5. TYPO CORRECTION: Fix obvious typos naturally
 6. TIMESTAMP FORMAT: Match original transcript format
+7. JSON FORMATTING: Return takeaways/key_facts as valid JSON arrays with "text" and "timestamp" fields
 
 CONTENT TARGETS:
 - Title: 2-15 words
 - Summary: 150-400 words
 - Chapters: 80-200 words each
-- Takeaways: 3-8 items
-- Key Facts: 3-6 items
+- Takeaways: Valid JSON array with 3-8 objects (each with "text" and "timestamp" fields)
+- Key Facts: Valid JSON array with 3-6 objects (each with "text" and "timestamp" fields)
 - Keywords: Exactly 3"""
 
     if state.enable_translation:
@@ -297,6 +299,15 @@ class ContextProcessor:
     @staticmethod
     def create_improvement_prompt(analysis: Analysis, quality: Quality) -> str:
         """Create improvement prompt from analysis and quality feedback."""
+        import json
+
+        # Convert Pydantic objects to JSON strings for LLM processing
+        takeaways_data = [{"text": t.text, "timestamp": t.timestamp or ""} for t in analysis.takeaways]
+        key_facts_data = [{"text": f.text, "timestamp": f.timestamp or ""} for f in analysis.key_facts]
+
+        takeaways_json = json.dumps(takeaways_data, ensure_ascii=False)
+        key_facts_json = json.dumps(key_facts_data, ensure_ascii=False)
+
         return f"""# Improve this video analysis based on the following feedback:
 
 ## Quality Assessment (Total: {quality.total_score}/{quality.max_possible_score} - {quality.percentage_score}%):
@@ -327,20 +338,36 @@ class ContextProcessor:
 ### Summary
 {analysis.summary}
 
-### Key Takeaways
-{chr(10).join(f"- {takeaway.text}" for takeaway in analysis.takeaways)}
+### Key Takeaways (JSON format)
+```json
+{takeaways_json}
+```
 
-### Key Facts
-{chr(10).join(f"- {fact.text}" for fact in analysis.key_facts)}
+### Key Facts (JSON format)
+```json
+{key_facts_json}
+```
 
-Please provide an improved version that addresses the specific issues identified above to improve the overall quality score."""
+## Improvement Instructions:
+- Maintain the JSON format for takeaways and key facts in your response
+- Each takeaway/fact should be a JSON object with "text" and "timestamp" fields
+- Ensure timestamps follow the transcript format ([mm:ss] or [HH:MM:SS])
+- Address the specific quality issues mentioned above
+- Return takeaways and key_facts as valid JSON arrays
+
+Please provide an improved version that addresses the specific issues identified above to improve the overall quality score. Format takeaways and key_facts as JSON arrays in your response."""
 
     @staticmethod
     def analysis_to_text(analysis: Analysis) -> str:
         """Convert analysis to text format for quality evaluation."""
-        # Convert TimestampedText objects to strings for display
-        takeaways_text = ", ".join([item.text for item in analysis.takeaways])
-        key_facts_text = ", ".join([item.text for item in analysis.key_facts])
+        import json
+
+        # Convert Pydantic objects to JSON strings for quality evaluation
+        takeaways_data = [{"text": t.text, "timestamp": t.timestamp or ""} for t in analysis.takeaways]
+        key_facts_data = [{"text": f.text, "timestamp": f.timestamp or ""} for f in analysis.key_facts]
+
+        takeaways_json = json.dumps(takeaways_data, ensure_ascii=False)
+        key_facts_json = json.dumps(key_facts_data, ensure_ascii=False)
 
         # Include detailed chapter information for completeness evaluation
         chapters_text = []
@@ -356,8 +383,8 @@ Please provide an improved version that addresses the specific issues identified
         return f"""
 Title: {analysis.title}
 Summary: {analysis.summary}
-Takeaways: {takeaways_text}
-Key Facts: {key_facts_text}
+Takeaways: {takeaways_json}
+Key Facts: {key_facts_json}
 Chapters: {chr(10).join(chapters_text)}
 """
 
