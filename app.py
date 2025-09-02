@@ -531,20 +531,31 @@ async def stream_summarize(request: SummarizeRequest):
             graph = create_compiled_graph()
 
             chunk_count = 0
+
+            # Pre-compile JSON filtering constants for better performance
+            LARGE_TEXT_KEYS = frozenset(["transcript_or_url"])
+            NESTED_FILTER_KEYS = frozenset(["analysis", "quality"])
+            MAX_TEXT_LENGTH = 1000
+            MAX_NESTED_TEXT_LENGTH = 2000
+            TRUNCATION_SUFFIX = "...[truncated]"
+
             for chunk in graph.stream(graph_input, stream_mode="values"):
                 try:
-                    # Handle both dictionary (from LangGraph) and Pydantic model cases
+                    # Optimized chunk processing with early filtering
                     if isinstance(chunk, dict):
                         chunk_dict = chunk.copy()
                     else:
                         chunk_dict = chunk.model_dump()
 
-                    # Ensure all nested Pydantic models are serialized to dict
-                    def serialize_nested(obj):
+                    # Efficient nested serialization with recursion limit
+                    def serialize_nested(obj, depth=0, max_depth=5):
+                        if depth > max_depth:
+                            return str(obj)[:100] + "...[deep nesting]"
+
                         if isinstance(obj, dict):
-                            return {k: serialize_nested(v) for k, v in obj.items()}
+                            return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
                         elif isinstance(obj, list):
-                            return [serialize_nested(item) for item in obj]
+                            return [serialize_nested(item, depth + 1, max_depth) for item in obj]
                         elif hasattr(obj, "model_dump"):
                             return obj.model_dump()
                         else:
@@ -553,23 +564,27 @@ async def stream_summarize(request: SummarizeRequest):
                     chunk_dict = serialize_nested(chunk_dict)
 
                     # Filter out large data fields that can break JSON streaming
-                    # Remove transcript data from streaming chunks to prevent JSON parsing errors
+                    # Using pre-compiled constants for better performance
                     filtered_chunk = {}
+
                     for key, value in chunk_dict.items():
-                        # Skip large text fields that can cause JSON parsing issues
-                        if key in ["transcript_or_url"] and isinstance(value, str) and len(value) > 1000:
-                            # Truncate large transcript data to prevent JSON issues
-                            filtered_chunk[key] = value[:500] + "...[truncated for streaming]"
-                        elif key in ["analysis", "quality"] and isinstance(value, dict):
-                            # Keep analysis and quality data but limit nested text fields
-                            filtered_analysis = {}
+                        if key in LARGE_TEXT_KEYS and isinstance(value, str):
+                            # Truncate large transcript data
+                            if len(value) > MAX_TEXT_LENGTH:
+                                filtered_chunk[key] = value[:500] + TRUNCATION_SUFFIX
+                            else:
+                                filtered_chunk[key] = value
+                        elif key in NESTED_FILTER_KEYS and isinstance(value, dict):
+                            # Filter nested analysis/quality data
+                            filtered_nested = {}
                             for sub_key, sub_value in value.items():
-                                if isinstance(sub_value, str) and len(sub_value) > 2000:
-                                    filtered_analysis[sub_key] = sub_value[:1000] + "...[truncated]"
+                                if isinstance(sub_value, str) and len(sub_value) > MAX_NESTED_TEXT_LENGTH:
+                                    filtered_nested[sub_key] = sub_value[:1000] + TRUNCATION_SUFFIX
                                 else:
-                                    filtered_analysis[sub_key] = sub_value
-                            filtered_chunk[key] = filtered_analysis
+                                    filtered_nested[sub_key] = sub_value
+                            filtered_chunk[key] = filtered_nested
                         else:
+                            # Keep other fields as-is
                             filtered_chunk[key] = value
 
                     filtered_chunk["timestamp"] = datetime.now().isoformat()
