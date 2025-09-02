@@ -13,6 +13,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
+
 from youtube_summarizer.utils import is_youtube_url
 
 load_dotenv()
@@ -138,12 +139,24 @@ class GraphState(BaseModel):
 
 # Prompt templates
 def get_analysis_prompt(state: GraphState) -> str:
-    """Generate analysis prompt with optional translation instructions."""
-    base_prompt = """Analyze the video/transcript according to the schema.
-The transcript provides starting timestamps for each sentence.
-Add the timestamps [TIMESTAMP] at the end of the takeaways and key facts if available.
+    """Generate comprehensive analysis prompt with strict quality guidelines."""
+    base_prompt = """Your task is to create a comprehensive, accurate, and well-structured analysis that STRICTLY FOLLOWS the provided transcript content.
 
-IMPORTANT CHAPTER GUIDANCE:
+CRITICAL REQUIREMENTS:
+1. ACCURACY FIRST: Every claim, fact, and conclusion MUST be directly supported by the transcript. Do not add external knowledge or assumptions.
+2. LENGTH CONTROL: Provide substantial but concise content - not too brief, not excessively long.
+3. TYPO CORRECTION: If you find obvious typos in the transcript (high confidence only), correct them naturally without changing meaning.
+4. TIMESTAMP FORMAT: Use the same timestamp format as the transcript (typically [mm:ss] for videos < 1 hour, [HH:MM:SS] for longer videos).
+5. STRUCTURE INTEGRITY: Maintain perfect alignment between chapters, takeaways, and key facts.
+
+CONTENT ANALYSIS GUIDELINES:
+- TITLE: Create a descriptive, accurate title (2-15 words) that captures the video's main topic
+- SUMMARY: Write a comprehensive summary (150-400 words) covering the video's main points, structure, and key takeaways
+- TAKEAWAYS: Extract 3-8 key actionable insights with timestamps where available
+- KEY FACTS: Identify 3-6 important statistics, data points, or factual information with timestamps
+- KEYWORDS: Select exactly 3 most relevant keywords for content discovery
+
+CHAPTER BREAKDOWN REQUIREMENTS:
 """
 
     # Add chapter-specific instructions if chapters are available
@@ -152,65 +165,140 @@ IMPORTANT CHAPTER GUIDANCE:
         base_prompt += f"""You MUST use the following video chapters as the basis for your chapter breakdown:
 {chapters_text}
 
-REQUIREMENTS:
+MANDATORY CHAPTER REQUIREMENTS:
 - Create chapters that directly correspond to these video sections
 - Use the chapter titles and timing as your primary structure
+- Each chapter must have: header, detailed summary (80-200 words), 3-6 key points
+- Include timestamps for each chapter based on the transcript timing
 - Only create additional chapters if there are significant content gaps
 - Maintain the logical flow and timing of the original video chapters
 """
     else:
-        base_prompt += """No video chapters provided. Create thematic chapters based on content structure."""
+        base_prompt += """No video chapters provided. Create 4-8 thematic chapters based on content structure and natural topic transitions."""
 
     base_prompt += """
-Ignore the promotional and meaningless content.
-Finally, provide the exact keywords in the analysis worthy of highlighting, max 3."""
+
+QUALITY ASSURANCE CHECKLIST:
+□ Content directly matches transcript - no external additions
+□ All timestamps match the original transcript format and are accurate
+□ No promotional or meaningless content included
+□ Typos corrected only when obviously wrong (maintain original meaning)
+□ Balanced length: substantial but not overwhelming
+□ Keywords are highly relevant and searchable
+□ Chapter structure follows video's natural flow
+□ All factual claims are transcript-supported
+
+CONTENT LENGTH GUIDELINES:
+- Overall Summary: 150-400 words
+- Individual Chapter Summaries: 80-200 words each
+- Key Points per Chapter: 3-6 bullet points
+- Takeaways: 3-8 items with timestamps when available
+- Key Facts: 3-6 items with timestamps when available
+
+FINAL OUTPUT REQUIREMENTS:
+- Follow the exact schema structure provided
+- Ensure all content is original and transcript-based
+- Maintain professional, clear, and engaging tone
+- Use timestamp format that matches the transcript (typically [mm:ss] for videos < 1 hour, [HH:MM:SS] for longer videos)"""
 
     if state.enable_translation:
         language_name = state.target_language
-        base_prompt += f"\n\nIMPORTANT: Translate the entire analysis to {language_name} ({state.target_language}) while maintaining structure and natural fluency."
+        base_prompt += f"""
+
+TRANSLATION REQUIREMENTS:
+- Translate the entire analysis to {language_name} ({state.target_language})
+- Maintain natural fluency and cultural appropriateness
+- Preserve technical terms and proper names in their original form when appropriate
+- Preserve timestamp format exactly as it appears in the original transcript
+- Keep the same level of detail and structure in the target language"""
     return base_prompt
 
 
 def get_quality_prompt(state: GraphState) -> str:
-    """Generate quality evaluation prompt with optional translation context."""
-    base_prompt = """Evaluate the quality of this video analysis on these 7 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single reason.
+    """Generate comprehensive quality evaluation prompt with specific criteria."""
+    base_prompt = """Evaluate the quality of this video analysis on these 8 aspects. For each aspect, give a rate of "Fail", "Refine", or "Pass" and provide a single, specific reason.
 
-Scoring Guide:
-- "Fail" = Poor/Incomplete/Inaccurate (needs significant improvement)
+SCORING CRITERIA:
+- "Fail" = Poor/Incomplete/Inaccurate/Major issues (needs significant improvement)
 - "Refine" = Adequate/Partially complete/Somewhat accurate (needs some improvement)
-- "Pass" = Excellent/Complete/Accurate (meets quality standards)
+- "Pass" = Excellent/Complete/Accurate/Meets all standards (quality approved)
 
-Aspects to evaluate:
-1. Completeness: The entire video has been considered
-2. Structure: The result is in desired structures
-3. Grammar: No typos, grammatical mistakes, appropriate wordings
-4. Timestamp: The timestamps added are in correct format
-5. No Garbage: The promotional and meaningless content are removed
-6. Useful Keywords: The keywords are useful for highlighting the analysis"""
+ASPECTS TO EVALUATE:
+
+1. TRANSCRIPT ACCURACY: All content is directly supported by the transcript (no external additions)
+2. CONTENT LENGTH: Balanced length - substantial but not overwhelming (follows guidelines)
+3. COMPLETENESS: The entire video content has been properly analyzed and represented
+4. STRUCTURE: Results follow the required schema structure perfectly
+5. GRAMMAR & TYPO CORRECTION: No typos, grammatical mistakes, appropriate wordings (typos corrected appropriately)
+6. TIMESTAMP ACCURACY: Timestamps are accurate, properly formatted, and appropriately placed
+7. NO GARBAGE: Promotional and meaningless content has been removed
+8. USEFUL KEYWORDS: Keywords are highly relevant and useful for content discovery"""
 
     if state.enable_translation:
         language_name = state.target_language
         base_prompt += f"""
-7. Correct Language: Content is properly translated to {language_name} and maintains quality"""
+9. TRANSLATION QUALITY: Content is properly translated to {language_name} with natural fluency and maintained quality"""
     else:
         base_prompt += """
-7. Correct Language: Match the original language of the video or user requested"""
+9. LANGUAGE CONSISTENCY: Content matches the original language of the video or user request"""
 
     base_prompt += """
-Provide rates and reasons for each aspect. The total score will be calculated automatically."""
+
+LENGTH EVALUATION GUIDELINES:
+- Title: Should be 2-15 words (descriptive, not too short/long)
+- Summary: Should be 150-400 words (comprehensive but concise)
+- Chapter Summaries: Should be 80-200 words each (detailed but focused)
+- Takeaways: Should have 3-8 items (balanced coverage)
+- Key Facts: Should have 3-6 items (important data points)
+- Keywords: Must have exactly 3 relevant keywords
+
+QUALITY STANDARDS:
+- Content must be transcript-based (no external knowledge added)
+- Timestamp format must match the original transcript format
+- Chapter structure should follow video's natural flow
+- Professional, clear, and engaging tone maintained
+
+Provide specific rates and detailed reasons for each aspect."""
     return base_prompt
 
 
 def get_improvement_prompt(state: GraphState) -> str:
-    """Generate improvement prompt with optional translation context."""
-    base_prompt = """Improve the analysis based on the feedback while maintaining the same structure and format."""
+    """Generate improvement prompt with transcript accuracy and quality focus."""
+    base_prompt = """Improve the analysis based on the quality feedback while maintaining strict adherence to the original transcript.
+
+CRITICAL IMPROVEMENT GUIDELINES:
+1. TRANSCRIPT ACCURACY: Ensure every improvement is directly supported by the transcript content
+2. LENGTH BALANCE: Adjust content to be comprehensive but not excessive (follow length guidelines)
+3. TYPO CORRECTION: Only correct obvious typos with high confidence, maintain original meaning
+4. STRUCTURE PRESERVATION: Keep the same schema structure and format
+5. QUALITY ENHANCEMENT: Address specific feedback issues without adding external information
+
+IMPROVEMENT CHECKLIST:
+□ All content remains transcript-based (no external additions)
+□ Length is balanced (not too short, not too long)
+□ Timestamps match the original transcript format and are accurate
+□ Chapter structure matches video's natural flow
+□ Factual claims are all transcript-supported
+□ Professional tone and clarity maintained
+
+CONTENT LENGTH TARGETS:
+- Title: 2-15 words (descriptive and accurate)
+- Summary: 150-400 words (comprehensive but concise)
+- Chapter Summaries: 80-200 words each
+- Takeaways: 3-8 items with timestamps
+- Key Facts: 3-6 items with timestamps
+- Keywords: Exactly 3 most relevant terms"""
 
     if state.enable_translation:
         language_name = state.target_language
         base_prompt += f"""
-IMPORTANT: Ensure all improvements maintain proper translation to {language_name} ({state.target_language}).
-- Keep all content translated to {language_name}
-- Maintain translation quality while addressing the specific feedback issues"""
+
+TRANSLATION IMPROVEMENT REQUIREMENTS:
+- Maintain all content in {language_name} ({state.target_language})
+- Preserve translation quality while fixing identified issues
+- Keep technical terms and proper names appropriate for the target language
+- Preserve timestamp format exactly as it appears in the original transcript
+- Maintain natural fluency and cultural relevance"""
 
     return base_prompt
 
@@ -283,12 +371,23 @@ Please provide an improved version that addresses the specific issues identified
         takeaways_text = ", ".join([item.text for item in analysis.takeaways])
         key_facts_text = ", ".join([item.text for item in analysis.key_facts])
 
+        # Include detailed chapter information for completeness evaluation
+        chapters_text = []
+        for i, chapter in enumerate(analysis.chapters, 1):
+            chapter_info = f"Chapter {i}: {chapter.header}"
+            if chapter.timestamp:
+                chapter_info += f" (timestamp: {chapter.timestamp})"
+            chapter_info += f"\n  Summary: {chapter.summary}"
+            if chapter.key_points:
+                chapter_info += f"\n  Key Points: {'; '.join(chapter.key_points)}"
+            chapters_text.append(chapter_info)
+
         return f"""
 Title: {analysis.title}
 Summary: {analysis.summary}
 Takeaways: {takeaways_text}
 Key Facts: {key_facts_text}
-Chapters: {len(analysis.chapters)} chapters
+Chapters: {chr(10).join(chapters_text)}
 """
 
 
