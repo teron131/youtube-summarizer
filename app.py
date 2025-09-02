@@ -532,33 +532,67 @@ async def stream_summarize(request: SummarizeRequest):
 
             chunk_count = 0
             for chunk in graph.stream(graph_input, stream_mode="values"):
-                # Handle both dictionary (from LangGraph) and Pydantic model cases
-                if isinstance(chunk, dict):
-                    chunk_dict = chunk.copy()
-                else:
-                    chunk_dict = chunk.model_dump()
-
-                # Ensure all nested Pydantic models are serialized to dict
-                def serialize_nested(obj):
-                    if isinstance(obj, dict):
-                        return {k: serialize_nested(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [serialize_nested(item) for item in obj]
-                    elif hasattr(obj, "model_dump"):
-                        return obj.model_dump()
+                try:
+                    # Handle both dictionary (from LangGraph) and Pydantic model cases
+                    if isinstance(chunk, dict):
+                        chunk_dict = chunk.copy()
                     else:
-                        return obj
+                        chunk_dict = chunk.model_dump()
 
-                chunk_dict = serialize_nested(chunk_dict)
-                chunk_dict["timestamp"] = datetime.now().isoformat()
-                chunk_dict["chunk_number"] = chunk_count
+                    # Ensure all nested Pydantic models are serialized to dict
+                    def serialize_nested(obj):
+                        if isinstance(obj, dict):
+                            return {k: serialize_nested(v) for k, v in obj.items()}
+                        elif isinstance(obj, list):
+                            return [serialize_nested(item) for item in obj]
+                        elif hasattr(obj, "model_dump"):
+                            return obj.model_dump()
+                        else:
+                            return obj
 
-                yield f"data: {json.dumps(chunk_dict)}\n\n"
-                chunk_count += 1
+                    chunk_dict = serialize_nested(chunk_dict)
 
-                # Adaptive delay based on chunk count to prevent overwhelming client
-                delay = min(0.1, 0.05 + (chunk_count * 0.01))
-                await asyncio.sleep(delay)
+                    # Filter out large data fields that can break JSON streaming
+                    # Remove transcript data from streaming chunks to prevent JSON parsing errors
+                    filtered_chunk = {}
+                    for key, value in chunk_dict.items():
+                        # Skip large text fields that can cause JSON parsing issues
+                        if key in ["transcript_or_url"] and isinstance(value, str) and len(value) > 1000:
+                            # Truncate large transcript data to prevent JSON issues
+                            filtered_chunk[key] = value[:500] + "...[truncated for streaming]"
+                        elif key in ["analysis", "quality"] and isinstance(value, dict):
+                            # Keep analysis and quality data but limit nested text fields
+                            filtered_analysis = {}
+                            for sub_key, sub_value in value.items():
+                                if isinstance(sub_value, str) and len(sub_value) > 2000:
+                                    filtered_analysis[sub_key] = sub_value[:1000] + "...[truncated]"
+                                else:
+                                    filtered_analysis[sub_key] = sub_value
+                            filtered_chunk[key] = filtered_analysis
+                        else:
+                            filtered_chunk[key] = value
+
+                    filtered_chunk["timestamp"] = datetime.now().isoformat()
+                    filtered_chunk["chunk_number"] = chunk_count
+
+                    # Validate JSON before yielding
+                    json_str = json.dumps(filtered_chunk, ensure_ascii=False)
+                    if len(json_str) > 50000:  # Skip extremely large chunks
+                        print(f"⚠️ Skipping oversized chunk ({len(json_str)} chars)")
+                        continue
+
+                    yield f"data: {json_str}\n\n"
+                    chunk_count += 1
+
+                    # Adaptive delay based on chunk count to prevent overwhelming client
+                    delay = min(0.1, 0.05 + (chunk_count * 0.01))
+                    await asyncio.sleep(delay)
+
+                except (TypeError, ValueError, json.JSONDecodeError) as e:
+                    print(f"⚠️ Failed to serialize chunk {chunk_count}: {str(e)}")
+                    # Skip problematic chunks but continue processing
+                    chunk_count += 1
+                    continue
 
             # Send completion message
             completion_data = {"type": "complete", "message": "Analysis completed", "processing_time": get_processing_time(start_time), "total_chunks": chunk_count, "timestamp": datetime.now().isoformat()}
@@ -567,7 +601,12 @@ async def stream_summarize(request: SummarizeRequest):
         except Exception as e:
             log_and_print(f"❌ Streaming failed: {str(e)}")
             error_data = {"type": "error", "message": str(e)[:100], "timestamp": datetime.now().isoformat()}
-            yield f"data: {json.dumps(error_data)}\n\n"
+            try:
+                yield f"data: {json.dumps(error_data)}\n\n"
+            except Exception as json_error:
+                # Fallback if even error serialization fails
+                log_and_print(f"❌ Failed to serialize error data: {str(json_error)}")
+                yield f'data: {{"type": "error", "message": "Streaming failed", "timestamp": "{datetime.now().isoformat()}"}}\n\n'
 
     return StreamingResponse(
         generate_stream(),
