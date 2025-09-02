@@ -205,7 +205,7 @@ def parse_scraper_result(result) -> dict[str, Any]:
     try:
         # Handle both Pydantic objects and raw dict responses
         if hasattr(result, "model_dump"):
-            # Pydantic object
+            # Pydantic object - use model_dump() to get all fields including properties
             result_dict = result.model_dump()
         else:
             # Raw dict
@@ -220,11 +220,30 @@ def parse_scraper_result(result) -> dict[str, Any]:
         if result_dict.get("chapters"):
             chapters = [{"title": chapter.get("title", ""), "timeDescription": chapter.get("timeDescription", ""), "startSeconds": chapter.get("startSeconds", 0)} for chapter in result_dict["chapters"]]
 
+        # Get transcript with proper fallback chain
+        transcript = ""
+        if hasattr(result, "parsed_transcript"):
+            # If it's a Pydantic object, use the parsed_transcript property
+            transcript = result.parsed_transcript
+        elif result_dict.get("parsed_transcript"):
+            # If it's in the dict (from model_dump), use it
+            transcript = result_dict["parsed_transcript"]
+        elif result_dict.get("transcript_only_text"):
+            # Fallback to transcript_only_text
+            transcript = result_dict["transcript_only_text"]
+        elif hasattr(result, "transcript_only_text"):
+            # Fallback for object attribute
+            transcript = getattr(result, "transcript_only_text", "")
+
+        # Ensure transcript is not empty - provide fallback if needed
+        if not transcript or not transcript.strip():
+            transcript = "Transcript not available for this video."
+
         return {
             "url": result_dict.get("url", ""),
             "title": result_dict.get("title", "Unknown Title") or "Unknown Title",
             "author": result_dict.get("channel", {}).get("title", "Unknown Author") if isinstance(result_dict.get("channel"), dict) else "Unknown Author",
-            "transcript": result_dict.get("parsed_transcript", result_dict.get("transcript_only_text", "")),
+            "transcript": transcript,
             "duration": result_dict.get("durationFormatted"),
             "thumbnail": result_dict.get("thumbnail"),
             "view_count": result_dict.get("viewCountInt"),
@@ -241,11 +260,20 @@ def parse_scraper_result(result) -> dict[str, Any]:
         if hasattr(result, "chapters") and getattr(result, "chapters", []):
             chapters = [{"title": getattr(chapter, "title", ""), "timeDescription": getattr(chapter, "timeDescription", ""), "startSeconds": getattr(chapter, "startSeconds", 0)} for chapter in getattr(result, "chapters", [])]
 
+        # Get transcript with fallback for error case
+        transcript = ""
+        if hasattr(result, "parsed_transcript"):
+            transcript = result.parsed_transcript
+        elif hasattr(result, "transcript_only_text"):
+            transcript = getattr(result, "transcript_only_text", "")
+        else:
+            transcript = "Transcript not available for this video."
+
         return {
             "url": getattr(result, "url", ""),
             "title": getattr(result, "title", "Unknown Title"),
             "author": "Unknown Author",
-            "transcript": getattr(result, "transcript_only_text", ""),
+            "transcript": transcript,
             "duration": getattr(result, "durationFormatted", None),
             "thumbnail": getattr(result, "thumbnail", None),
             "view_count": getattr(result, "viewCountInt", None),
