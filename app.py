@@ -126,7 +126,7 @@ class ScrapResponse(BaseResponse):
 class SummarizeRequest(BaseModel):
     """Summarization request."""
 
-    content: str = Field(..., min_length=10, max_length=50000, description="Content to analyze")
+    content: str = Field(..., min_length=10, max_length=50000, description="Content to analyze (YouTube URL or transcript text)")
     content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
 
     # Model selection

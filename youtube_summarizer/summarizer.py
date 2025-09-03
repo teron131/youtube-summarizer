@@ -3,7 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-from typing import Generator, Literal, Optional
+from typing import Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
@@ -13,7 +13,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
-from youtube_summarizer.utils import is_youtube_url
+
+from .utils import is_youtube_url, schema_to_string
 
 load_dotenv()
 
@@ -130,19 +131,16 @@ class GraphState(BaseModel):
 # Prompt templates
 def get_analysis_prompt(state: GraphState) -> str:
     """Generate streamlined analysis prompt with essential quality guidelines."""
-    base_prompt = """Create a comprehensive analysis that strictly follows the transcript content.
+    schema = schema_to_string(Analysis)
+    base_prompt = f"""Create a comprehensive analysis that strictly follows the transcript content.
+
+OUTPUT SCHEMA:
+{schema}
 
 CORE REQUIREMENTS:
 - ACCURACY: Every claim must be directly supported by the transcript
 - LENGTH: Summary (150-400 words), Chapters (80-200 words each), Takeaways (3-8), Key Facts (3-6)
 - TONE: Write in objective, article-like style (avoid "This video...", "The speaker...")
-
-CONTENT STRUCTURE:
-- TITLE: Descriptive, accurate (2-15 words)
-- SUMMARY: Comprehensive overview of main points and structure
-- TAKEAWAYS: Simple array of strings
-- KEY FACTS: Simple array of strings
-- KEYWORDS: Exactly 3 most relevant terms
 
 CONTENT FILTERING:
 - Remove all promotional content (speaker intros, calls-to-action, self-promotion)
@@ -173,12 +171,11 @@ QUALITY CHECKS:
 - Length balanced: substantial but not overwhelming
 - Keywords highly relevant and searchable"""
 
-    if state.enable_translation:
-        language_name = state.target_language
+    if state.target_language:
         base_prompt += f"""
 
 TRANSLATION:
-- Translate to {language_name} with natural fluency
+- Translate to {state.target_language} with natural fluency
 - Preserve technical terms and proper names
 - Maintain same detail level and structure"""
     return base_prompt
@@ -199,10 +196,9 @@ ASPECTS:
 8. ARRAY VALIDITY: Takeaways/key_facts are valid arrays with appropriate content
 9. KEYWORDS: Highly relevant and useful"""
 
-    if state.enable_translation:
-        language_name = state.target_language
+    if state.target_language:
         base_prompt += f"""
-11. TRANSLATION QUALITY: Content is properly translated to {language_name} with natural fluency and maintained quality"""
+11. TRANSLATION QUALITY: Content is properly translated to {state.target_language} with natural fluency and maintained quality"""
     else:
         base_prompt += """
 11. LANGUAGE CONSISTENCY: Content matches original language"""
@@ -223,6 +219,12 @@ QUALITY STANDARDS:
 - Professional article-like tone
 
 Provide specific rates and reasons for each aspect."""
+
+    # Provide explicit output schema to guide structured responses
+    base_prompt += f"""
+
+OUTPUT SCHEMA:
+{schema_to_string(Quality)}"""
     return base_prompt
 
 
@@ -246,15 +248,20 @@ CONTENT TARGETS:
 - Key Facts: Simple array with 3-6 strings
 - Keywords: Exactly 3"""
 
-    if state.enable_translation:
-        language_name = state.target_language
+    if state.target_language:
         base_prompt += f"""
 
 TRANSLATION IMPROVEMENT REQUIREMENTS:
-- Maintain all content in {language_name} ({state.target_language})
+- Maintain all content in {state.target_language}
 - Preserve translation quality while fixing identified issues
 - Keep technical terms and proper names appropriate for the target language
 - Maintain natural fluency and cultural relevance"""
+
+    # Provide explicit output schema to guide structured responses
+    base_prompt += f"""
+
+OUTPUT SCHEMA:
+{schema_to_string(Analysis)}"""
 
     return base_prompt
 
@@ -282,82 +289,15 @@ class ContextProcessor:
     @staticmethod
     def create_improvement_prompt(analysis: Analysis, quality: Quality) -> str:
         """Create improvement prompt from analysis and quality feedback."""
-        import json
-
-        # Convert arrays to JSON strings for LLM processing
-        takeaways_json = json.dumps(analysis.takeaways, ensure_ascii=False)
-        key_facts_json = json.dumps(analysis.key_facts, ensure_ascii=False)
-
         return f"""# Improve this video analysis based on the following feedback:
 
-## Quality Assessment (Total: {quality.total_score}/{quality.max_possible_score} - {quality.percentage_score}%):
+## Analysis:
+{repr(analysis)}
 
-### Completeness: {quality.completeness.rate}
-{quality.completeness.reason}
+## Quality Assessment:
+{repr(quality)}
 
-### Structure: {quality.structure.rate}
-{quality.structure.reason}
-
-### Grammar: {quality.grammar.rate}
-{quality.grammar.reason}
-
-### No Garbage: {quality.no_garbage.rate}
-{quality.no_garbage.reason}
-
-### Correct Language: {quality.correct_language.rate}
-{quality.correct_language.reason}
-
-## Original Analysis:
-
-### Title
-{analysis.title}
-
-### Summary
-{analysis.summary}
-
-### Key Takeaways (JSON format)
-```json
-{takeaways_json}
-```
-
-### Key Facts (JSON format)
-```json
-{key_facts_json}
-```
-
-## Improvement Instructions:
-- Maintain the JSON format for takeaways and key facts in your response
-- Each takeaway/fact should be a simple string
-- Address the specific quality issues mentioned above
-- Return takeaways and key_facts as valid JSON arrays
-
-Please provide an improved version that addresses the specific issues identified above to improve the overall quality score. Format takeaways and key_facts as JSON arrays in your response."""
-
-    @staticmethod
-    def analysis_to_text(analysis: Analysis) -> str:
-        """Convert analysis to text format for quality evaluation."""
-        import json
-
-        # Convert arrays to JSON strings for quality evaluation
-        takeaways_json = json.dumps(analysis.takeaways, ensure_ascii=False)
-        key_facts_json = json.dumps(analysis.key_facts, ensure_ascii=False)
-
-        # Include detailed chapter information for completeness evaluation
-        chapters_text = []
-        for i, chapter in enumerate(analysis.chapters, 1):
-            chapter_info = f"Chapter {i}: {chapter.header}"
-            chapter_info += f"\n  Summary: {chapter.summary}"
-            if chapter.key_points:
-                chapter_info += f"\n  Key Points: {'; '.join(chapter.key_points)}"
-            chapters_text.append(chapter_info)
-
-        return f"""
-Title: {analysis.title}
-Summary: {analysis.summary}
-Takeaways: {takeaways_json}
-Key Facts: {key_facts_json}
-Chapters: {chr(10).join(chapters_text)}
-"""
+Please provide an improved version that addresses the specific issues identified above to improve the overall quality score."""
 
 
 # Workflow node functions
@@ -366,12 +306,12 @@ def langchain_or_gemini(state: GraphState) -> str:
     return "gemini_analysis" if is_youtube_url(state.transcript_or_url) else "langchain_analysis"
 
 
-def langchain_analysis_node(state: GraphState) -> dict:
+def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     """Generate initial analysis using LangChain for transcript text."""
     print(f"📝 Sending transcript text to LangChain LLM: {len(state.transcript_or_url)} characters")
     print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
     print(f"📝 Using model: {state.analysis_model}")
-    if state.enable_translation:
+    if state.target_language:
         print(f"🌐 Translation enabled: {state.target_language}")
 
     # Prepare content with chapters information if available
@@ -395,7 +335,7 @@ def langchain_analysis_node(state: GraphState) -> dict:
     chain = prompt | structured_llm
     result: Analysis = chain.invoke({"content": content})
 
-    result.target_language = state.target_language if state.enable_translation else None
+    result.target_language = state.target_language if state.target_language else None
 
     print(f"📊 LangChain analysis completed")
     return {
@@ -404,7 +344,7 @@ def langchain_analysis_node(state: GraphState) -> dict:
     }
 
 
-def langchain_quality_node(state: GraphState) -> dict:
+def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     """Check the quality of the generated analysis using LangChain."""
     print("🔍 Performing quality check with LangChain...")
     print(f"🔍 Using model: {state.quality_model}")
@@ -412,8 +352,8 @@ def langchain_quality_node(state: GraphState) -> dict:
     llm = langchain_llm(state.quality_model)
     structured_llm = llm.with_structured_output(Quality)
 
-    analysis_text = ContextProcessor.analysis_to_text(state.analysis)
     quality_prompt = get_quality_prompt(state)
+    analysis_text = repr(state.analysis)
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", quality_prompt),
@@ -443,7 +383,7 @@ def langchain_quality_node(state: GraphState) -> dict:
     }
 
 
-def langchain_refinement_node(state: GraphState) -> dict:
+def langchain_refinement_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     """Refine the analysis based on quality feedback using LangChain."""
     print("🔧 Refining analysis with LangChain...")
     print(f"🔧 Using model: {state.analysis_model}")
@@ -453,6 +393,17 @@ def langchain_refinement_node(state: GraphState) -> dict:
 
     improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
     improvement_system_prompt = get_improvement_prompt(state)
+
+    # Include original transcript context for informed refinement
+    transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
+
+    # Add chapter context if available
+    if state.chapters:
+        chapters_context = "\n\nVideo Chapters:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        transcript_context += chapters_context
+
+    full_improvement_prompt = f"{transcript_context}\n\n{improvement_prompt}"
+
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", improvement_system_prompt),
@@ -461,10 +412,10 @@ def langchain_refinement_node(state: GraphState) -> dict:
     )
 
     chain = prompt | structured_llm
-    result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
+    result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
 
     # Update translation metadata
-    result.target_language = state.target_language if state.enable_translation else None
+    result.target_language = state.target_language if state.target_language else None
 
     print(f"✨ LangChain analysis refined")
     return {
@@ -473,11 +424,11 @@ def langchain_refinement_node(state: GraphState) -> dict:
     }
 
 
-def gemini_analysis_node(state: GraphState) -> dict:
+def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     """Generate initial analysis using Gemini SDK for YouTube URLs."""
     print(f"🔗 Processing YouTube URL with Gemini SDK: {state.transcript_or_url}")
     print(f"🔗 Using model: {state.analysis_model}")
-    if state.enable_translation:
+    if state.target_language:
         print(f"🌐 Translation enabled: {state.target_language}")
 
     client = Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -509,7 +460,7 @@ def gemini_analysis_node(state: GraphState) -> dict:
     result: Analysis = response.parsed
 
     # Update translation metadata
-    result.target_language = state.target_language if state.enable_translation else None
+    result.target_language = state.target_language if state.target_language else None
 
     print(f"📊 Gemini SDK analysis completed")
     return {
@@ -518,14 +469,15 @@ def gemini_analysis_node(state: GraphState) -> dict:
     }
 
 
-def gemini_quality_node(state: GraphState) -> dict:
+def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     """Check quality using Gemini SDK."""
     print("🔍 Performing quality check with Gemini SDK...")
     print(f"🔍 Using model: {state.quality_model}")
 
     client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-    analysis_text = ContextProcessor.analysis_to_text(state.analysis)
+
     quality_prompt = get_quality_prompt(state)
+    analysis_text = repr(state.analysis)
 
     response = client.models.generate_content(
         model=state.quality_model.split("/")[1] if "google/" in state.quality_model else "gemini-2.5-flash",
@@ -565,7 +517,7 @@ def gemini_quality_node(state: GraphState) -> dict:
     }
 
 
-def gemini_refinement_node(state: GraphState) -> dict:
+def gemini_refinement_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     """Refine analysis using Gemini SDK."""
     print("🔧 Refining analysis with Gemini SDK...")
     print(f"🔧 Using model: {state.analysis_model}")
@@ -574,14 +526,22 @@ def gemini_refinement_node(state: GraphState) -> dict:
     improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
     improvement_system_prompt = get_improvement_prompt(state)
 
+    # Prepare content parts with full context
+    content_parts = [
+        types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+    ]
+
+    # Add chapters information if available for complete context
+    if state.chapters:
+        chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        content_parts.append(types.Part(text=chapters_info))
+
+    # Add improvement prompt
+    content_parts.append(types.Part(text=improvement_prompt))
+
     response = client.models.generate_content(
         model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-        contents=types.Content(
-            parts=[
-                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-                types.Part(text=improvement_prompt),
-            ]
-        ),
+        contents=types.Content(parts=content_parts),
         config=types.GenerateContentConfig(
             system_instruction=improvement_system_prompt,
             temperature=0,
@@ -594,7 +554,7 @@ def gemini_refinement_node(state: GraphState) -> dict:
     result: Analysis = response.parsed
 
     # Update translation metadata
-    result.target_language = state.target_language if state.enable_translation else None
+    result.target_language = state.target_language if state.target_language else None
 
     print(f"✨ Gemini SDK analysis refined")
     return {

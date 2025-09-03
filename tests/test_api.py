@@ -85,16 +85,15 @@ class TestSummarize:
 
         from example_results import result_with_chapters
 
-        payload = {"content": result_with_chapters.transcript_only_text[:5000], "content_type": "transcript", "enable_translation": False, "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"}
+        payload = {"content": result_with_chapters.transcript_only_text[:5000], "content_type": "transcript", "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"}
         resp = client.post("/summarize", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
         assert "analysis" in data and "quality" in data
         assert "iteration_count" in data
-        # Check new fields are present
+        # Check required fields are present
         assert "target_language" in data
-        assert "enable_translation" in data
         assert "analysis_model" in data
         assert "quality_model" in data
 
@@ -107,7 +106,6 @@ class TestSummarize:
         payload = {
             "content": result_with_chapters.transcript_only_text[:2000],
             "content_type": "transcript",
-            "enable_translation": False,
             "target_language": "en",
             "analysis_model": "google/gemini-2.5-pro",
             "quality_model": "google/gemini-2.5-flash",
@@ -141,7 +139,6 @@ class TestTwoStepWorkflow:
             json={
                 "content": d1["transcript"],
                 "content_type": "transcript",
-                "enable_translation": False,
                 "target_language": "en",
                 "analysis_model": "google/gemini-2.5-pro",
                 "quality_model": "google/gemini-2.5-flash",
@@ -189,7 +186,7 @@ class TestEdgeCases:
         from unittest.mock import patch
 
         with patch.dict("os.environ", {"GEMINI_API_KEY": ""}):
-            response = client.post("/summarize", json={"content": "test content", "content_type": "transcript", "enable_translation": False, "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"})
+            response = client.post("/summarize", json={"content": "test content", "content_type": "transcript", "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"})
             assert response.status_code == 500
             data = response.json()
             assert data["detail"] == "Required API key missing"
@@ -201,7 +198,6 @@ class TestEdgeCases:
             json={
                 "content": "test",
                 "content_type": "invalid",
-                "enable_translation": False,
                 "target_language": "en",
                 "analysis_model": "google/gemini-2.5-pro",
                 "quality_model": "google/gemini-2.5-flash",
@@ -216,7 +212,6 @@ class TestEdgeCases:
             json={
                 "content": "hi",
                 "content_type": "transcript",
-                "enable_translation": False,
                 "target_language": "en",
                 "analysis_model": "google/gemini-2.5-pro",
                 "quality_model": "google/gemini-2.5-flash",
@@ -232,7 +227,6 @@ class TestEdgeCases:
             json={
                 "content": long_content,
                 "content_type": "transcript",
-                "enable_translation": False,
                 "target_language": "en",
                 "analysis_model": "google/gemini-2.5-pro",
                 "quality_model": "google/gemini-2.5-flash",

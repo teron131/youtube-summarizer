@@ -85,26 +85,10 @@ def mock_youtube_scrapper_result(mock_channel):
 @pytest.fixture
 def mock_analysis_result():
     """Mock analysis result for Gemini API responses."""
-    from youtube_summarizer.summarizer import Chapter, TimestampedText
+    from youtube_summarizer.summarizer import Analysis, Chapter
 
-    # Create mock objects that mimic the new structure
-    mock = MagicMock()
-    mock.title = "Test Video Analysis"
-    mock.summary = "This is a comprehensive analysis of the video content."
-
-    # Create TimestampedText objects for key_facts and takeaways
-    mock.key_facts = [TimestampedText(text="Fact 1", timestamp="00:01:23"), TimestampedText(text="Fact 2", timestamp="00:02:45")]
-    mock.takeaways = [TimestampedText(text="Takeaway 1", timestamp="00:03:12"), TimestampedText(text="Takeaway 2", timestamp="00:04:56")]
-
-    # Mock chapter with optional timestamp
-    mock_chapter = MagicMock()
-    mock_chapter.header = "Main Content"
-    mock_chapter.key_points = ["Point 1", "Point 2", "Point 3"]
-    mock_chapter.summary = "This is a comprehensive analysis of the video content."
-    mock_chapter.timestamp = "00:00:30"
-
-    mock.chapters = [mock_chapter]
-    return mock
+    # Create real Pydantic objects that match the current structure
+    return Analysis(title="Test Video Analysis", summary="This is a comprehensive analysis of the video content covering key concepts and practical applications.", takeaways=["First key takeaway about the main topic", "Second important insight from the content", "Third actionable point for implementation"], key_facts=["Important statistic or data point from the video", "Key fact that supports the main argument", "Essential piece of information for understanding"], chapters=[Chapter(header="Introduction to Main Topic", summary="Overview of the primary subject matter and its importance in the field.", key_points=["Point 1: Basic foundation concepts", "Point 2: Key principles and methodologies", "Point 3: Practical applications and examples"]), Chapter(header="Advanced Implementation", summary="Detailed exploration of advanced techniques and best practices.", key_points=["Point 1: Advanced implementation strategies", "Point 2: Common challenges and solutions", "Point 3: Optimization techniques"])], keywords=["test", "analysis", "video", "summary"], target_language=None)
 
 
 @pytest.fixture

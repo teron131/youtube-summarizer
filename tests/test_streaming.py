@@ -21,7 +21,7 @@ class TestLangGraphStreaming:
 
         from example_results import result_with_chapters
 
-        payload = {"content": result_with_chapters.transcript_only_text[:2000], "content_type": "transcript", "enable_translation": False, "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"}
+        payload = {"content": result_with_chapters.transcript_only_text[:2000], "content_type": "transcript", "target_language": "en", "analysis_model": "google/gemini-2.5-pro", "quality_model": "google/gemini-2.5-flash"}
         resp = client.post("/stream-summarize", json=payload)
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/event-stream")
@@ -40,32 +40,27 @@ class TestSSEContract:
             GraphState,
             Quality,
             Rate,
-            TimestampedText,
         )
 
-        # Create TimestampedText objects for takeaways and key_facts
-        takeaways = [TimestampedText(text="Test takeaway")]
-        key_facts = [TimestampedText(text="Test fact")]
-        chapters = []
-
         # Create Rate objects for quality assessment
-        test_rate = Rate(rate="Pass", reason="Test")
+        test_rate = Rate(rate="Pass", reason="Test reason")
 
-        # Create Quality object with keywords
-        quality = Quality(completeness=test_rate, structure=test_rate, grammar=test_rate, timestamp=test_rate, no_garbage=test_rate, correct_language=test_rate, keywords=["test", "sse"])
+        # Create Quality object
+        quality = Quality(completeness=test_rate, structure=test_rate, grammar=test_rate, no_garbage=test_rate, useful_keywords=test_rate, correct_language=test_rate)
 
-        analysis = Analysis(title="SSE Test", summary="Test summary", takeaways=takeaways, key_facts=key_facts, chapters=chapters)
+        # Create analysis with proper structure
+        analysis = Analysis(title="SSE Test", summary="Test summary for streaming analysis", takeaways=["Test takeaway 1", "Test takeaway 2"], key_facts=["Test fact 1", "Test fact 2"], chapters=[], keywords=["test", "sse"], target_language="en")
 
         chunk = GraphState(
             transcript_or_url="valid",
+            chapters=[],
             analysis=analysis,
             quality=quality,
             iteration_count=1,
-            is_complete=True,
-            enable_translation=False,
             target_language="en",
             analysis_model="google/gemini-2.5-pro",
             quality_model="google/gemini-2.5-flash",
+            is_complete=True,
         )
         mock_stream.return_value = [chunk]
 
@@ -75,7 +70,6 @@ class TestSSEContract:
                 json={
                     "content": "Valid content for SSE test",
                     "content_type": "transcript",
-                    "enable_translation": False,
                     "target_language": "en",
                     "analysis_model": "google/gemini-2.5-pro",
                     "quality_model": "google/gemini-2.5-flash",
