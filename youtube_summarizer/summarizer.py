@@ -307,22 +307,51 @@ def langchain_or_gemini(state: GraphState) -> str:
 
 
 def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Generate initial analysis using LangChain for transcript text."""
-    print(f"📝 Sending transcript text to LangChain LLM: {len(state.transcript_or_url)} characters")
-    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
+    """Super node: generate or refine analysis using LangChain.
+
+    - If there is no prior quality feedback, generate a fresh analysis.
+    - If quality feedback exists, refine using the feedback and original context.
+    """
     print(f"📝 Using model: {state.analysis_model}")
+    llm = langchain_llm(state.analysis_model)
+    structured_llm = llm.with_structured_output(Analysis)
+
+    # Refinement path when previous quality feedback exists
+    if state.quality is not None and state.analysis is not None:
+        print("🔧 Super node mode: refining analysis with LangChain based on quality feedback...")
+        improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
+        improvement_system_prompt = get_improvement_prompt(state)
+
+        # Include original transcript context to anchor refinements
+        transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
+        if state.chapters:
+            chapters_context = "\n\nVideo Chapters:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+            transcript_context += chapters_context
+
+        full_improvement_prompt = f"{transcript_context}\n\n{improvement_prompt}"
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", improvement_system_prompt),
+                ("human", "{improvement_prompt}"),
+            ]
+        )
+        chain = prompt | structured_llm
+        result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
+        result.target_language = state.target_language if state.target_language else None
+        print("✨ LangChain super node refined analysis")
+        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
+    # Generation path (no previous feedback)
+    print(f"📝 Super node mode: generating initial analysis. Transcript length: {len(state.transcript_or_url)}")
+    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
     if state.target_language:
         print(f"🌐 Translation enabled: {state.target_language}")
 
-    # Prepare content with chapters information if available
     content = state.transcript_or_url
     if state.chapters:
         chapters_info = "\n\nVIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
         content += chapters_info
         print(f"📋 Including {len(state.chapters)} video chapters in analysis")
-
-    llm = langchain_llm(state.analysis_model)
-    structured_llm = llm.with_structured_output(Analysis)
 
     analysis_prompt = get_analysis_prompt(state)
     prompt = ChatPromptTemplate.from_messages(
@@ -331,17 +360,11 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
             ("human", "{content}"),
         ]
     )
-
     chain = prompt | structured_llm
     result: Analysis = chain.invoke({"content": content})
-
     result.target_language = state.target_language if state.target_language else None
-
-    print(f"📊 LangChain analysis completed")
-    return {
-        "analysis": result,
-        "iteration_count": state.iteration_count + 1,
-    }
+    print("📊 LangChain analysis completed")
+    return {"analysis": result, "iteration_count": state.iteration_count + 1}
 
 
 def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
@@ -383,63 +406,44 @@ def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]
     }
 
 
-def langchain_refinement_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Refine the analysis based on quality feedback using LangChain."""
-    print("🔧 Refining analysis with LangChain...")
-    print(f"🔧 Using model: {state.analysis_model}")
-
-    llm = langchain_llm(state.analysis_model)
-    structured_llm = llm.with_structured_output(Analysis)
-
-    improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
-    improvement_system_prompt = get_improvement_prompt(state)
-
-    # Include original transcript context for informed refinement
-    transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
-
-    # Add chapter context if available
-    if state.chapters:
-        chapters_context = "\n\nVideo Chapters:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-        transcript_context += chapters_context
-
-    full_improvement_prompt = f"{transcript_context}\n\n{improvement_prompt}"
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", improvement_system_prompt),
-            ("human", "{improvement_prompt}"),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
-
-    # Update translation metadata
-    result.target_language = state.target_language if state.target_language else None
-
-    print(f"✨ LangChain analysis refined")
-    return {
-        "analysis": result,
-        "iteration_count": state.iteration_count + 1,
-    }
-
-
 def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Generate initial analysis using Gemini SDK for YouTube URLs."""
-    print(f"🔗 Processing YouTube URL with Gemini SDK: {state.transcript_or_url}")
+    """Super node: generate or refine analysis using Gemini SDK for URLs."""
     print(f"🔗 Using model: {state.analysis_model}")
-    if state.target_language:
-        print(f"🌐 Translation enabled: {state.target_language}")
-
     client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    # Refinement path when quality feedback exists
+    if state.quality is not None and state.analysis is not None:
+        print("🔧 Super node mode: refining analysis with Gemini SDK based on quality feedback...")
+        improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
+        improvement_system_prompt = get_improvement_prompt(state)
+
+        # Prepare content parts with full context
+        content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
+        if state.chapters:
+            chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+            content_parts.append(types.Part(text=chapters_info))
+        content_parts.append(types.Part(text=improvement_prompt))
+
+        response = client.models.generate_content(
+            model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
+            contents=types.Content(parts=content_parts),
+            config=types.GenerateContentConfig(
+                system_instruction=improvement_system_prompt,
+                temperature=0,
+                response_mime_type="application/json",
+                response_schema=Analysis,
+                thinking_config=types.ThinkingConfig(thinking_budget=2048),
+            ),
+        )
+        result: Analysis = response.parsed
+        result.target_language = state.target_language if state.target_language else None
+        print("✨ Gemini SDK super node refined analysis")
+        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
+    # Generation path
+    print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
     analysis_prompt = get_analysis_prompt(state)
-
-    # Prepare content parts
-    content_parts = [
-        types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-    ]
-
-    # Add chapters information if available
+    content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
     if state.chapters:
         chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
         content_parts.append(types.Part(text=chapters_info))
@@ -456,17 +460,10 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
             thinking_config=types.ThinkingConfig(thinking_budget=2048),
         ),
     )
-
     result: Analysis = response.parsed
-
-    # Update translation metadata
     result.target_language = state.target_language if state.target_language else None
-
-    print(f"📊 Gemini SDK analysis completed")
-    return {
-        "analysis": result,
-        "iteration_count": state.iteration_count + 1,
-    }
+    print("📊 Gemini SDK analysis completed")
+    return {"analysis": result, "iteration_count": state.iteration_count + 1}
 
 
 def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
@@ -517,52 +514,6 @@ def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     }
 
 
-def gemini_refinement_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Refine analysis using Gemini SDK."""
-    print("🔧 Refining analysis with Gemini SDK...")
-    print(f"🔧 Using model: {state.analysis_model}")
-
-    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-    improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
-    improvement_system_prompt = get_improvement_prompt(state)
-
-    # Prepare content parts with full context
-    content_parts = [
-        types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-    ]
-
-    # Add chapters information if available for complete context
-    if state.chapters:
-        chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-        content_parts.append(types.Part(text=chapters_info))
-
-    # Add improvement prompt
-    content_parts.append(types.Part(text=improvement_prompt))
-
-    response = client.models.generate_content(
-        model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-        contents=types.Content(parts=content_parts),
-        config=types.GenerateContentConfig(
-            system_instruction=improvement_system_prompt,
-            temperature=0,
-            response_mime_type="application/json",
-            response_schema=Analysis,
-            thinking_config=types.ThinkingConfig(thinking_budget=2048),
-        ),
-    )
-
-    result: Analysis = response.parsed
-
-    # Update translation metadata
-    result.target_language = state.target_language if state.target_language else None
-
-    print(f"✨ Gemini SDK analysis refined")
-    return {
-        "analysis": result,
-        "iteration_count": state.iteration_count + 1,
-    }
-
-
 # Conditional routing functions
 def should_continue_langchain(state: GraphState) -> str:
     """Determine next step in LangChain workflow."""
@@ -570,8 +521,8 @@ def should_continue_langchain(state: GraphState) -> str:
         print(f"🔄 LangChain workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 LangChain quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, continuing to refinement (iteration {state.iteration_count + 1})")
-        return "langchain_refinement"
+        print(f"🔄 LangChain quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
+        return "langchain_analysis"
     else:
         print(f"🔄 LangChain workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
         return END
@@ -583,8 +534,8 @@ def should_continue_gemini(state: GraphState) -> str:
         print(f"🔄 Gemini workflow complete (is_complete=True)")
         return END
     elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 Gemini quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, continuing to refinement (iteration {state.iteration_count + 1})")
-        return "gemini_refinement"
+        print(f"🔄 Gemini quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
+        return "gemini_analysis"
     else:
         print(f"🔄 Gemini workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
         return END
@@ -599,8 +550,6 @@ def create_summarization_graph() -> StateGraph:
     builder.add_node("langchain_analysis", langchain_analysis_node)
     builder.add_node("gemini_quality", gemini_quality_node)
     builder.add_node("langchain_quality", langchain_quality_node)
-    builder.add_node("gemini_refinement", gemini_refinement_node)
-    builder.add_node("langchain_refinement", langchain_refinement_node)
 
     # Add conditional routing from START
     builder.add_conditional_edges(
@@ -621,7 +570,7 @@ def create_summarization_graph() -> StateGraph:
         "gemini_quality",
         should_continue_gemini,
         {
-            "gemini_refinement": "gemini_refinement",
+            "gemini_analysis": "gemini_analysis",
             END: END,
         },
     )
@@ -630,14 +579,12 @@ def create_summarization_graph() -> StateGraph:
         "langchain_quality",
         should_continue_langchain,
         {
-            "langchain_refinement": "langchain_refinement",
+            "langchain_analysis": "langchain_analysis",
             END: END,
         },
     )
 
-    # Add edges from refinement nodes back to quality nodes
-    builder.add_edge("gemini_refinement", "gemini_quality")
-    builder.add_edge("langchain_refinement", "langchain_quality")
+    # Re-enter analysis node for refinement; quality nodes already route back
 
     return builder
 
