@@ -546,10 +546,10 @@ def create_summarization_graph() -> StateGraph:
     builder = StateGraph(GraphState)
 
     # Add nodes
-    builder.add_node("gemini_analysis", gemini_analysis_node)
     builder.add_node("langchain_analysis", langchain_analysis_node)
-    builder.add_node("gemini_quality", gemini_quality_node)
     builder.add_node("langchain_quality", langchain_quality_node)
+    builder.add_node("gemini_analysis", gemini_analysis_node)
+    builder.add_node("gemini_quality", gemini_quality_node)
 
     # Add conditional routing from START
     builder.add_conditional_edges(
@@ -562,19 +562,10 @@ def create_summarization_graph() -> StateGraph:
     )
 
     # Add edges from analysis nodes to quality nodes
-    builder.add_edge("gemini_analysis", "gemini_quality")
     builder.add_edge("langchain_analysis", "langchain_quality")
+    builder.add_edge("gemini_analysis", "gemini_quality")
 
     # Add conditional edges from quality nodes
-    builder.add_conditional_edges(
-        "gemini_quality",
-        should_continue_gemini,
-        {
-            "gemini_analysis": "gemini_analysis",
-            END: END,
-        },
-    )
-
     builder.add_conditional_edges(
         "langchain_quality",
         should_continue_langchain,
@@ -583,8 +574,14 @@ def create_summarization_graph() -> StateGraph:
             END: END,
         },
     )
-
-    # Re-enter analysis node for refinement; quality nodes already route back
+    builder.add_conditional_edges(
+        "gemini_quality",
+        should_continue_gemini,
+        {
+            "gemini_analysis": "gemini_analysis",
+            END: END,
+        },
+    )
 
     return builder
 
