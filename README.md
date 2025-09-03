@@ -45,35 +45,31 @@ The heart of our system is a sophisticated LangGraph workflow that ensures high-
 
 ```mermaid
 graph TD
-    START([Start]) --> ROUTE{Input Type?}
-    ROUTE -->|YouTube URL| GA[Gemini Analysis<br/>🤖 Direct URL Processing]
-    ROUTE -->|Text/Transcript| LA[LangChain Analysis<br/>🤖 Text Processing]
-    
-    GA --> GQ[Gemini Quality Check<br/>📊 Aspects Assessment]
-    LA --> LQ[LangChain Quality Check<br/>📊 Aspects Assessment]
-    
-    GQ --> GC{Quality >= Thresholdx<br/>OR Max Iterations?}
-    LQ --> LC{Quality >= Threshold<br/>OR Max Iterations?}
-    
-    GC -->|No| GR[Gemini Refinement<br/>🔧 Improve Analysis]
-    LC -->|No| LR[LangChain Refinement<br/>🔧 Improve Analysis]
-    
-    GR --> GQ
-    LR --> LQ
-    
-    GC -->|Yes| END([Final Analysis])
-    LC -->|Yes| END
-    
+    START([Start]) --> ROUTER[langchain_or_gemini<br/>🎯 Route by Input Type]
+
+    ROUTER -->|YouTube URL| GEMINI_ANALYSIS[gemini_analysis_node<br/>🤖 Gemini SDK Analysis]
+    ROUTER -->|Text/Transcript| LANGCHAIN_ANALYSIS[langchain_analysis_node<br/>🤖 LangChain Analysis]
+
+    GEMINI_ANALYSIS --> GEMINI_QUALITY[gemini_quality_node<br/>📊 Quality Assessment]
+    LANGCHAIN_ANALYSIS --> LANGCHAIN_QUALITY[langchain_quality_node<br/>📊 Quality Assessment]
+
+    GEMINI_QUALITY --> GEMINI_CONDITION{should_continue_gemini<br/>Quality ≥ 90% OR<br/>Iterations ≥ 2?}
+    LANGCHAIN_QUALITY --> LANGCHAIN_CONDITION{should_continue_langchain<br/>Quality ≥ 90% OR<br/>Iterations ≥ 2?}
+
+    GEMINI_CONDITION -->|Yes| END([Final Analysis])
+    LANGCHAIN_CONDITION -->|Yes| END
+
+    GEMINI_CONDITION -->|No| GEMINI_ANALYSIS
+    LANGCHAIN_CONDITION -->|No| LANGCHAIN_ANALYSIS
+
     style START fill:#424242,color:#fff
-    style ROUTE fill:#424242,color:#fff
-    style GA fill:#8E24AA,color:#fff
-    style LA fill:#8E24AA,color:#fff
-    style GQ fill:#D84315,color:#fff
-    style LQ fill:#D84315,color:#fff
-    style GC fill:#424242,color:#fff
-    style LC fill:#424242,color:#fff
-    style GR fill:#26C6DA,color:#000
-    style LR fill:#26C6DA,color:#000
+    style ROUTER fill:#424242,color:#fff
+    style GEMINI_ANALYSIS fill:#8E24AA,color:#fff
+    style LANGCHAIN_ANALYSIS fill:#8E24AA,color:#fff
+    style GEMINI_QUALITY fill:#D84315,color:#fff
+    style LANGCHAIN_QUALITY fill:#D84315,color:#fff
+    style GEMINI_CONDITION fill:#424242,color:#fff
+    style LANGCHAIN_CONDITION fill:#424242,color:#fff
     style END fill:#424242,color:#fff
 ```
 
