@@ -134,8 +134,7 @@ class SummarizeRequest(BaseModel):
     quality_model: str = Field(default="google/gemini-2.5-flash", description="Model for quality evaluation")
 
     # Translation options
-    enable_translation: bool = Field(default=False, description="Enable translation to target language")
-    target_language: str = Field(default="en", description="Target language for translation", min_length=2, max_length=5)
+    target_language: str | None = Field(default=None, description="Target language for translation (None for auto-detect)")
 
 
 class SummarizeResponse(BaseResponse):
@@ -152,7 +151,6 @@ class SummarizeResponse(BaseResponse):
 
     # Translation metadata
     target_language: str | None = Field(default=None, description="Target language used for translation")
-    enable_translation: bool = Field(default=False, description="Whether translation was enabled")
 
 
 class ConfigurationResponse(BaseResponse):
@@ -466,7 +464,6 @@ async def summarize(request: SummarizeRequest):
         graph_input = GraphInput(
             transcript_or_url=validated_content,
             chapters=chapters,
-            enable_translation=request.enable_translation,
             target_language=request.target_language,
             analysis_model=request.analysis_model,
             quality_model=request.quality_model,
@@ -486,8 +483,7 @@ async def summarize(request: SummarizeRequest):
             quality=graph_output.quality,
             processing_time=get_processing_time(start_time),
             iteration_count=graph_output.iteration_count,
-            target_language=request.target_language if request.enable_translation else None,
-            enable_translation=request.enable_translation,
+            target_language=request.target_language,
             analysis_model=request.analysis_model,
             quality_model=request.quality_model,
         )
@@ -534,7 +530,6 @@ async def stream_summarize(request: SummarizeRequest):
             graph_input = GraphInput(
                 transcript_or_url=validated_content,
                 chapters=chapters,
-                enable_translation=request.enable_translation,
                 target_language=request.target_language,
                 analysis_model=request.analysis_model,
                 quality_model=request.quality_model,

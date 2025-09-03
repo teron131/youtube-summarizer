@@ -93,8 +93,7 @@ class GraphInput(BaseModel):
     quality_model: str = Field(default=QUALITY_MODEL)
 
     # Translation options
-    enable_translation: bool = Field(default=ENABLE_TRANSLATION)
-    target_language: str = Field(default=TARGET_LANGUAGE)
+    target_language: Optional[str] = Field(default=None)
 
 
 class GraphOutput(BaseModel):
@@ -117,8 +116,7 @@ class GraphState(BaseModel):
     quality_model: str = Field(default=QUALITY_MODEL)
 
     # Translation options
-    enable_translation: bool = Field(default=ENABLE_TRANSLATION)
-    target_language: str = Field(default=TARGET_LANGUAGE)
+    target_language: Optional[str] = Field(default=None)
 
     # Analysis results
     analysis: Optional[Analysis] = None
