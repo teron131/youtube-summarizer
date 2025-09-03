@@ -218,7 +218,13 @@ def parse_scraper_result(result) -> dict[str, Any]:
         # Extract chapters if available
         chapters = []
         if result_dict.get("chapters"):
-            chapters = [{"title": chapter.get("title", ""), "timeDescription": chapter.get("timeDescription", ""), "startSeconds": chapter.get("startSeconds", 0)} for chapter in result_dict["chapters"]]
+            chapters = [
+                {
+                    "title": chapter.get("title", ""),
+                    "timeDescription": chapter.get("timeDescription", ""),
+                }
+                for chapter in result_dict["chapters"]
+            ]
 
         # Get transcript with proper fallback chain
         transcript = ""
@@ -258,7 +264,13 @@ def parse_scraper_result(result) -> dict[str, Any]:
         # Extract chapters from fallback result if available
         chapters = []
         if hasattr(result, "chapters") and getattr(result, "chapters", []):
-            chapters = [{"title": getattr(chapter, "title", ""), "timeDescription": getattr(chapter, "timeDescription", ""), "startSeconds": getattr(chapter, "startSeconds", 0)} for chapter in getattr(result, "chapters", [])]
+            chapters = [
+                {
+                    "title": getattr(chapter, "title", ""),
+                    "timeDescription": getattr(chapter, "timeDescription", ""),
+                }
+                for chapter in getattr(result, "chapters", [])
+            ]
 
         # Get transcript with fallback for error case
         transcript = ""

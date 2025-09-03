@@ -13,7 +13,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.utils import is_youtube_url
 
 load_dotenv()
@@ -27,26 +26,20 @@ MAX_ITERATIONS = 2
 
 # Translation configuration
 ENABLE_TRANSLATION = False
-TARGET_LANGUAGE = "zh"  # ISO language code (en, es, fr, de, etc.)
-
-
-class TimestampedText(BaseModel):
-    text: str = Field(description="The text")
-    timestamp: Optional[str] = Field(default=None, description="The starting timestamp of the point")
+TARGET_LANGUAGE = "zh-TW"  # ISO language code (en, es, fr, de, etc.)
 
 
 class Chapter(BaseModel):
     header: str = Field(description="A descriptive title for the chapter")
     summary: str = Field(description="A comprehensive summary of the chapter content")
     key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
-    timestamp: Optional[str] = Field(default=None, description="The starting timestamp of the chapter")
 
 
 class Analysis(BaseModel):
     title: str = Field(description="The main title or topic of the video content")
     summary: str = Field(description="A comprehensive summary of the video content")
-    takeaways: list[TimestampedText] = Field(description="Key insights and actionable takeaways for the audience")
-    key_facts: list[TimestampedText] = Field(description="Important facts, statistics, or data points mentioned")
+    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
+    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
     keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting, max 3", max_length=3)
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
@@ -61,7 +54,6 @@ class Quality(BaseModel):
     completeness: Rate = Field(description="Rate for completeness: The entire transcript has been considered")
     structure: Rate = Field(description="Rate for structure: The result is in desired structures")
     grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
-    timestamp: Rate = Field(description="Rate for timestamp: The timestamps added are in correct format")
     no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
     useful_keywords: Rate = Field(description="Rate for keywords: The keywords are useful for highlighting the analysis")
     correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
@@ -71,13 +63,13 @@ class Quality(BaseModel):
     def total_score(self) -> int:
         """Calculate total score based on all quality aspects."""
         score_map = {"Fail": 0, "Refine": 1, "Pass": 2}
-        aspects = [self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.useful_keywords, self.correct_language]
+        aspects = [self.completeness, self.structure, self.grammar, self.no_garbage, self.useful_keywords, self.correct_language]
         return sum(score_map[aspect.rate] for aspect in aspects)
 
     @property
     def max_possible_score(self) -> int:
         """Calculate maximum possible score (all aspects = Pass)."""
-        return len([self.completeness, self.structure, self.grammar, self.timestamp, self.no_garbage, self.useful_keywords, self.correct_language]) * 2
+        return len([self.completeness, self.structure, self.grammar, self.no_garbage, self.useful_keywords, self.correct_language]) * 2
 
     @property
     def percentage_score(self) -> int:
@@ -145,14 +137,13 @@ def get_analysis_prompt(state: GraphState) -> str:
 CORE REQUIREMENTS:
 - ACCURACY: Every claim must be directly supported by the transcript
 - LENGTH: Summary (150-400 words), Chapters (80-200 words each), Takeaways (3-8), Key Facts (3-6)
-- TIMESTAMPS: Use transcript format ([mm:ss] for <1hr videos, [HH:MM:SS] for longer)
 - TONE: Write in objective, article-like style (avoid "This video...", "The speaker...")
 
 CONTENT STRUCTURE:
 - TITLE: Descriptive, accurate (2-15 words)
 - SUMMARY: Comprehensive overview of main points and structure
-- TAKEAWAYS: JSON array of objects with "text" and "timestamp" fields
-- KEY FACTS: JSON array of objects with "text" and "timestamp" fields
+- TAKEAWAYS: Simple array of strings
+- KEY FACTS: Simple array of strings
 - KEYWORDS: Exactly 3 most relevant terms
 
 CONTENT FILTERING:
@@ -165,13 +156,13 @@ CHAPTER REQUIREMENTS:
 
     # Add chapter-specific instructions if chapters are available
     if state.chapters:
-        chapters_text = "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
+        chapters_text = "\n".join([f"- {chapter['title']}" for chapter in state.chapters])
         base_prompt += f"""Use these video chapters as the basis for your breakdown:
 {chapters_text}
 
 - Create chapters that correspond to these sections
-- Each chapter: header, summary (80-200 words), 3-6 key points, timestamp
-- Maintain logical flow and timing"""
+- Each chapter: header, summary (80-200 words), 3-6 key points
+- Maintain logical flow"""
     else:
         base_prompt += """Create 4-8 thematic chapters based on content structure and topic transitions."""
 
@@ -179,7 +170,6 @@ CHAPTER REQUIREMENTS:
 
 QUALITY CHECKS:
 - Content matches transcript exactly (no external additions)
-- Timestamps use transcript format and are accurate
 - All promotional content removed (intros, calls-to-action, self-promotion)
 - Typos corrected naturally, meaning preserved
 - Length balanced: substantial but not overwhelming
@@ -192,26 +182,24 @@ QUALITY CHECKS:
 TRANSLATION:
 - Translate to {language_name} with natural fluency
 - Preserve technical terms and proper names
-- Keep original timestamp format
 - Maintain same detail level and structure"""
     return base_prompt
 
 
 def get_quality_prompt(state: GraphState) -> str:
     """Generate streamlined quality evaluation prompt."""
-    base_prompt = """Evaluate the analysis on 9 aspects. Rate each "Fail", "Refine", or "Pass" with a specific reason.
+    base_prompt = """Evaluate the analysis on 8 aspects. Rate each "Fail", "Refine", or "Pass" with a specific reason.
 
 ASPECTS:
 1. TRANSCRIPT ACCURACY: Content directly supported by transcript (no external additions)
 2. CONTENT LENGTH: Balanced length following guidelines (not too short/long)
 3. COMPLETENESS: Entire content properly analyzed
-4. STRUCTURE: Follows required schema perfectly with takeaways/key_facts as JSON arrays
+4. STRUCTURE: Follows required schema perfectly with takeaways/key_facts as simple arrays
 5. GRAMMAR: No typos/mistakes (semicolon usage in lists acceptable)
 6. WRITING STYLE: Objective, article-like tone (no video references)
-7. TIMESTAMPS: Accurate format and placement
-8. PROMOTIONAL REMOVAL: All promotional content completely removed
-9. JSON VALIDITY: Takeaways/key_facts are valid JSON arrays with required fields
-10. KEYWORDS: Highly relevant and useful"""
+7. PROMOTIONAL REMOVAL: All promotional content completely removed
+8. ARRAY VALIDITY: Takeaways/key_facts are valid arrays with appropriate content
+9. KEYWORDS: Highly relevant and useful"""
 
     if state.enable_translation:
         language_name = state.target_language
@@ -233,7 +221,6 @@ LENGTH GUIDELINES:
 
 QUALITY STANDARDS:
 - Transcript-based content only
-- Matching timestamp format
 - Natural chapter flow
 - Professional article-like tone
 
@@ -251,15 +238,14 @@ IMPROVEMENT PRIORITIES:
 3. LENGTH BALANCE: Follow guidelines (Summary: 150-400 words, Chapters: 80-200 each)
 4. WRITING STYLE: Use objective, article-like tone (avoid "This video...", "The speaker...")
 5. TYPO CORRECTION: Fix obvious typos naturally
-6. TIMESTAMP FORMAT: Match original transcript format
-7. JSON FORMATTING: Return takeaways/key_facts as valid JSON arrays with "text" and "timestamp" fields
+6. ARRAY FORMATTING: Return takeaways/key_facts as simple string arrays
 
 CONTENT TARGETS:
 - Title: 2-15 words
 - Summary: 150-400 words
 - Chapters: 80-200 words each
-- Takeaways: Valid JSON array with 3-8 objects (each with "text" and "timestamp" fields)
-- Key Facts: Valid JSON array with 3-6 objects (each with "text" and "timestamp" fields)
+- Takeaways: Simple array with 3-8 strings
+- Key Facts: Simple array with 3-6 strings
 - Keywords: Exactly 3"""
 
     if state.enable_translation:
@@ -270,7 +256,6 @@ TRANSLATION IMPROVEMENT REQUIREMENTS:
 - Maintain all content in {language_name} ({state.target_language})
 - Preserve translation quality while fixing identified issues
 - Keep technical terms and proper names appropriate for the target language
-- Preserve timestamp format exactly as it appears in the original transcript
 - Maintain natural fluency and cultural relevance"""
 
     return base_prompt
@@ -301,12 +286,9 @@ class ContextProcessor:
         """Create improvement prompt from analysis and quality feedback."""
         import json
 
-        # Convert Pydantic objects to JSON strings for LLM processing
-        takeaways_data = [{"text": t.text, "timestamp": t.timestamp or ""} for t in analysis.takeaways]
-        key_facts_data = [{"text": f.text, "timestamp": f.timestamp or ""} for f in analysis.key_facts]
-
-        takeaways_json = json.dumps(takeaways_data, ensure_ascii=False)
-        key_facts_json = json.dumps(key_facts_data, ensure_ascii=False)
+        # Convert arrays to JSON strings for LLM processing
+        takeaways_json = json.dumps(analysis.takeaways, ensure_ascii=False)
+        key_facts_json = json.dumps(analysis.key_facts, ensure_ascii=False)
 
         return f"""# Improve this video analysis based on the following feedback:
 
@@ -320,9 +302,6 @@ class ContextProcessor:
 
 ### Grammar: {quality.grammar.rate}
 {quality.grammar.reason}
-
-### Timestamp: {quality.timestamp.rate}
-{quality.timestamp.reason}
 
 ### No Garbage: {quality.no_garbage.rate}
 {quality.no_garbage.reason}
@@ -350,8 +329,7 @@ class ContextProcessor:
 
 ## Improvement Instructions:
 - Maintain the JSON format for takeaways and key facts in your response
-- Each takeaway/fact should be a JSON object with "text" and "timestamp" fields
-- Ensure timestamps follow the transcript format ([mm:ss] or [HH:MM:SS])
+- Each takeaway/fact should be a simple string
 - Address the specific quality issues mentioned above
 - Return takeaways and key_facts as valid JSON arrays
 
@@ -362,19 +340,14 @@ Please provide an improved version that addresses the specific issues identified
         """Convert analysis to text format for quality evaluation."""
         import json
 
-        # Convert Pydantic objects to JSON strings for quality evaluation
-        takeaways_data = [{"text": t.text, "timestamp": t.timestamp or ""} for t in analysis.takeaways]
-        key_facts_data = [{"text": f.text, "timestamp": f.timestamp or ""} for f in analysis.key_facts]
-
-        takeaways_json = json.dumps(takeaways_data, ensure_ascii=False)
-        key_facts_json = json.dumps(key_facts_data, ensure_ascii=False)
+        # Convert arrays to JSON strings for quality evaluation
+        takeaways_json = json.dumps(analysis.takeaways, ensure_ascii=False)
+        key_facts_json = json.dumps(analysis.key_facts, ensure_ascii=False)
 
         # Include detailed chapter information for completeness evaluation
         chapters_text = []
         for i, chapter in enumerate(analysis.chapters, 1):
             chapter_info = f"Chapter {i}: {chapter.header}"
-            if chapter.timestamp:
-                chapter_info += f" (timestamp: {chapter.timestamp})"
             chapter_info += f"\n  Summary: {chapter.summary}"
             if chapter.key_points:
                 chapter_info += f"\n  Key Points: {'; '.join(chapter.key_points)}"
@@ -458,7 +431,6 @@ def langchain_quality_node(state: GraphState) -> dict:
     print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
     print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-    print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
     print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
@@ -581,7 +553,6 @@ def gemini_quality_node(state: GraphState) -> dict:
     print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
     print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-    print(f"Timestamp: {quality.timestamp.rate} - {quality.timestamp.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
     print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
