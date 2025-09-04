@@ -49,6 +49,22 @@ def run_tests(test_type="all", coverage=False, verbose=True):
     if coverage:
         cmd.extend(["--cov=app", "--cov=youtube_summarizer", "--cov-report=html", "--cov-report=term", "--cov-report=term-missing"])
 
+    # Test type selection
+    if test_type == "meta_language":
+        cmd.extend(["-k", "TestMetaLanguageAvoidance"])
+        print("🎯 Running Meta-Language Avoidance Tests...")
+    elif test_type == "integration":
+        cmd.extend(["-m", "integration"])
+        print("🔗 Running Integration Tests...")
+    elif test_type == "streaming":
+        cmd.extend(["-k", "streaming"])
+        print("📡 Running Streaming Tests...")
+    elif test_type == "health":
+        cmd.extend(["-k", "health"])
+        print("🏥 Running Health Tests...")
+    elif test_type != "all":
+        print(f"❓ Unknown test type: {test_type}. Running all tests...")
+
     # Determine which tests to run
     test_files = []
     if test_type == "all":
@@ -111,6 +127,7 @@ def main():
     print(f"   • all: Run all tests")
     print(f"   • api: Run API endpoint tests only")
     print(f"   • streaming: Run streaming tests only")
+    print(f"   • meta_language: Run meta-language avoidance tests only")
     print(f"   • unit: Run unit tests only")
     print(f"   • integration: Run integration tests only")
     print(f"")

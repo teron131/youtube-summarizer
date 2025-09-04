@@ -5,10 +5,18 @@ YouTube Summarizer FastAPI Application
 Optimized FastAPI application for YouTube video processing and summarization.
 Uses the youtube_summarizer package functions directly for clean, efficient backend deployment.
 
+## 🎯 Key Features
+- AI-powered video summarization with LangGraph workflow
+- Meta-descriptive language avoidance for cleaner output
+- Quality assessment with automatic refinement
+- Streaming analysis with real-time progress updates
+- YouTube URL and text transcript support
+
 ## 🔧 Configuration
 Set environment variables:
 - GEMINI_API_KEY - For AI summarization (required)
 - APIFY_API_KEY - For YouTube scraping (optional fallback)
+- OPENROUTER_API_KEY - Alternative AI provider (optional)
 - PORT - Server port (default: 8080)
 - HOST - Server host (default: 0.0.0.0)
 """
@@ -24,6 +32,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
 from youtube_summarizer.summarizer import (
     Analysis,
     GraphOutput,

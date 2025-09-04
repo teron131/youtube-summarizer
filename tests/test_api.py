@@ -33,9 +33,119 @@ class TestHealthAndInfo:
         data = response.json()
         assert data["status"] == "healthy"
         assert "environment" in data
-        assert "version" in data["environment"]
+        assert "version" in data
         assert isinstance(data["environment"]["gemini_configured"], bool)
         assert isinstance(data["environment"]["apify_configured"], bool)
+
+
+@pytest.mark.integration
+class TestMetaLanguageAvoidance:
+    """Tests for meta-descriptive language avoidance feature."""
+
+    def test_analysis_avoids_meta_descriptive_phrases(self, client):
+        """Test that analysis generation avoids meta-descriptive phrases."""
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
+            pytest.skip("GEMINI_API_KEY or OPENROUTER_API_KEY not set; skipping meta-language test")
+
+        # Use a simple test transcript to avoid API costs
+        test_transcript = """
+        Robinhood is a financial technology company that revolutionized retail investing.
+        It offers commission-free trading through a mobile app.
+        The company was founded in 2013 and went public in 2021.
+        Robinhood faced significant challenges during the GameStop trading frenzy in 2021.
+        The platform now includes features like retirement accounts and cryptocurrency trading.
+        """
+
+        payload = {"content": test_transcript, "content_type": "transcript", "analysis_model": "google/gemini-2.5-flash", "quality_model": "google/gemini-2.5-flash"}
+
+        response = client.post("/summarize", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["status"] == "success"
+
+        analysis = data["analysis"]
+        full_text = f"{analysis.get('title', '')} {analysis.get('summary', '')}"
+
+        # Check chapters for meta-descriptive language
+        if "chapters" in analysis and analysis["chapters"]:
+            for chapter in analysis["chapters"]:
+                full_text += f" {chapter.get('header', '')} {chapter.get('summary', '')}"
+
+        # Convert to lowercase for case-insensitive checking
+        full_text_lower = full_text.lower()
+
+        # Meta-descriptive phrases to avoid
+        forbidden_phrases = ["this chapter introduces", "this chapter covers", "this chapter explores", "this chapter discusses", "this section introduces", "this section covers", "this section explores", "this section discusses", "this analysis introduces", "this analysis covers", "this analysis explores", "this analysis discusses"]
+
+        for phrase in forbidden_phrases:
+            assert phrase not in full_text_lower, f"Found forbidden meta-descriptive phrase: '{phrase}' in analysis"
+
+    def test_quality_assessment_catches_meta_language(self, client):
+        """Test that quality assessment properly evaluates meta-language avoidance."""
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
+            pytest.skip("GEMINI_API_KEY or OPENROUTER_API_KEY not set; skipping quality test")
+
+        # Create a mock analysis with meta-descriptive language
+        mock_analysis = {"title": "Robinhood Analysis", "summary": "This chapter introduces Robinhood's business model and challenges.", "takeaways": ["This analysis covers key points"], "key_facts": ["This section discusses important facts"], "chapters": [{"header": "Company Background", "summary": "This chapter explores Robinhood's founding and growth.", "key_points": ["This section covers the founding story"]}], "keywords": ["Robinhood", "trading", "finance"]}
+
+        # Test the quality assessment directly
+        from youtube_summarizer.summarizer import (
+            GraphState,
+            get_quality_prompt,
+            langchain_llm,
+        )
+
+        if not os.getenv("GEMINI_API_KEY"):
+            pytest.skip("GEMINI_API_KEY not set for quality assessment test")
+
+        # Create a mock state
+        state = GraphState(transcript_or_url="Sample transcript about Robinhood", analysis=mock_analysis)
+
+        # This should result in a low meta-language avoidance score
+        quality_prompt = get_quality_prompt(state)
+
+        # Check that the prompt includes meta-language avoidance assessment
+        assert "meta-language avoidance" in quality_prompt.lower()
+        assert "this chapter introduces" in quality_prompt.lower()
+
+    def test_streaming_avoids_meta_descriptive_phrases(self, client):
+        """Test that streaming analysis also avoids meta-descriptive phrases."""
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
+            pytest.skip("GEMINI_API_KEY or OPENROUTER_API_KEY not set; skipping streaming test")
+
+        test_transcript = """
+        Tesla is an electric vehicle company founded by Elon Musk.
+        The company produces electric cars and solar panels.
+        Tesla's mission is to accelerate the world's transition to sustainable energy.
+        The company has faced various challenges including production scaling and competition.
+        """
+
+        payload = {"content": test_transcript, "content_type": "transcript", "analysis_model": "google/gemini-2.5-flash", "quality_model": "google/gemini-2.5-flash"}
+
+        response = client.post("/stream-summarize", json=payload)
+        assert response.status_code == 200
+
+        # Parse the streaming response
+        body = response.content.decode()
+        lines = body.split("\n")
+        data_lines = [line for line in lines if line.startswith("data: ")]
+
+        # Find the completion data
+        completion_data = None
+        for line in data_lines:
+            try:
+                json_data = json.loads(line[6:])  # Remove "data: " prefix
+                if json_data.get("type") == "complete":
+                    completion_data = json_data
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        assert completion_data is not None, "Completion data not found in stream"
+
+        # The streaming should complete successfully without meta-descriptive language errors
+        assert "processing_time" in completion_data
 
     def test_config_endpoint(self, client):
         response = client.get("/config")

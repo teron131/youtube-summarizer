@@ -56,6 +56,7 @@ class Quality(BaseModel):
     structure: Rate = Field(description="Rate for structure: The result is in desired structures")
     grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
     no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
+    meta_language_avoidance: Rate = Field(description="Rate for meta-language avoidance: No phrases like 'This chapter introduces', 'This section covers', etc.")
     useful_keywords: Rate = Field(description="Rate for keywords: The keywords are useful for highlighting the analysis")
     correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
 
@@ -141,6 +142,7 @@ CORE REQUIREMENTS:
 - ACCURACY: Every claim must be directly supported by the transcript
 - LENGTH: Summary (150-400 words), Chapters (80-200 words each), Takeaways (3-8), Key Facts (3-6)
 - TONE: Write in objective, article-like style (avoid "This video...", "The speaker...")
+- AVOID META-DESCRIPTIVE LANGUAGE: Do not use phrases like "This chapter introduces", "This section covers", "This analysis explores", etc. Write direct, factual content only
 
 CONTENT FILTERING:
 - Remove all promotional content (speaker intros, calls-to-action, self-promotion)
@@ -183,7 +185,7 @@ TRANSLATION:
 
 def get_quality_prompt(state: GraphState) -> str:
     """Generate streamlined quality evaluation prompt."""
-    base_prompt = """Evaluate the analysis on 8 aspects. Rate each "Fail", "Refine", or "Pass" with a specific reason.
+    base_prompt = """Evaluate the analysis on 10 aspects. Rate each "Fail", "Refine", or "Pass" with a specific reason.
 
 ASPECTS:
 1. TRANSCRIPT ACCURACY: Content directly supported by transcript (no external additions)
@@ -191,10 +193,11 @@ ASPECTS:
 3. COMPLETENESS: Entire content properly analyzed
 4. STRUCTURE: Follows required schema perfectly with takeaways/key_facts as simple arrays
 5. GRAMMAR: No typos/mistakes (semicolon usage in lists acceptable)
-6. WRITING STYLE: Objective, article-like tone (no video references)
+6. WRITING STYLE: Objective, article-like tone (no video references or meta-descriptive phrases like "This chapter introduces")
 7. PROMOTIONAL REMOVAL: All promotional content completely removed
-8. ARRAY VALIDITY: Takeaways/key_facts are valid arrays with appropriate content
-9. KEYWORDS: Highly relevant and useful"""
+8. META-LANGUAGE AVOIDANCE: No phrases like "This chapter introduces", "This section covers", "This analysis explores", etc.
+9. ARRAY VALIDITY: Takeaways/key_facts are valid arrays with appropriate content
+10. KEYWORDS: Highly relevant and useful"""
 
     if state.target_language:
         base_prompt += f"""
@@ -237,8 +240,9 @@ IMPROVEMENT PRIORITIES:
 2. PROMOTIONAL REMOVAL: Remove all intros, calls-to-action, self-promotion
 3. LENGTH BALANCE: Follow guidelines (Summary: 150-400 words, Chapters: 80-200 each)
 4. WRITING STYLE: Use objective, article-like tone (avoid "This video...", "The speaker...")
-5. TYPO CORRECTION: Fix obvious typos naturally
-6. ARRAY FORMATTING: Return takeaways/key_facts as simple string arrays
+5. AVOID META-DESCRIPTIVE LANGUAGE: Remove phrases like "This chapter introduces", "This section covers", etc. Write direct, factual content only
+6. TYPO CORRECTION: Fix obvious typos naturally
+7. ARRAY FORMATTING: Return takeaways/key_facts as simple string arrays
 
 CONTENT TARGETS:
 - Title: 2-15 words
@@ -393,6 +397,7 @@ def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]
     print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
     print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
     print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
@@ -501,6 +506,7 @@ def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
     print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
     print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+    print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
     print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
     print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
     print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
