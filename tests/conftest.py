@@ -92,6 +92,54 @@ def mock_analysis_result():
 
 
 @pytest.fixture
+def mock_quality_result():
+    """Mock quality assessment result."""
+    from youtube_summarizer.summarizer import Quality, Rate
+
+    return Quality(completeness=Rate(rate="Pass", reason="Complete analysis"), structure=Rate(rate="Pass", reason="Well structured"), grammar=Rate(rate="Pass", reason="Good grammar"), no_garbage=Rate(rate="Pass", reason="Clean content"), meta_language_avoidance=Rate(rate="Pass", reason="No meta language"), useful_keywords=Rate(rate="Pass", reason="Useful keywords"), correct_language=Rate(rate="Pass", reason="Correct language"))
+
+
+@pytest.fixture
+def mock_graph_state(mock_analysis_result, mock_quality_result):
+    """Mock GraphState for testing."""
+    from youtube_summarizer.summarizer import GraphState
+
+    return GraphState(transcript_or_url="Sample transcript for testing", chapters=[{"title": "Introduction", "timeDescription": "0:00"}, {"title": "Main Content", "timeDescription": "2:30"}], analysis_model="google/gemini-2.5-pro", quality_model="google/gemini-2.5-flash", target_language="en", analysis=mock_analysis_result, quality=mock_quality_result, iteration_count=1, is_complete=True)
+
+
+@pytest.fixture
+def mock_langchain_llm():
+    """Mock LangChain LLM for testing."""
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_llm
+    return mock_llm
+
+
+@pytest.fixture
+def sample_transcript():
+    """Sample transcript for testing."""
+    return """
+    Welcome to this video about artificial intelligence and machine learning.
+    Today we're going to explore the fundamentals of AI technology and its applications.
+
+    Artificial intelligence refers to the simulation of human intelligence in machines.
+    Machine learning is a subset of AI that enables systems to learn from data.
+
+    There are several types of machine learning including supervised, unsupervised, and reinforcement learning.
+    Deep learning uses neural networks with multiple layers to process complex data.
+
+    AI has applications in healthcare, finance, transportation, and many other industries.
+    The future of AI looks promising with continued advancements in the field.
+    """
+
+
+@pytest.fixture
+def sample_chapters():
+    """Sample video chapters for testing."""
+    return [{"title": "Introduction to AI", "timeDescription": "0:00"}, {"title": "Machine Learning Basics", "timeDescription": "2:15"}, {"title": "Deep Learning", "timeDescription": "5:30"}, {"title": "AI Applications", "timeDescription": "8:45"}, {"title": "Future of AI", "timeDescription": "11:20"}]
+
+
+@pytest.fixture
 def clean_env():
     """Fixture to clear environment variables for testing."""
     original_env = dict(os.environ)
