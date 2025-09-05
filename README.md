@@ -1,6 +1,15 @@
 # YouTube Summarizer Backend API
 
+![YouTube Summarizer UI](ui.png)
+
 A comprehensive Python backend API for YouTube video analysis with AI-powered transcription and summarization. Built with FastAPI and featuring a robust multi-tier processing architecture for maximum reliability.
+
+## 🆕 Recent Updates
+
+- **🍪 Cookie-Based User Preferences**: Frontend now persists user model and language selections across browser sessions
+- **🔄 Unified Model Selection**: Single model selector applies to both analysis and quality assessment phases
+- **🎯 Enhanced Progress Tracking**: Improved progress bar completion and real-time status updates
+- **🛠️ Better Error Handling**: Enhanced error messages and graceful degradation
 
 ## 🌟 Key Features
 
@@ -11,6 +20,8 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 - **📊 Comprehensive APIs**: Granular endpoints for specific tasks plus master orchestrator
 - **🛡️ Robust Error Handling**: Graceful degradation with detailed logging
 - **⚡ High Performance**: FastAPI with async processing and optimized audio handling
+- **🍪 User Preferences**: Cookie-based persistence for model selection and language preferences
+- **🔄 Unified Model Selection**: Single model selector applies to both analysis and quality assessment phases
 
 ## 🏗️ Architecture & Workflow
 
@@ -185,13 +196,16 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 ### 📋 Analysis Endpoints
 
 #### POST `/summarize` - LangGraph Analysis
-Generate AI summary from provided text content using LangGraph workflow.
+Generate AI summary from provided text content using LangGraph workflow with user-selected models.
 
 **Request:**
 ```json
 {
   "content": "Long text content to summarize...",
-  "content_type": "transcript"
+  "content_type": "transcript",
+  "analysis_model": "google/gemini-2.5-pro",
+  "quality_model": "google/gemini-2.5-flash",
+  "target_language": "en"
 }
 ```
 
@@ -222,13 +236,16 @@ Generate AI summary from provided text content using LangGraph workflow.
 ```
 
 #### POST `/stream-summarize` - Streaming Analysis
-Real-time streaming updates of the LangGraph workflow progress.
+Real-time streaming updates of the LangGraph workflow progress with user-selected models.
 
 **Request:**
 ```json
 {
   "content": "Long text content to summarize...",
-  "content_type": "transcript"
+  "content_type": "transcript",
+  "analysis_model": "google/gemini-2.5-pro",
+  "quality_model": "google/gemini-2.5-flash",
+  "target_language": "en"
 }
 ```
 
@@ -255,7 +272,7 @@ System status and API availability with environment configuration.
   "status": "healthy",
   "message": "YouTube Summarizer API is running",
   "timestamp": "2025-01-01T12:00:00.000Z",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "environment": {
     "gemini_configured": true,
     "apify_configured": true
@@ -307,9 +324,12 @@ The LangGraph workflow implements a sophisticated self-checking analysis system 
 #### ⚙️ Workflow Configuration
 
 ```python
+# User-selectable workflow settings (via API parameters)
+analysis_model = "google/gemini-2.5-pro"  # User-selected analysis model
+quality_model = "google/gemini-2.5-flash"  # User-selected quality model
+target_language = "auto"                   # User-selected language
+
 # Global workflow settings
-ANALYSIS_MODEL = "google/gemini-2.5-flash-lite"
-QUALITY_MODEL = "google/gemini-2.5-pro"
 MIN_QUALITY_SCORE = 90  # 90% quality threshold
 MAX_ITERATIONS = 2      # Maximum refinement cycles
 ```
@@ -401,11 +421,19 @@ from youtube_summarizer.utils import is_youtube_url, clean_youtube_url
 result = scrap_youtube("https://www.youtube.com/watch?v=VIDEO_ID")
 print(result.title, result.author, len(result.transcript))
 
-# AI summarization (LangGraph workflow)
-analysis = summarize_video("transcript content or YouTube URL")
+# AI summarization (LangGraph workflow) with custom models
+analysis = summarize_video(
+    "transcript content or YouTube URL",
+    analysis_model="anthropic/claude-sonnet-4",
+    quality_model="openai/gpt-5"
+)
 
-# Streaming analysis with progress updates
-for state in stream_summarize_video("transcript content"):
+# Streaming analysis with progress updates and custom models
+for state in stream_summarize_video(
+    "transcript content",
+    analysis_model="google/gemini-2.5-pro",
+    quality_model="google/gemini-2.5-flash"
+):
     print(f"Iteration {state.iteration_count}, Complete: {state.is_complete}")
 
 # URL utilities
@@ -430,6 +458,29 @@ ruff check .
 ```
 
 ## 🔧 Configuration
+
+### User Preferences & Cookie Storage
+
+The API supports cookie-based user preferences for a personalized experience:
+
+#### 🍪 Cookie-Based Preferences
+- **Cookie Name**: `youtube-summarizer-prefs`
+- **Expiry**: 365 days (1 year)
+- **Security**: `SameSite=Lax` for better security
+- **Stored Data**:
+  ```json
+  {
+    "analysisModel": "google/gemini-2.5-pro",
+    "qualityModel": "google/gemini-2.5-flash",
+    "targetLanguage": "auto"
+  }
+  ```
+
+#### 🎯 Model Selection Behavior
+- **Unified Selection**: Single model selector applies to both analysis and quality phases
+- **Analysis Phase**: Uses selected model for initial content analysis
+- **Quality Phase**: Uses same selected model for quality assessment and refinement
+- **Persistence**: Preferences survive browser sessions and page refreshes
 
 ### Environment Variables
 
