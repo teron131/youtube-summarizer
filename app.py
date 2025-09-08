@@ -367,7 +367,10 @@ async def health_check():
         "message": f"{API_TITLE} is running",
         "timestamp": datetime.now().isoformat(),
         "version": API_VERSION,
-        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("SCRAPECREATORS_API_KEY"))},
+        "environment": {
+            "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
+            "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY")),
+        },
     }
 
 

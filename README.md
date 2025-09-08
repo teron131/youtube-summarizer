@@ -14,8 +14,8 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 ## 🌟 Key Features
 
 - **🎯 Master API Endpoint**: Single `/api/generate` endpoint orchestrating all processing capabilities
-- **🔄 Multi-Tier Processing**: Apify scraper → yt-dlp + Fal.ai → LangGraph AI workflow
-- **🎤 Smart Transcription**: Prioritizes Apify transcript, falls back to yt-dlp + Fal.ai transcription
+- **🔄 Multi-Tier Processing**: Scrape Creators scraper → yt-dlp + Fal.ai → LangGraph AI workflow
+- **🎤 Smart Transcription**: Prioritizes Scrape Creators transcript, falls back to yt-dlp + Fal.ai transcription
 - **🤖 AI Summarization**: LangGraph-powered self-checking workflow with dual AI provider support
 - **📊 Comprehensive APIs**: Granular endpoints for specific tasks plus master orchestrator
 - **🛡️ Robust Error Handling**: Graceful degradation with detailed logging
@@ -30,7 +30,7 @@ A comprehensive Python backend API for YouTube video analysis with AI-powered tr
 ```mermaid
 graph TD
     A[YouTube URL] --> B[Validate URL]
-    B --> C[Apify Scraper<br/>📋 Extract Video Data]
+    B --> C[Scrape Creators Scraper<br/>📋 Extract Video Data]
     C --> D[Get Transcript<br/>📝 Direct from YouTube]
     D --> E{Transcript Available?}
     E -->|Yes| F[LangGraph AI Workflow<br/>🔄 Self-Checking Analysis]
@@ -85,7 +85,7 @@ graph TD
 ```
 
 **🎨 Color Legend:**
-- 🔵 **Blue**: Apify Scraper (metadata & transcript extraction)
+- 🔵 **Blue**: Scrape Creators Scraper (metadata & transcript extraction)
 - 🟠 **Amber**: Fallback processing (yt-dlp + Fal.ai transcription)
 - 🟣 **Purple**: AI Analysis (Gemini/LangChain)
 - 🟥 **Deep Orange**: Quality Assessment
@@ -134,7 +134,7 @@ cp .env_example .env
 
 Required environment variables:
 ```env
-SCRAPECREATORS_API_KEY=your_apify_api_key
+SCRAPECREATORS_API_KEY=your_scrapecreators_api_key
 GEMINI_API_KEY=your_gemini_api_key
 FAL_KEY=your_fal_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key  # Optional
@@ -167,7 +167,7 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 ### 🌟 Master Endpoint
 
 #### POST `/scrap` - Video Scraping and Transcript Extraction
-**Extract video metadata and transcript using Apify scraper**
+**Extract video metadata and transcript using Scrape Creators scraper**
 
 **Request:**
 ```json
@@ -275,15 +275,15 @@ System status and API availability with environment configuration.
   "version": "3.1.0",
   "environment": {
     "gemini_configured": true,
-    "apify_configured": true
+    "scrapecreators_configured": true
   }
 }
 ```
 
 ## 🔄 Processing Architecture
 
-### Tier 1: Apify YouTube Scraper
-- **Primary Method**: Direct transcript and metadata extraction via Apify API
+### Tier 1: Scrape Creators YouTube Scraper
+- **Primary Method**: Direct transcript and metadata extraction via Scrape Creators API
 - **Data Extracted**: Title, author, duration, view count, thumbnail, transcript with timestamps
 - **Chapter Support**: Automatic chapter detection and transcript organization
 - **Fallback**: yt-dlp audio download + Fal.ai transcription when transcript unavailable
@@ -417,7 +417,7 @@ from youtube_summarizer.youtube_scrapper import scrap_youtube
 from youtube_summarizer.summarizer import summarize_video, stream_summarize_video
 from youtube_summarizer.utils import is_youtube_url, clean_youtube_url
 
-# Video scraping with Apify
+# Video scraping with Scrape Creators
 result = scrap_youtube("https://www.youtube.com/watch?v=VIDEO_ID")
 print(result.title, result.author, len(result.transcript))
 
@@ -486,7 +486,7 @@ The API supports cookie-based user preferences for a personalized experience:
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| `SCRAPECREATORS_API_KEY` | ✅ | Apify API key for YouTube scraping | - |
+| `SCRAPECREATORS_API_KEY` | ✅ | Scrape Creators API key for YouTube scraping | - |
 | `GEMINI_API_KEY` | ✅ | Google Gemini API key for AI analysis | - |
 | `FAL_KEY` | ✅ | Fal.ai API key for audio transcription fallback | - |
 | `OPENROUTER_API_KEY` | ❌ | OpenRouter API key for LangChain models | - |
@@ -496,7 +496,7 @@ The API supports cookie-based user preferences for a personalized experience:
 ### Core Dependencies
 
 - **FastAPI**: Web framework with automatic API documentation
-- **requests**: HTTP client for Apify API integration
+- **requests**: HTTP client for Scrape Creators API integration
 - **yt-dlp**: Video downloader for audio extraction fallback
 - **google-genai**: Google Gemini AI client for direct URL processing
 - **langchain**: LLM framework for flexible AI provider integration
@@ -508,7 +508,7 @@ The API supports cookie-based user preferences for a personalized experience:
 ## 📊 Performance & Processing
 
 ### Processing Times
-- **Apify Scraping**: 5-15 seconds (metadata + transcript extraction)
+- **Scrape Creators Scraping**: 5-15 seconds (metadata + transcript extraction)
 - **Audio Transcription**: 30-60 seconds (yt-dlp + Fal.ai fallback)
 - **LangGraph AI Analysis**: 15-45 seconds (with quality checking)
 - **Complete Processing**: 20-90 seconds total depending on method

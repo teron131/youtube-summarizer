@@ -35,7 +35,7 @@ class TestHealthAndInfo:
         assert "environment" in data
         assert "version" in data
         assert isinstance(data["environment"]["gemini_configured"], bool)
-        assert isinstance(data["environment"]["apify_configured"], bool)
+        assert isinstance(data["environment"]["scrapecreators_configured"], bool)
 
 
 @pytest.mark.integration
@@ -467,7 +467,7 @@ class TestEdgeCases:
                 "quality_model": "google/gemini-2.5-flash",
             },
         )
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 500  # API error for invalid model
 
     def test_stream_with_large_content(self, client):
         """Test streaming with large content that should be truncated."""

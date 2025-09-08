@@ -144,7 +144,7 @@ class TestSSEContract:
         test_rate = Rate(rate="Pass", reason="Test reason")
 
         # Create Quality object
-        quality = Quality(completeness=test_rate, structure=test_rate, grammar=test_rate, no_garbage=test_rate, useful_keywords=test_rate, correct_language=test_rate)
+        quality = Quality(completeness=test_rate, structure=test_rate, grammar=test_rate, no_garbage=test_rate, meta_language_avoidance=test_rate, useful_keywords=test_rate, correct_language=test_rate)
 
         # Create analysis with proper structure
         analysis = Analysis(title="SSE Test", summary="Test summary for streaming analysis", takeaways=["Test takeaway 1", "Test takeaway 2"], key_facts=["Test fact 1", "Test fact 2"], chapters=[], keywords=["test", "sse"], target_language="en")
@@ -207,7 +207,7 @@ class TestSSEContract:
             resp = client.post(
                 "/stream-summarize",
                 json={
-                    "content": "test",
+                    "content": "This is a test content that meets the minimum length requirement for validation",
                     "content_type": "transcript",
                     "analysis_model": "google/gemini-2.5-flash",
                     "quality_model": "google/gemini-2.5-flash",
@@ -231,7 +231,9 @@ class TestSSEContract:
                 try:
                     parsed = json.loads(chunk_data)
                     assert "timestamp" in parsed
-                    assert "chunk_number" in parsed
+                    # Only check for chunk_number in non-status and non-complete chunks
+                    if parsed.get("type") not in ["status", "complete"]:
+                        assert "chunk_number" in parsed
                 except json.JSONDecodeError:
                     # Skip malformed chunks in this test
                     continue

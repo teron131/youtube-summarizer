@@ -1,6 +1,6 @@
 """
-This module uses the Apify YouTube scraper API to scrape a YouTube video and return the transcript and other metadata.
-https://scrapecreators.com
+This module uses the Scrape Creators YouTube Video API to scrape a YouTube video and return the transcript and other metadata.
+Docs: https://docs.scrapecreators.com/v1/youtube/video
 The API result is wrapped by YouTubeScrapperResult object.
 
 Important video metadata:
@@ -131,7 +131,7 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """
     Scrape a YouTube video and return the transcript and other metadata.
 
-    Uses the Apify YouTube scraper API: https://apify.com/scrape-creators/best-youtube-scraper
+    Uses the Scrape Creators YouTube API: https://api.scrapecreators.com/v1/youtube/video
 
     Args:
         youtube_url: The YouTube video URL to scrape
@@ -143,11 +143,10 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
         raise ValueError("Invalid YouTube URL")
 
     youtube_url = clean_youtube_url(youtube_url)
-    api_url = f"https://api.apify.com/v2/acts/scrape-creators~best-youtube-scraper/run-sync-get-dataset-items?token={SCRAPECREATORS_API_KEY}&maxItems=1&timeout=60"
 
-    data = json.dumps({"getTranscript": True, "videoUrls": [youtube_url]})
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    response = requests.request("POST", url=api_url, data=data, headers=headers)
+    url = f"https://api.scrapecreators.com/v1/youtube/video?url={youtube_url}&get_transcript=true"
+    headers = {"x-api-key": os.getenv("SCRAPECREATORS_API_KEY")}
+    response = requests.get(url, headers=headers)
 
-    result = json.loads(response.text)[0]
+    result = response.json()
     return YouTubeScrapperResult.model_validate(result)
