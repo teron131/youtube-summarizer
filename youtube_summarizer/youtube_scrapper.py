@@ -1,6 +1,6 @@
 """
 This module uses the Apify YouTube scraper API to scrape a YouTube video and return the transcript and other metadata.
-https://apify.com/scrape-creators/best-youtube-scraper
+https://scrapecreators.com
 The API result is wrapped by YouTubeScrapperResult object.
 
 Important video metadata:
@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from .utils import clean_text, clean_youtube_url, is_youtube_url
 
-APIFY_API_KEY = os.getenv("APIFY_API_KEY")
+SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
 
 
 class ChapterTranscript(BaseModel):
@@ -143,7 +143,7 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
         raise ValueError("Invalid YouTube URL")
 
     youtube_url = clean_youtube_url(youtube_url)
-    api_url = f"https://api.apify.com/v2/acts/scrape-creators~best-youtube-scraper/run-sync-get-dataset-items?token={APIFY_API_KEY}&maxItems=1&timeout=60"
+    api_url = f"https://api.apify.com/v2/acts/scrape-creators~best-youtube-scraper/run-sync-get-dataset-items?token={SCRAPECREATORS_API_KEY}&maxItems=1&timeout=60"
 
     data = json.dumps({"getTranscript": True, "videoUrls": [youtube_url]})
     headers = {"Content-Type": "application/json", "Accept": "application/json"}

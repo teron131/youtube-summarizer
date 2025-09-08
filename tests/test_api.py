@@ -191,8 +191,8 @@ class TestVideoAndScrap:
     """Video info and scraping tests using example_results.py."""
 
     def test_scrap_success(self, client):
-        if not os.getenv("APIFY_API_KEY"):
-            pytest.skip("APIFY_API_KEY not set; skipping integration test")
+        if not os.getenv("SCRAPECREATORS_API_KEY"):
+            pytest.skip("SCRAPECREATORS_API_KEY not set; skipping integration test")
 
         from example_results import result_with_chapters
 
@@ -335,10 +335,10 @@ class TestSummarize:
 
 @pytest.mark.integration
 class TestTwoStepWorkflow:
-    """End-to-end workflow test (requires APIFY_API_KEY and GEMINI_API_KEY or OPENROUTER_API_KEY)."""
+    """End-to-end workflow test (requires SCRAPECREATORS_API_KEY and GEMINI_API_KEY or OPENROUTER_API_KEY)."""
 
     def test_two_step(self, client):
-        if not (os.getenv("APIFY_API_KEY") and (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))):
+        if not (os.getenv("SCRAPECREATORS_API_KEY") and (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))):
             pytest.skip("Required API keys not set; skipping integration test")
 
         from example_results import result_with_chapters
@@ -390,7 +390,7 @@ class TestEdgeCases:
         """Test scraping without API key."""
         from unittest.mock import patch
 
-        with patch.dict("os.environ", {"APIFY_API_KEY": ""}):
+        with patch.dict("os.environ", {"SCRAPECREATORS_API_KEY": ""}):
             response = client.post("/scrap", json={"url": "https://youtube.com/watch?v=test"})
             assert response.status_code == 500
             data = response.json()

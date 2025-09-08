@@ -134,7 +134,7 @@ def main():
     print(f"📋 Environment Requirements:")
     print(f"   • Integration tests require API keys:")
     print(f"     - GEMINI_API_KEY or OPENROUTER_API_KEY (for summarization)")
-    print(f"     - APIFY_API_KEY (for video scraping)")
+    print(f"     - SCRAPECREATORS_API_KEY (for video scraping)")
     print(f"   • Unit tests run without external dependencies")
     print(f"")
     print(f"🎯 Running: {test_type} tests")

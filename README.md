@@ -105,7 +105,7 @@ graph TD
 
 - Python 3.11+
 - FFmpeg (for audio processing fallback)
-- API Keys: `APIFY_API_KEY`, `GEMINI_API_KEY`, `FAL_KEY`, `OPENROUTER_API_KEY` (optional)
+- API Keys: `SCRAPECREATORS_API_KEY`, `GEMINI_API_KEY`, `FAL_KEY`, `OPENROUTER_API_KEY` (optional)
 
 ### 1. Installation
 
@@ -134,7 +134,7 @@ cp .env_example .env
 
 Required environment variables:
 ```env
-APIFY_API_KEY=your_apify_api_key
+SCRAPECREATORS_API_KEY=your_apify_api_key
 GEMINI_API_KEY=your_gemini_api_key
 FAL_KEY=your_fal_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key  # Optional
@@ -486,7 +486,7 @@ The API supports cookie-based user preferences for a personalized experience:
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| `APIFY_API_KEY` | ✅ | Apify API key for YouTube scraping | - |
+| `SCRAPECREATORS_API_KEY` | ✅ | Apify API key for YouTube scraping | - |
 | `GEMINI_API_KEY` | ✅ | Google Gemini API key for AI analysis | - |
 | `FAL_KEY` | ✅ | Fal.ai API key for audio transcription fallback | - |
 | `OPENROUTER_API_KEY` | ❌ | OpenRouter API key for LangChain models | - |
@@ -539,7 +539,7 @@ sudo apt update && sudo apt install ffmpeg
 cat .env
 
 # Ensure keys are set
-echo $APIFY_API_KEY
+echo $SCRAPECREATORS_API_KEY
 echo $GEMINI_API_KEY
 echo $FAL_KEY
 echo $OPENROUTER_API_KEY

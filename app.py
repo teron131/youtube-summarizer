@@ -15,7 +15,7 @@ Uses the youtube_summarizer package functions directly for clean, efficient back
 ## 🔧 Configuration
 Set environment variables:
 - GEMINI_API_KEY - For AI summarization (required)
-- APIFY_API_KEY - For YouTube scraping (optional fallback)
+- SCRAPECREATORS_API_KEY - For YouTube scraping (optional fallback)
 - OPENROUTER_API_KEY - Alternative AI provider (optional)
 - PORT - Server port (default: 8080)
 - HOST - Server host (default: 0.0.0.0)
@@ -32,7 +32,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-
 from youtube_summarizer.summarizer import (
     Analysis,
     GraphOutput,
@@ -368,7 +367,7 @@ async def health_check():
         "message": f"{API_TITLE} is running",
         "timestamp": datetime.now().isoformat(),
         "version": API_VERSION,
-        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("APIFY_API_KEY"))},
+        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "apify_configured": bool(os.getenv("SCRAPECREATORS_API_KEY"))},
     }
 
 
@@ -413,7 +412,7 @@ async def scrap_video(request: YouTubeRequest):
     """Extract video metadata and transcript."""
     start_time = datetime.now()
 
-    if not os.getenv("APIFY_API_KEY"):
+    if not os.getenv("SCRAPECREATORS_API_KEY"):
         create_error_response(500, "config_missing")
 
     try:
