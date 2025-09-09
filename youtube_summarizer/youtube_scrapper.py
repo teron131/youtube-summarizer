@@ -142,6 +142,9 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
     if not is_youtube_url(youtube_url):
         raise ValueError("Invalid YouTube URL")
 
+    if not SCRAPECREATORS_API_KEY:
+        raise ValueError("SCRAPECREATORS_API_KEY environment variable is required")
+
     youtube_url = clean_youtube_url(youtube_url)
 
     url = f"https://api.scrapecreators.com/v1/youtube/video?url={youtube_url}&get_transcript=true"

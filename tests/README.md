@@ -4,7 +4,7 @@
 ```bash
 export GEMINI_API_KEY="your-gemini-api-key"
 export OPENROUTER_API_KEY="your-openrouter-api-key"
-export SCRAPECREATORS_API_KEY="your-apify-api-key"
+export SCRAPECREATORS_API_KEY="your-Scrape Creators-api-key"
 ```
 
 **Note:** You need either `GEMINI_API_KEY` or `OPENROUTER_API_KEY` for summarization tests.

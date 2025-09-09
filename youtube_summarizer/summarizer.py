@@ -42,7 +42,7 @@ class Analysis(BaseModel):
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
     key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting, max 3", max_length=3)
+    keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting")
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 

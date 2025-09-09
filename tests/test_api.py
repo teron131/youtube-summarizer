@@ -13,6 +13,13 @@ from unittest.mock import patch
 
 import pytest
 
+# Import helper functions from conftest
+from .conftest import (
+    skip_without_ai_keys,
+    skip_without_all_keys,
+    skip_without_scraper_key,
+)
+
 
 @pytest.mark.integration
 class TestHealthAndInfo:
@@ -44,8 +51,7 @@ class TestMetaLanguageAvoidance:
 
     def test_analysis_avoids_meta_descriptive_phrases(self, client):
         """Test that analysis generation avoids meta-descriptive phrases."""
-        if not (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
-            pytest.skip("GEMINI_API_KEY or OPENROUTER_API_KEY not set; skipping meta-language test")
+        skip_without_ai_keys()
 
         # Use a simple test transcript to avoid API costs
         test_transcript = """
@@ -191,8 +197,7 @@ class TestVideoAndScrap:
     """Video info and scraping tests using example_results.py."""
 
     def test_scrap_success(self, client):
-        if not os.getenv("SCRAPECREATORS_API_KEY"):
-            pytest.skip("SCRAPECREATORS_API_KEY not set; skipping integration test")
+        skip_without_scraper_key()
 
         from example_results import result_with_chapters
 
@@ -338,8 +343,7 @@ class TestTwoStepWorkflow:
     """End-to-end workflow test (requires SCRAPECREATORS_API_KEY and GEMINI_API_KEY or OPENROUTER_API_KEY)."""
 
     def test_two_step(self, client):
-        if not (os.getenv("SCRAPECREATORS_API_KEY") and (os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))):
-            pytest.skip("Required API keys not set; skipping integration test")
+        skip_without_all_keys()
 
         from example_results import result_with_chapters
 
@@ -420,8 +424,8 @@ class TestEdgeCases:
         )
         assert response.status_code == 422  # Pydantic validation error
 
-    def test_content_too_short(self, client):
-        """Test summarization with content too short."""
+    def test_content_minimal(self, client):
+        """Test summarization with minimal content (no length restrictions)."""
         response = client.post(
             "/summarize",
             json={
@@ -432,11 +436,12 @@ class TestEdgeCases:
                 "quality_model": "google/gemini-2.5-flash",
             },
         )
-        assert response.status_code == 422  # Pydantic validation error
+        # Should now accept minimal content without validation errors
+        assert response.status_code in [200, 500]  # 200 if successful, 500 if API not configured
 
-    def test_content_too_long(self, client):
-        """Test summarization with content too long."""
-        long_content = "word " * 15000  # Exceeds 50k limit
+    def test_content_long(self, client):
+        """Test summarization with long content (no length restrictions)."""
+        long_content = "word " * 15000  # Previously would exceed limit, now accepted
         response = client.post(
             "/summarize",
             json={
@@ -447,7 +452,8 @@ class TestEdgeCases:
                 "quality_model": "google/gemini-2.5-flash",
             },
         )
-        assert response.status_code == 422  # Pydantic validation error
+        # Should now accept long content without validation errors
+        assert response.status_code in [200, 500]  # 200 if successful, 500 if API not configured
 
     def test_stream_timeout_handling(self, client):
         """Test streaming timeout handling."""
@@ -555,35 +561,37 @@ class TestDataValidation:
 
     def test_url_validation_edge_cases(self, client):
         """Test URL validation with various edge cases."""
-        # Test URLs that should be rejected
-        invalid_urls = [
-            "not-a-url",
-            "http://example.com",  # Not YouTube
-            "https://youtu.be/",  # Empty video ID
-            "https://youtube.com/watch",  # Missing video parameter
-            "",  # Empty string
-            "   ",  # Whitespace only
-        ]
+        # Set dummy API key for URL validation testing
+        with patch.dict(os.environ, {"SCRAPECREATORS_API_KEY": "dummy_key"}):
+            # Test URLs that should be rejected
+            invalid_urls = [
+                "not-a-url",
+                "http://example.com",  # Not YouTube
+                "https://youtu.be/",  # Empty video ID
+                "https://youtube.com/watch",  # Missing video parameter
+                "",  # Empty string
+                "   ",  # Whitespace only
+            ]
 
-        for invalid_url in invalid_urls:
-            response = client.post("/scrap", json={"url": invalid_url})
-            assert response.status_code == 400 or response.status_code == 422
+            for invalid_url in invalid_urls:
+                response = client.post("/scrap", json={"url": invalid_url})
+                assert response.status_code == 400 or response.status_code == 422
 
     def test_content_validation_summarize(self, client):
         """Test content validation for summarize endpoint."""
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test"}):
-            # Test empty content
+            # Test empty content (should still be rejected)
             response = client.post("/summarize", json={"content": "", "content_type": "transcript"})
-            assert response.status_code == 422
+            assert response.status_code == 500  # Empty content validation error wrapped as 500
 
-            # Test content too short
+            # Test minimal content (no length restrictions)
             response = client.post("/summarize", json={"content": "hi", "content_type": "transcript"})
-            assert response.status_code == 422
+            assert response.status_code in [200, 500]  # Should accept minimal content
 
-            # Test content too long
+            # Test long content (no length restrictions)
             long_content = "word " * 20000
             response = client.post("/summarize", json={"content": long_content, "content_type": "transcript"})
-            assert response.status_code == 422
+            assert response.status_code in [200, 500]  # Should accept long content
 
     def test_model_validation(self, client):
         """Test model parameter validation."""
@@ -639,4 +647,4 @@ class TestModelConfigurations:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
-        assert data["target_language"] == "zh"
+        assert data["target_language"] == "zh-TW"

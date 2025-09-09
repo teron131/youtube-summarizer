@@ -147,3 +147,41 @@ def clean_env():
     yield
     os.environ.clear()
     os.environ.update(original_env)
+
+
+# ================================
+# HELPER FUNCTIONS
+# ================================
+
+
+def has_ai_model_keys():
+    """Check if at least one AI model API key is available."""
+    return bool(os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY"))
+
+
+def has_scraper_key():
+    """Check if Scrape Creators API key is available."""
+    return bool(os.getenv("SCRAPECREATORS_API_KEY"))
+
+
+def has_all_keys():
+    """Check if all required API keys are available."""
+    return has_scraper_key() and has_ai_model_keys()
+
+
+def skip_without_ai_keys():
+    """Skip test if no AI model API keys are available."""
+    if not has_ai_model_keys():
+        pytest.skip("GEMINI_API_KEY or OPENROUTER_API_KEY not set; skipping AI-dependent test")
+
+
+def skip_without_scraper_key():
+    """Skip test if Scrape Creators API key is not available."""
+    if not has_scraper_key():
+        pytest.skip("SCRAPECREATORS_API_KEY not set; skipping scraper test")
+
+
+def skip_without_all_keys():
+    """Skip test if any required API keys are missing."""
+    if not has_all_keys():
+        pytest.skip("SCRAPECREATORS_API_KEY and (GEMINI_API_KEY or OPENROUTER_API_KEY) not set; skipping integration test")

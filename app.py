@@ -32,6 +32,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
 from youtube_summarizer.summarizer import (
     Analysis,
     GraphOutput,
@@ -113,7 +114,7 @@ class BaseResponse(BaseModel):
 class YouTubeRequest(BaseModel):
     """YouTube URL request."""
 
-    url: str = Field(..., min_length=10, max_length=2048, description="YouTube video URL")
+    url: str = Field(..., min_length=10, description="YouTube video URL")
 
 
 class ScrapResponse(BaseResponse):
@@ -134,7 +135,7 @@ class ScrapResponse(BaseResponse):
 class SummarizeRequest(BaseModel):
     """Summarization request."""
 
-    content: str = Field(..., min_length=10, max_length=50000, description="Content to analyze (YouTube URL or transcript text)")
+    content: str = Field(..., min_length=1, description="Content to analyze (YouTube URL or transcript text)")
     content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
 
     # Model selection
@@ -198,7 +199,7 @@ def validate_content(content: str) -> str:
 
 
 def parse_scraper_result(result) -> dict[str, Any]:
-    """Parse scraper result to dict with error handling."""
+    """Parse scraper result to dict with error handling for Scrape Creators API format."""
     try:
         # Handle both Pydantic objects and raw dict responses
         if hasattr(result, "model_dump"):
@@ -208,9 +209,9 @@ def parse_scraper_result(result) -> dict[str, Any]:
             # Raw dict
             result_dict = result if isinstance(result, dict) else {}
 
-        # Map strictly to canonical fields defined in youtube_scrapper.py docs
+        # Map fields from Scrape Creators API format
         like_count = result_dict.get("likeCountInt")
-        upload_date = result_dict.get("publishDateText")
+        upload_date = result_dict.get("publishDateText") or result_dict.get("publishDate")
 
         # Extract chapters if available
         chapters = []
@@ -358,10 +359,7 @@ async def health_check():
         "message": f"{API_TITLE} is running",
         "timestamp": datetime.now().isoformat(),
         "version": API_VERSION,
-        "environment": {
-            "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
-            "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY")),
-        },
+        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY"))},
     }
 
 

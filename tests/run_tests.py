@@ -28,10 +28,35 @@ def check_dependencies():
         return False
 
 
+def check_api_keys():
+    """Check which API keys are available and what tests can run."""
+    print("\n🔑 API Key Status:")
+
+    scraper_key = bool(os.getenv("SCRAPECREATORS_API_KEY"))
+    gemini_key = bool(os.getenv("GEMINI_API_KEY"))
+    openrouter_key = bool(os.getenv("OPENROUTER_API_KEY"))
+    ai_keys = gemini_key or openrouter_key
+
+    print(f"   • SCRAPECREATORS_API_KEY: {'✅ Available' if scraper_key else '❌ Missing'}")
+    print(f"   • GEMINI_API_KEY: {'✅ Available' if gemini_key else '❌ Missing'}")
+    print(f"   • OPENROUTER_API_KEY: {'✅ Available' if openrouter_key else '❌ Missing'}")
+
+    print("🎯 Test Capabilities:")
+    print(f"   • Unit tests: ✅ Always available")
+    print(f"   • Scraper tests: {'✅ Available' if scraper_key else '❌ Requires SCRAPECREATORS_API_KEY'}")
+    print(f"   • AI summarization tests: {'✅ Available' if ai_keys else '❌ Requires GEMINI_API_KEY or OPENROUTER_API_KEY'}")
+    print(f"   • Full integration tests: {'✅ Available' if scraper_key and ai_keys else '❌ Requires all API keys'}")
+
+    return scraper_key, ai_keys
+
+
 def run_tests(test_type="all", coverage=False, verbose=True):
     """Run specific test suites."""
     if not check_dependencies():
         return False
+
+    # Check API key availability
+    scraper_key, ai_keys = check_api_keys()
 
     # Prefer running via uv if available; also disable auto-loaded plugins for stability
     uv = os.environ.get("UV", "uv")
@@ -133,6 +158,7 @@ def main():
     print(f"")
     print(f"📋 Environment Requirements:")
     print(f"   • Integration tests require API keys:")
+    print(f"     - SCRAPECREATORS_API_KEY (for YouTube scraping)")
     print(f"     - GEMINI_API_KEY or OPENROUTER_API_KEY (for summarization)")
     print(f"     - SCRAPECREATORS_API_KEY (for video scraping)")
     print(f"   • Unit tests run without external dependencies")
