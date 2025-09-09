@@ -580,18 +580,18 @@ class TestDataValidation:
     def test_content_validation_summarize(self, client):
         """Test content validation for summarize endpoint."""
         with patch.dict(os.environ, {"GEMINI_API_KEY": "test"}):
-            # Test empty content (should still be rejected)
+            # Test empty content (should be rejected with validation error)
             response = client.post("/summarize", json={"content": "", "content_type": "transcript"})
-            assert response.status_code == 500  # Empty content validation error wrapped as 500
+            assert response.status_code == 422  # Empty content validation error
 
-            # Test minimal content (no length restrictions)
+            # Test minimal content (should be accepted)
             response = client.post("/summarize", json={"content": "hi", "content_type": "transcript"})
-            assert response.status_code in [200, 500]  # Should accept minimal content
+            assert response.status_code in [200, 500]  # Should accept minimal content or fail on API call
 
-            # Test long content (no length restrictions)
+            # Test long content (should be accepted)
             long_content = "word " * 20000
             response = client.post("/summarize", json={"content": long_content, "content_type": "transcript"})
-            assert response.status_code in [200, 500]  # Should accept long content
+            assert response.status_code in [200, 500]  # Should accept long content or fail on API call
 
     def test_model_validation(self, client):
         """Test model parameter validation."""
