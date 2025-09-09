@@ -182,9 +182,6 @@ def validate_url(url: str) -> str:
         raise HTTPException(status_code=400, detail=ERROR_MESSAGES["empty_url"])
 
     url = url.strip()
-    if len(url) > 2048:
-        raise HTTPException(status_code=400, detail="URL too long (max 2048 characters)")
-
     if not is_youtube_url(url):
         raise HTTPException(status_code=400, detail=ERROR_MESSAGES["invalid_url"])
 
@@ -197,12 +194,6 @@ def validate_content(content: str) -> str:
         raise HTTPException(status_code=400, detail="Content cannot be empty")
 
     content = content.strip()
-    if len(content) < 10:
-        raise HTTPException(status_code=400, detail="Content too short (minimum 10 characters)")
-
-    if len(content) > 50000:
-        raise HTTPException(status_code=400, detail="Content too long (maximum 50,000 characters)")
-
     return content
 
 
