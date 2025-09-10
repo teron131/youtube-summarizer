@@ -31,8 +31,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, model_validator
 from youtube_summarizer.summarizer import (
     Analysis,
     GraphOutput,
@@ -121,9 +120,9 @@ class ScrapResponse(BaseResponse):
     """Video scraping response."""
 
     url: str
-    title: str
-    author: str
-    transcript: str
+    title: str | None = None
+    author: str | None = None
+    transcript: str | None = None
     duration: str | None = None
     thumbnail: str | None = None
     view_count: int | None = None
@@ -135,7 +134,7 @@ class ScrapResponse(BaseResponse):
 class SummarizeRequest(BaseModel):
     """Summarization request."""
 
-    content: str = Field(..., min_length=1, description="Content to analyze (YouTube URL or transcript text)")
+    content: str | None = Field(default=None, description="Content to analyze (YouTube URL or transcript text)")
     content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
 
     # Model selection
@@ -144,6 +143,15 @@ class SummarizeRequest(BaseModel):
 
     # Translation options
     target_language: str | None = Field(default=None, description="Target language for translation (None for auto-detect)")
+
+    @model_validator(mode="after")
+    def validate_content_based_on_type(self):
+        """Validate content based on content_type."""
+        if self.content_type == "transcript" and (self.content is None or self.content.strip() == ""):
+            raise ValueError("Content is required when content_type is 'transcript'")
+        elif self.content_type == "url" and (self.content is None or self.content.strip() == ""):
+            raise ValueError("Valid URL is required when content_type is 'url'")
+        return self
 
 
 class SummarizeResponse(BaseResponse):
@@ -213,17 +221,6 @@ def parse_scraper_result(result) -> dict[str, Any]:
         like_count = result_dict.get("likeCountInt")
         upload_date = result_dict.get("publishDateText") or result_dict.get("publishDate")
 
-        # Extract chapters if available
-        chapters = []
-        if result_dict.get("chapters"):
-            chapters = [
-                {
-                    "title": chapter.get("title", ""),
-                    "timeDescription": chapter.get("timeDescription", ""),
-                }
-                for chapter in result_dict["chapters"]
-            ]
-
         # Get transcript with proper fallback chain
         transcript = ""
         if hasattr(result, "parsed_transcript"):
@@ -239,50 +236,40 @@ def parse_scraper_result(result) -> dict[str, Any]:
             # Fallback for object attribute
             transcript = getattr(result, "transcript_only_text", "")
 
-        # Ensure transcript is not empty - provide fallback if needed
+        # Ensure transcript is not empty - provide None if no transcript available
         if not transcript or not transcript.strip():
-            transcript = "Transcript not available for this video."
+            transcript = None
 
         return {
             "url": result_dict.get("url", ""),
-            "title": result_dict.get("title", "Unknown Title") or "Unknown Title",
-            "author": result_dict.get("channel", {}).get("title", "Unknown Author") if isinstance(result_dict.get("channel"), dict) else "Unknown Author",
+            "title": result_dict.get("title") or None,
+            "author": result_dict.get("channel", {}).get("title") if isinstance(result_dict.get("channel"), dict) and result_dict.get("channel", {}).get("title") else None,
             "transcript": transcript,
             "duration": result_dict.get("durationFormatted"),
             "thumbnail": result_dict.get("thumbnail"),
             "view_count": result_dict.get("viewCountInt"),
             "like_count": like_count,
             "upload_date": upload_date,
-            "chapters": chapters,  # Include chapters in parsed result
         }
     except Exception as e:
         # Fallback parsing for malformed results
         log_and_print(f"⚠️ Warning: Error parsing scraper result: {str(e)}")
 
-        # Extract chapters from fallback result if available
-        chapters = []
-        if hasattr(result, "chapters") and getattr(result, "chapters", []):
-            chapters = [
-                {
-                    "title": getattr(chapter, "title", ""),
-                    "timeDescription": getattr(chapter, "timeDescription", ""),
-                }
-                for chapter in getattr(result, "chapters", [])
-            ]
-
         # Get transcript with fallback for error case
-        transcript = ""
+        transcript = None
         if hasattr(result, "parsed_transcript"):
             transcript = result.parsed_transcript
         elif hasattr(result, "transcript_only_text"):
             transcript = getattr(result, "transcript_only_text", "")
-        else:
-            transcript = "Transcript not available for this video."
+
+        # Ensure transcript is not empty
+        if transcript and not transcript.strip():
+            transcript = None
 
         return {
             "url": getattr(result, "url", ""),
-            "title": getattr(result, "title", "Unknown Title"),
-            "author": "Unknown Author",
+            "title": getattr(result, "title", None),
+            "author": getattr(result, "channel", {}).get("title", None) if hasattr(result, "channel") and getattr(result, "channel") else None,
             "transcript": transcript,
             "duration": getattr(result, "durationFormatted", None),
             "thumbnail": getattr(result, "thumbnail", None),
@@ -290,7 +277,6 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "like_count": getattr(result, "likeCountInt", None),
             # Best effort; do not transform
             "upload_date": getattr(result, "publishDateText", None),
-            "chapters": chapters,  # Include chapters in fallback
         }
 
 
@@ -440,30 +426,43 @@ async def summarize(request: SummarizeRequest):
             create_compiled_graph,
         )
 
-        # Validate content before processing
-        validated_content = validate_content(request.content)
+        # Handle content validation based on content_type
+        if request.content_type == "url":
+            # For URL type, we need to scrape to get transcript
+            if not request.content or not is_youtube_url(request.content):
+                raise HTTPException(status_code=400, detail="Valid YouTube URL is required when content_type is 'url'")
 
-        # Extract chapters if content is a YouTube URL
-        chapters = []
-        if is_youtube_url(validated_content):
-            try:
-                print(f"🔗 Detected YouTube URL, scraping to get chapters...")
-                from youtube_summarizer.youtube_scrapper import scrap_youtube
+            # Scrape the video to get transcript
+            print(f"🔗 Scraping YouTube video: {request.content}")
+            scrap_result = await run_async_task(scrap_youtube, request.content)
+            parsed_data = parse_scraper_result(scrap_result)
 
-                scrap_result = await run_async_task(scrap_youtube, validated_content)
-                parsed_data = parse_scraper_result(scrap_result)
-                chapters = parsed_data.get("chapters", [])
-                print(f"📋 Found {len(chapters)} chapters in YouTube video")
-                if chapters:
-                    print(f"📝 Chapter titles: {[ch['title'] for ch in chapters[:3]]}{'...' if len(chapters) > 3 else ''}")
-            except Exception as e:
-                print(f"⚠️ Failed to extract chapters from YouTube URL: {str(e)}")
-                chapters = []
+            # Use transcript if available, otherwise send the YouTube URL
+            if parsed_data.get("transcript"):
+                validated_content = parsed_data["transcript"]
+                print("📝 Using scraped transcript for analysis")
+            else:
+                # No transcript available - send YouTube URL to Gemini
+                validated_content = request.content
+                print("🎯 No transcript available - sending YouTube URL to Gemini")
+
+                # Force Gemini models when no transcript is available
+                if not request.analysis_model.startswith("google/"):
+                    print("🔄 Switching to Gemini for analysis (no transcript available)")
+                    request.analysis_model = "google/gemini-2.5-pro"
+                if not request.quality_model.startswith("google/"):
+                    print("🔄 Switching to Gemini for quality check (no transcript available)")
+                    request.quality_model = "google/gemini-2.5-flash"
+
+        else:
+            # For transcript type, content is required
+            if not request.content or request.content.strip() == "":
+                raise HTTPException(status_code=400, detail="Content is required when content_type is 'transcript'")
+            validated_content = request.content
 
         # Create GraphInput with new parameters
         graph_input = GraphInput(
             transcript_or_url=validated_content,
-            chapters=chapters,
             target_language=request.target_language,
             analysis_model=request.analysis_model,
             quality_model=request.quality_model,
@@ -502,23 +501,39 @@ async def stream_summarize(request: SummarizeRequest):
         start_time = datetime.now()
 
         try:
-            # Validate content before processing
-            validated_content = validate_content(request.content)
+            # Handle content validation based on content_type
+            if request.content_type == "url":
+                # For URL type, we need to scrape to get transcript
+                if not request.content or not is_youtube_url(request.content):
+                    raise HTTPException(status_code=400, detail="Valid YouTube URL is required when content_type is 'url'")
 
-            # Extract chapters if content is a YouTube URL
-            chapters = []
-            if is_youtube_url(validated_content):
-                try:
-                    print(f"🔗 Detected YouTube URL in streaming, scraping to get chapters...")
-                    from youtube_summarizer.youtube_scrapper import scrap_youtube
+                # Scrape the video to get transcript
+                print(f"🔗 Scraping YouTube video: {request.content}")
+                scrap_result = await run_async_task(scrap_youtube, request.content)
+                parsed_data = parse_scraper_result(scrap_result)
 
-                    scrap_result = await run_async_task(scrap_youtube, validated_content)
-                    parsed_data = parse_scraper_result(scrap_result)
-                    chapters = parsed_data.get("chapters", [])
-                    print(f"📋 Found {len(chapters)} chapters in YouTube video for streaming")
-                except Exception as e:
-                    print(f"⚠️ Failed to extract chapters from YouTube URL in streaming: {str(e)}")
-                    chapters = []
+                # Use transcript if available, otherwise send the YouTube URL
+                if parsed_data.get("transcript"):
+                    validated_content = parsed_data["transcript"]
+                    print("📝 Using scraped transcript for analysis")
+                else:
+                    # No transcript available - send YouTube URL to Gemini
+                    validated_content = request.content
+                    print("🎯 No transcript available - sending YouTube URL to Gemini")
+
+                    # Force Gemini models when no transcript is available
+                    if not request.analysis_model.startswith("google/"):
+                        print("🔄 Switching to Gemini for analysis (no transcript available)")
+                        request.analysis_model = "google/gemini-2.5-pro"
+                    if not request.quality_model.startswith("google/"):
+                        print("🔄 Switching to Gemini for quality check (no transcript available)")
+                        request.quality_model = "google/gemini-2.5-flash"
+
+            else:
+                # For transcript type, content is required
+                if not request.content or request.content.strip() == "":
+                    raise HTTPException(status_code=400, detail="Content is required when content_type is 'transcript'")
+                validated_content = request.content
 
             # Send initial status
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
@@ -529,7 +544,6 @@ async def stream_summarize(request: SummarizeRequest):
 
             graph_input = GraphInput(
                 transcript_or_url=validated_content,
-                chapters=chapters,
                 target_language=request.target_language,
                 analysis_model=request.analysis_model,
                 quality_model=request.quality_model,
@@ -542,9 +556,6 @@ async def stream_summarize(request: SummarizeRequest):
             # Pre-compile JSON filtering constants for better performance
             LARGE_TEXT_KEYS = frozenset(["transcript_or_url"])
             NESTED_FILTER_KEYS = frozenset(["analysis", "quality"])
-            MAX_TEXT_LENGTH = 1000
-            MAX_NESTED_TEXT_LENGTH = 2000
-            TRUNCATION_SUFFIX = "...[truncated]"
 
             for chunk in graph.stream(graph_input, stream_mode="values"):
                 try:
@@ -575,34 +586,14 @@ async def stream_summarize(request: SummarizeRequest):
                     filtered_chunk = {}
 
                     for key, value in chunk_dict.items():
-                        if key in LARGE_TEXT_KEYS and isinstance(value, str):
-                            # Truncate large transcript data
-                            if len(value) > MAX_TEXT_LENGTH:
-                                filtered_chunk[key] = value[:500] + TRUNCATION_SUFFIX
-                            else:
-                                filtered_chunk[key] = value
-                        elif key in NESTED_FILTER_KEYS and isinstance(value, dict):
-                            # Filter nested analysis/quality data
-                            filtered_nested = {}
-                            for sub_key, sub_value in value.items():
-                                if isinstance(sub_value, str) and len(sub_value) > MAX_NESTED_TEXT_LENGTH:
-                                    filtered_nested[sub_key] = sub_value[:1000] + TRUNCATION_SUFFIX
-                                else:
-                                    filtered_nested[sub_key] = sub_value
-                            filtered_chunk[key] = filtered_nested
-                        else:
-                            # Keep other fields as-is
-                            filtered_chunk[key] = value
+                        # Keep all data fields without truncation - let the client handle large responses
+                        filtered_chunk[key] = value
 
                     filtered_chunk["timestamp"] = datetime.now().isoformat()
                     filtered_chunk["chunk_number"] = chunk_count
 
-                    # Validate JSON before yielding
+                    # Yield JSON without size limits
                     json_str = json.dumps(filtered_chunk, ensure_ascii=False)
-                    if len(json_str) > 50000:  # Skip extremely large chunks
-                        print(f"⚠️ Skipping oversized chunk ({len(json_str)} chars)")
-                        continue
-
                     yield f"data: {json_str}\n\n"
                     chunk_count += 1
 

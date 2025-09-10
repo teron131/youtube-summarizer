@@ -296,9 +296,15 @@ def youtube_loader(url: str) -> str:
         logger.info("Fetching metadata and checking captions...")
         info = _extract_yt_dlp_info(url, METADATA_YDL_OPTS)
 
-        title = info.get("title", "Unknown Title")
-        author = info.get("uploader", "Unknown Author")
-        duration = info.get("duration", "Unknown")
+        title = info.get("title")
+        if title is not None and not title.strip():
+            title = None
+
+        author = info.get("uploader")
+        if author is not None and not author.strip():
+            author = None
+
+        duration = info.get("duration") or None
 
         logger.info(f"Video accessible - Title: {title}, Author: {author}, Duration: {duration}s")
 

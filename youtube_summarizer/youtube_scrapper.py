@@ -26,23 +26,6 @@ from .utils import clean_text, clean_youtube_url, is_youtube_url
 SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
 
 
-class ChapterTranscript(BaseModel):
-    """Represents a chapter with its transcript parts."""
-
-    title: str
-    transcript_parts: List[str] = Field(default_factory=list)
-
-    def format_output(self) -> str:
-        """Formats the chapter title and its transcript parts into a string."""
-        title_line = f"## {self.title}"
-        if not self.transcript_parts:
-            return title_line
-
-        # Join parts into a single text block and clean it
-        transcript_text = clean_text(" ".join(self.transcript_parts))
-        return f"{title_line}\n{transcript_text}"
-
-
 class Channel(BaseModel):
     id: str
     url: str
@@ -50,26 +33,17 @@ class Channel(BaseModel):
     title: str
 
 
-class Chapter(BaseModel):
-    title: str
-    timeDescription: str
-    startSeconds: int
-
-
 class WatchNextVideo(BaseModel):
     id: str
-    title: str
-    thumbnail: str
-    channel: Channel
-    publishedTimeText: str
-    publishedTime: datetime
-    publishDateText: str
-    publishDate: datetime
-    viewCountText: str
-    viewCountInt: int
-    lengthText: str
-    lengthInSeconds: int
-    videoUrl: str
+    title: Optional[str] = None
+    thumbnail: Optional[str] = None
+    channel: Optional[Channel] = None
+    publishDateText: Optional[str] = None
+    publishDate: Optional[str] = None  # API returns ISO string, not datetime
+    viewCountText: Optional[str] = None
+    viewCountInt: Optional[int] = None
+    lengthText: Optional[str] = None
+    videoUrl: Optional[str] = None
 
 
 class TranscriptSegment(BaseModel):
@@ -81,50 +55,46 @@ class TranscriptSegment(BaseModel):
 
 class YouTubeScrapperResult(BaseModel):
     id: str
-    thumbnail: str
-    url: str
+    thumbnail: Optional[str] = None
     type: str
-    title: str
-    description: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    commentCountText: Optional[str] = None
     commentCountInt: Optional[int] = None
-    likeCountText: str
-    likeCountInt: int
-    viewCountText: str
-    viewCountInt: int
-    publishDateText: str
-    publishDate: datetime
-    channel: Channel
-    chapters: List[Chapter]
-    watchNextVideos: List[WatchNextVideo]
-    keywords: List[str]
-    durationMs: int
-    durationFormatted: str
-    transcript: List[TranscriptSegment]
-    transcript_only_text: str
-    language: str
+    likeCountText: Optional[str] = None
+    likeCountInt: Optional[int] = None
+    viewCountText: Optional[str] = None
+    viewCountInt: Optional[int] = None
+    publishDateText: Optional[str] = None
+    publishDate: Optional[str] = None  # API returns ISO string, not datetime
+    channel: Optional[Channel] = None
+    watchNextVideos: List[WatchNextVideo] = Field(default_factory=list)
+    keywords: List[str] = Field(default_factory=list)
+    durationMs: Optional[int] = None
+    durationFormatted: Optional[str] = None
+    transcript: Optional[List[TranscriptSegment]] = None
+    transcript_only_text: Optional[str] = None
 
     @property
-    def parsed_transcript(self) -> str:
-        """Parse transcript into a single string with chapter formatting.
+    def parsed_transcript(self) -> Optional[str]:
+        """Parse transcript into a single string.
 
-        If chapters are present, formats each chapter as '## <Chapter Title>'.
-        If no chapters are available, the entire transcript is cleaned and returned as a single block.
+        Since the API doesn't provide chapter information, this simply returns
+        the cleaned transcript_only_text if available.
 
         Returns:
-            A formatted string with the transcript, organized by chapters if available.
+            A cleaned string with the transcript text.
+            Returns None if no transcript is available.
         """
-        if not self.chapters:
-            return clean_text(self.transcript_only_text)
+        # Handle case where transcript_only_text is None or empty
+        if self.transcript_only_text is None or not self.transcript_only_text.strip():
+            return None
+        return clean_text(self.transcript_only_text)
 
-        # Format each chapter without timestamp-based segmentation
-        result_parts = []
-        for chapter in self.chapters:
-            chapter_transcript = ChapterTranscript(title=chapter.title)
-            # Since we can't reliably assign transcript segments to chapters without timestamps,
-            # we'll just format the chapter titles
-            result_parts.append(chapter_transcript.format_output())
-
-        return "\n\n".join(result_parts)
+    @property
+    def has_transcript(self) -> bool:
+        """Check if this video has a transcript available."""
+        return self.transcript is not None and len(self.transcript) > 0 and self.transcript_only_text is not None and self.transcript_only_text.strip() != ""
 
 
 def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:

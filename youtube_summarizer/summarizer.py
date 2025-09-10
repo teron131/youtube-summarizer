@@ -88,7 +88,6 @@ class GraphInput(BaseModel):
     """Input for the summarization workflow."""
 
     transcript_or_url: str
-    chapters: list[dict] = Field(default_factory=list)  # YouTube video chapters
 
     # Model selection
     analysis_model: str = Field(default=ANALYSIS_MODEL)
@@ -111,7 +110,6 @@ class GraphState(BaseModel):
 
     # Input
     transcript_or_url: str
-    chapters: list[dict] = Field(default_factory=list)  # YouTube video chapters
 
     # Model selection
     analysis_model: str = Field(default=ANALYSIS_MODEL)
@@ -152,17 +150,8 @@ CONTENT FILTERING:
 CHAPTER REQUIREMENTS:
 """
 
-    # Add chapter-specific instructions if chapters are available
-    if state.chapters:
-        chapters_text = "\n".join([f"- {chapter['title']}" for chapter in state.chapters])
-        base_prompt += f"""Use these video chapters as the basis for your breakdown:
-{chapters_text}
-
-- Create chapters that correspond to these sections
-- Each chapter: header, summary (80-200 words), 3-6 key points
-- Maintain logical flow"""
-    else:
-        base_prompt += """Create 4-8 thematic chapters based on content structure and topic transitions."""
+    # Generate chapters based on content structure and topic transitions
+    base_prompt += """Create 4-8 thematic chapters based on content structure and topic transitions."""
 
     base_prompt += """
 
@@ -316,6 +305,14 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
     - If there is no prior quality feedback, generate a fresh analysis.
     - If quality feedback exists, refine using the feedback and original context.
     """
+    # Skip LangChain if no transcript is available
+    if state.transcript_or_url is None:
+        print("🎯 No transcript available - skipping LangChain analysis")
+        # Create a minimal analysis indicating no transcript
+        result = Analysis(title="No Transcript Available", summary="This video does not have a transcript available for analysis.", takeaways=["No transcript available"], key_facts=["No transcript available"], chapters=[], keywords=["no-transcript"])
+        result.target_language = state.target_language if state.target_language else None
+        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
     print(f"📝 Using model: {state.analysis_model}")
     llm = langchain_llm(state.analysis_model)
     structured_llm = llm.with_structured_output(Analysis)
@@ -328,10 +325,6 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
 
         # Include original transcript context to anchor refinements
         transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
-        if state.chapters:
-            chapters_context = "\n\nVideo Chapters:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-            transcript_context += chapters_context
-
         full_improvement_prompt = f"{transcript_context}\n\n{improvement_prompt}"
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -352,11 +345,6 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
         print(f"🌐 Translation enabled: {state.target_language}")
 
     content = state.transcript_or_url
-    if state.chapters:
-        chapters_info = "\n\nVIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-        content += chapters_info
-        print(f"📋 Including {len(state.chapters)} video chapters in analysis")
-
     analysis_prompt = get_analysis_prompt(state)
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -423,11 +411,7 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
         improvement_system_prompt = get_improvement_prompt(state)
 
         # Prepare content parts with full context
-        content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
-        if state.chapters:
-            chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-            content_parts.append(types.Part(text=chapters_info))
-        content_parts.append(types.Part(text=improvement_prompt))
+        content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)), types.Part(text=improvement_prompt)]
 
         response = client.models.generate_content(
             model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
@@ -449,10 +433,6 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
     analysis_prompt = get_analysis_prompt(state)
     content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
-    if state.chapters:
-        chapters_info = "VIDEO CHAPTERS:\n" + "\n".join([f"- {chapter['title']} (starts at {chapter['timeDescription']})" for chapter in state.chapters])
-        content_parts.append(types.Part(text=chapters_info))
-        print(f"📋 Including {len(state.chapters)} video chapters in Gemini analysis")
 
     response = client.models.generate_content(
         model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
@@ -494,7 +474,7 @@ def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
             temperature=0,
             response_mime_type="application/json",
             response_schema=Quality,
-            thinking_config=types.ThinkingConfig(thinking_budget=1024),
+            thinking_config=types.ThinkingConfig(thinking_budget=2048),
         ),
     )
 
