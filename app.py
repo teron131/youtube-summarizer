@@ -605,8 +605,13 @@ async def stream_summarize(request: SummarizeRequest):
                 "processing_time": get_processing_time(start_time),
                 "total_chunks": chunk_count,
                 "timestamp": datetime.now().isoformat(),
-                **{k: v for k, v in final_state.items() if k in ["analysis", "quality", "iteration_count", "is_complete"] and v is not None},
             }
+
+            # Safely extract final state data if available
+            if final_state and isinstance(final_state, dict):
+                for key in ["analysis", "quality", "iteration_count", "is_complete"]:
+                    if key in final_state and final_state[key] is not None:
+                        completion_data[key] = final_state[key]
 
             # Serialize and send completion message
             serialized_completion = serialize_nested(completion_data)

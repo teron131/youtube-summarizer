@@ -333,10 +333,15 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
             ]
         )
         chain = prompt | structured_llm
-        result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
-        result.target_language = state.target_language if state.target_language else None
-        print("✨ LangChain super node refined analysis")
-        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+        try:
+            result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
+            result.target_language = state.target_language if state.target_language else None
+            print("✨ LangChain super node refined analysis")
+            return {"analysis": result, "iteration_count": state.iteration_count + 1}
+        except Exception as e:
+            print(f"❌ LangChain refinement failed: {str(e)}")
+            # Return the original analysis if refinement fails
+            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
 
     # Generation path (no previous feedback)
     print(f"📝 Super node mode: generating initial analysis. Transcript length: {len(state.transcript_or_url)}")
@@ -353,10 +358,24 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
         ]
     )
     chain = prompt | structured_llm
-    result: Analysis = chain.invoke({"content": content})
-    result.target_language = state.target_language if state.target_language else None
-    print("📊 LangChain analysis completed")
-    return {"analysis": result, "iteration_count": state.iteration_count + 1}
+    try:
+        result: Analysis = chain.invoke({"content": content})
+        result.target_language = state.target_language if state.target_language else None
+        print("📊 LangChain analysis completed")
+        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+    except Exception as e:
+        print(f"❌ LangChain analysis failed: {str(e)}")
+        # Create a minimal fallback analysis
+        fallback_analysis = Analysis(
+            title="Analysis Generation Failed",
+            summary=f"Unable to generate structured analysis due to: {str(e)[:100]}. The transcript was processed but could not be analyzed.",
+            takeaways=["Analysis failed due to technical issues"],
+            key_facts=["Processing encountered errors"],
+            chapters=[],
+            keywords=["error"]
+        )
+        fallback_analysis.target_language = state.target_language if state.target_language else None
+        return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
 
 
 def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
@@ -377,26 +396,45 @@ def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]
     )
 
     chain = prompt | structured_llm
-    quality: Quality = chain.invoke({"analysis_text": analysis_text})
+    try:
+        quality: Quality = chain.invoke({"analysis_text": analysis_text})
 
-    # is_acceptable is now computed automatically by the Quality model
-    print(f"📈 LangChain quality breakdown:")
-    print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-    print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-    print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-    print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-    print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
-    print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
-    print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
-    print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
+        # is_acceptable is now computed automatically by the Quality model
+        print(f"📈 LangChain quality breakdown:")
+        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+        print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
+        print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
+        print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
+        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 
-    if not quality.is_acceptable:
-        print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
+        if not quality.is_acceptable:
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
 
-    return {
-        "quality": quality,
-        "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
-    }
+        return {
+            "quality": quality,
+            "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+        }
+    except Exception as e:
+        print(f"❌ LangChain quality check failed: {str(e)}")
+        # Create a minimal fallback quality assessment
+        fallback_quality = Quality(
+            completeness=Rate(rate="Fail", reason=f"Quality check failed: {str(e)[:50]}"),
+            structure=Rate(rate="Fail", reason="Unable to assess structure"),
+            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
+            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
+            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
+            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
+            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness")
+        )
+        print(f"📈 Fallback quality score: {fallback_quality.percentage_score}%")
+
+        return {
+            "quality": fallback_quality,
+            "is_complete": state.iteration_count >= MAX_ITERATIONS,  # Complete if max iterations reached
+        }
 
 
 def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
@@ -413,11 +451,38 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
         # Prepare content parts with full context
         content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)), types.Part(text=improvement_prompt)]
 
+        try:
+            response = client.models.generate_content(
+                model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
+                contents=types.Content(parts=content_parts),
+                config=types.GenerateContentConfig(
+                    system_instruction=improvement_system_prompt,
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=Analysis,
+                    thinking_config=types.ThinkingConfig(thinking_budget=2048),
+                ),
+            )
+            result: Analysis = response.parsed
+            result.target_language = state.target_language if state.target_language else None
+            print("✨ Gemini SDK super node refined analysis")
+            return {"analysis": result, "iteration_count": state.iteration_count + 1}
+        except Exception as e:
+            print(f"❌ Gemini SDK refinement failed: {str(e)}")
+            # Return the original analysis if refinement fails
+            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
+
+    # Generation path
+    print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
+    analysis_prompt = get_analysis_prompt(state)
+    content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
+
+    try:
         response = client.models.generate_content(
             model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
             contents=types.Content(parts=content_parts),
             config=types.GenerateContentConfig(
-                system_instruction=improvement_system_prompt,
+                system_instruction=analysis_prompt,
                 temperature=0,
                 response_mime_type="application/json",
                 response_schema=Analysis,
@@ -426,29 +491,21 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
         )
         result: Analysis = response.parsed
         result.target_language = state.target_language if state.target_language else None
-        print("✨ Gemini SDK super node refined analysis")
+        print("📊 Gemini SDK analysis completed")
         return {"analysis": result, "iteration_count": state.iteration_count + 1}
-
-    # Generation path
-    print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
-    analysis_prompt = get_analysis_prompt(state)
-    content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
-
-    response = client.models.generate_content(
-        model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-        contents=types.Content(parts=content_parts),
-        config=types.GenerateContentConfig(
-            system_instruction=analysis_prompt,
-            temperature=0,
-            response_mime_type="application/json",
-            response_schema=Analysis,
-            thinking_config=types.ThinkingConfig(thinking_budget=2048),
-        ),
-    )
-    result: Analysis = response.parsed
-    result.target_language = state.target_language if state.target_language else None
-    print("📊 Gemini SDK analysis completed")
-    return {"analysis": result, "iteration_count": state.iteration_count + 1}
+    except Exception as e:
+        print(f"❌ Gemini SDK analysis failed: {str(e)}")
+        # Create a minimal fallback analysis for Gemini
+        fallback_analysis = Analysis(
+            title="Gemini Analysis Failed",
+            summary=f"Unable to generate analysis using Gemini SDK due to: {str(e)[:100]}. The content was processed but analysis failed.",
+            takeaways=["Gemini SDK encountered an error"],
+            key_facts=["Technical issues with Gemini API"],
+            chapters=[],
+            keywords=["gemini-error"]
+        )
+        fallback_analysis.target_language = state.target_language if state.target_language else None
+        return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
 
 
 def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
@@ -461,43 +518,62 @@ def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     quality_prompt = get_quality_prompt(state)
     analysis_text = repr(state.analysis)
 
-    response = client.models.generate_content(
-        model=state.quality_model.split("/")[1] if "google/" in state.quality_model else "gemini-2.5-flash",
-        contents=types.Content(
-            parts=[
-                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-                types.Part(text=analysis_text),
-            ]
-        ),
-        config=types.GenerateContentConfig(
-            system_instruction=quality_prompt,
-            temperature=0,
-            response_mime_type="application/json",
-            response_schema=Quality,
-            thinking_config=types.ThinkingConfig(thinking_budget=2048),
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=state.quality_model.split("/")[1] if "google/" in state.quality_model else "gemini-2.5-flash",
+            contents=types.Content(
+                parts=[
+                    types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+                    types.Part(text=analysis_text),
+                ]
+            ),
+            config=types.GenerateContentConfig(
+                system_instruction=quality_prompt,
+                temperature=0,
+                response_mime_type="application/json",
+                response_schema=Quality,
+                thinking_config=types.ThinkingConfig(thinking_budget=2048),
+            ),
+        )
 
-    quality: Quality = response.parsed
+        quality: Quality = response.parsed
 
-    # is_acceptable is now computed automatically by the Quality model
-    print(f"📈 Gemini quality breakdown:")
-    print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-    print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-    print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-    print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-    print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
-    print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
-    print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
-    print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
+        # is_acceptable is now computed automatically by the Quality model
+        print(f"📈 Gemini quality breakdown:")
+        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+        print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
+        print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
+        print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
+        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
 
-    if not quality.is_acceptable:
-        print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
+        if not quality.is_acceptable:
+            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
 
-    return {
-        "quality": quality,
-        "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
-    }
+        return {
+            "quality": quality,
+            "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
+        }
+    except Exception as e:
+        print(f"❌ Gemini SDK quality check failed: {str(e)}")
+        # Create a minimal fallback quality assessment for Gemini
+        fallback_quality = Quality(
+            completeness=Rate(rate="Fail", reason=f"Gemini quality check failed: {str(e)[:50]}"),
+            structure=Rate(rate="Fail", reason="Unable to assess structure"),
+            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
+            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
+            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
+            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
+            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness")
+        )
+        print(f"📈 Fallback Gemini quality score: {fallback_quality.percentage_score}%")
+
+        return {
+            "quality": fallback_quality,
+            "is_complete": state.iteration_count >= MAX_ITERATIONS,  # Complete if max iterations reached
+        }
 
 
 # Conditional routing functions
