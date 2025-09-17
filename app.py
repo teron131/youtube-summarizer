@@ -553,71 +553,72 @@ async def stream_summarize(request: SummarizeRequest):
 
             chunk_count = 0
 
-            # Pre-compile JSON filtering constants for better performance
+            # Pre-compile constants and functions for better performance
             LARGE_TEXT_KEYS = frozenset(["transcript_or_url"])
             NESTED_FILTER_KEYS = frozenset(["analysis", "quality"])
 
+            # Efficient nested serialization with recursion limit - defined once outside loop
+            def serialize_nested(obj, depth=0, max_depth=5):
+                if depth > max_depth:
+                    return str(obj)[:100] + "...[deep nesting]"
+
+                if isinstance(obj, dict):
+                    return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [serialize_nested(item, depth + 1, max_depth) for item in obj]
+                elif hasattr(obj, "model_dump"):
+                    return obj.model_dump()
+                else:
+                    return obj
+
+            final_state = None
+
             for chunk in graph.stream(graph_input, stream_mode="values"):
                 try:
-                    # Optimized chunk processing with early filtering
-                    if isinstance(chunk, dict):
-                        chunk_dict = chunk.copy()
-                    else:
-                        chunk_dict = chunk.model_dump()
+                    # Convert chunk to dict efficiently
+                    chunk_dict = chunk.model_dump() if hasattr(chunk, "model_dump") else chunk.copy() if isinstance(chunk, dict) else {}
 
-                    # Efficient nested serialization with recursion limit
-                    def serialize_nested(obj, depth=0, max_depth=5):
-                        if depth > max_depth:
-                            return str(obj)[:100] + "...[deep nesting]"
+                    # Store final state reference (avoid copying large objects)
+                    final_state = chunk_dict
 
-                        if isinstance(obj, dict):
-                            return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
-                        elif isinstance(obj, list):
-                            return [serialize_nested(item, depth + 1, max_depth) for item in obj]
-                        elif hasattr(obj, "model_dump"):
-                            return obj.model_dump()
-                        else:
-                            return obj
+                    # Serialize and stream chunk in one operation
+                    serialized_chunk = serialize_nested(chunk_dict)
+                    serialized_chunk["timestamp"] = datetime.now().isoformat()
+                    serialized_chunk["chunk_number"] = chunk_count
 
-                    chunk_dict = serialize_nested(chunk_dict)
-
-                    # Filter out large data fields that can break JSON streaming
-                    # Using pre-compiled constants for better performance
-                    filtered_chunk = {}
-
-                    for key, value in chunk_dict.items():
-                        # Keep all data fields without truncation - let the client handle large responses
-                        filtered_chunk[key] = value
-
-                    filtered_chunk["timestamp"] = datetime.now().isoformat()
-                    filtered_chunk["chunk_number"] = chunk_count
-
-                    # Yield JSON without size limits
-                    json_str = json.dumps(filtered_chunk, ensure_ascii=False)
-                    yield f"data: {json_str}\n\n"
+                    yield f"data: {json.dumps(serialized_chunk, ensure_ascii=False)}\n\n"
                     chunk_count += 1
 
-                    # Adaptive delay based on chunk count to prevent overwhelming client
-                    delay = min(0.1, 0.05 + (chunk_count * 0.01))
-                    await asyncio.sleep(delay)
+                    # Minimal adaptive delay for client processing
+                    if chunk_count % 10 == 0:  # Only delay every 10 chunks
+                        await asyncio.sleep(0.01)
 
                 except (TypeError, ValueError, json.JSONDecodeError) as e:
                     print(f"⚠️ Failed to serialize chunk {chunk_count}: {str(e)}")
-                    # Skip problematic chunks but continue processing
                     chunk_count += 1
                     continue
 
-            # Send completion message
-            completion_data = {"type": "complete", "message": "Analysis completed", "processing_time": get_processing_time(start_time), "total_chunks": chunk_count, "timestamp": datetime.now().isoformat()}
-            yield f"data: {json.dumps(completion_data)}\n\n"
+            # Send completion message with final analysis and quality data
+            completion_data = {
+                "type": "complete",
+                "message": "Analysis completed",
+                "processing_time": get_processing_time(start_time),
+                "total_chunks": chunk_count,
+                "timestamp": datetime.now().isoformat(),
+                **{k: v for k, v in final_state.items() if k in ["analysis", "quality", "iteration_count", "is_complete"] and v is not None},
+            }
+
+            # Serialize and send completion message
+            serialized_completion = serialize_nested(completion_data)
+            yield f"data: {json.dumps(serialized_completion, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             log_and_print(f"❌ Streaming failed: {str(e)}")
-            error_data = {"type": "error", "message": str(e)[:100], "timestamp": datetime.now().isoformat()}
+            error_data = {"type": "error", "message": str(e)[:100], "timestamp": datetime.now().isoformat(), "error_type": type(e).__name__}
             try:
                 yield f"data: {json.dumps(error_data)}\n\n"
             except Exception as json_error:
-                # Fallback if even error serialization fails
+                # Minimal fallback error message
                 log_and_print(f"❌ Failed to serialize error data: {str(json_error)}")
                 yield f'data: {{"type": "error", "message": "Streaming failed", "timestamp": "{datetime.now().isoformat()}"}}\n\n'
 
