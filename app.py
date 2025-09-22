@@ -119,7 +119,7 @@ class YouTubeRequest(BaseModel):
 class ScrapResponse(BaseResponse):
     """Video scraping response."""
 
-    url: str
+    url: str | None = None
     title: str | None = None
     author: str | None = None
     transcript: str | None = None
@@ -217,7 +217,7 @@ def parse_scraper_result(result) -> dict[str, Any]:
             # Raw dict
             result_dict = result if isinstance(result, dict) else {}
 
-        # Map fields from Scrape Creators API format
+        # Map fields from Scrape Creators API format with safe fallbacks
         like_count = result_dict.get("likeCountInt")
         upload_date = result_dict.get("publishDateText") or result_dict.get("publishDate")
 
@@ -240,43 +240,46 @@ def parse_scraper_result(result) -> dict[str, Any]:
         if not transcript or not transcript.strip():
             transcript = None
 
+        # Safely extract all fields with fallbacks to None
         return {
-            "url": result_dict.get("url", ""),
+            "url": result_dict.get("url") or None,
             "title": result_dict.get("title") or None,
             "author": result_dict.get("channel", {}).get("title") if isinstance(result_dict.get("channel"), dict) and result_dict.get("channel", {}).get("title") else None,
             "transcript": transcript,
-            "duration": result_dict.get("durationFormatted"),
-            "thumbnail": result_dict.get("thumbnail"),
-            "view_count": result_dict.get("viewCountInt"),
-            "like_count": like_count,
-            "upload_date": upload_date,
+            "duration": result_dict.get("durationFormatted") or None,
+            "thumbnail": result_dict.get("thumbnail") or None,
+            "view_count": result_dict.get("viewCountInt") or None,
+            "like_count": like_count or None,
+            "upload_date": upload_date or None,
         }
     except Exception as e:
-        # Fallback parsing for malformed results
+        # Fallback parsing for malformed results - never raise errors
         log_and_print(f"⚠️ Warning: Error parsing scraper result: {str(e)}")
 
         # Get transcript with fallback for error case
         transcript = None
-        if hasattr(result, "parsed_transcript"):
-            transcript = result.parsed_transcript
-        elif hasattr(result, "transcript_only_text"):
-            transcript = getattr(result, "transcript_only_text", "")
-
-        # Ensure transcript is not empty
-        if transcript and not transcript.strip():
+        try:
+            if hasattr(result, "parsed_transcript"):
+                transcript = result.parsed_transcript
+            elif hasattr(result, "transcript_only_text"):
+                transcript = getattr(result, "transcript_only_text", "")
+            # Ensure transcript is not empty
+            if transcript and not transcript.strip():
+                transcript = None
+        except:
             transcript = None
 
+        # Return minimal valid data structure with all fields optional
         return {
-            "url": getattr(result, "url", ""),
-            "title": getattr(result, "title", None),
-            "author": getattr(result, "channel", {}).get("title", None) if hasattr(result, "channel") and getattr(result, "channel") else None,
+            "url": None,
+            "title": None,
+            "author": None,
             "transcript": transcript,
-            "duration": getattr(result, "durationFormatted", None),
-            "thumbnail": getattr(result, "thumbnail", None),
-            "view_count": getattr(result, "viewCountInt", None),
-            "like_count": getattr(result, "likeCountInt", None),
-            # Best effort; do not transform
-            "upload_date": getattr(result, "publishDateText", None),
+            "duration": None,
+            "thumbnail": None,
+            "view_count": None,
+            "like_count": None,
+            "upload_date": None,
         }
 
 
