@@ -13,9 +13,7 @@ result.viewCountInt: int = 13462116
 result.likeCountInt: int = 321234
 """
 
-import json
 import os
-from datetime import datetime
 from typing import List, Optional
 
 import requests
