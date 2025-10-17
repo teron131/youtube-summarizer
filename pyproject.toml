@@ -3,7 +3,7 @@ name = "youtube-summarizer"
 version = "0.1.0"
 description = "Backend API for YouTube video transcription and AI summarization"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 
 dependencies = [
