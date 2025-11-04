@@ -446,53 +446,6 @@ class AnalysisUtils:
     """Utility functions for analysis operations."""
 
     @staticmethod
-    def create_fallback_analysis(error_msg: str, error_type: str, state: GraphState) -> Analysis:
-        """Create a fallback analysis when generation fails."""
-        error_keyword = error_type.lower().replace(" ", "-")
-        analysis = Analysis(
-            title=f"{error_type} Analysis Failed",
-            summary=f"Unable to generate analysis due to: {error_msg[:100]}. The content was processed but analysis failed.",
-            takeaways=[
-                f"{error_type} encountered an error",
-                "Analysis generation was unsuccessful",
-                "Please try again or check API configuration",
-            ],
-            key_facts=[
-                "Technical issues with analysis",
-                "API request failed during processing",
-                "Unable to complete analysis workflow",
-            ],
-            chapters=[],
-            keywords=[error_keyword, "error", "failed"],
-        )
-        if state.target_language:
-            analysis.target_language = state.target_language
-        return analysis
-
-    @staticmethod
-    def create_no_transcript_analysis(state: GraphState) -> Analysis:
-        """Create analysis indicating no transcript is available."""
-        analysis = Analysis(
-            title="No Transcript Available",
-            summary="This video does not have a transcript available for analysis.",
-            takeaways=[
-                "No transcript available for this video",
-                "Transcript data is required for analysis",
-                "Please try a different video with captions enabled",
-            ],
-            key_facts=[
-                "No transcript available",
-                "Video may not have captions enabled",
-                "Transcript extraction was unsuccessful",
-            ],
-            chapters=[],
-            keywords=["no-transcript", "unavailable", "missing"],
-        )
-        if state.target_language:
-            analysis.target_language = state.target_language
-        return analysis
-
-    @staticmethod
     def set_target_language(analysis: Analysis, target_language: Optional[str]) -> None:
         """Set target language on analysis if provided."""
         if target_language:
@@ -501,19 +454,6 @@ class AnalysisUtils:
 
 class QualityUtils:
     """Utility functions for quality operations."""
-
-    @staticmethod
-    def create_fallback_quality(error_msg: str) -> Quality:
-        """Create a fallback quality assessment when quality check fails."""
-        return Quality(
-            completeness=Rate(rate="Fail", reason=f"Quality check failed: {error_msg[:50]}"),
-            structure=Rate(rate="Fail", reason="Unable to assess structure"),
-            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
-            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
-            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
-            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
-            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"),
-        )
 
     @staticmethod
     def print_quality_breakdown(quality: Quality, provider: str = "") -> None:
@@ -581,14 +521,9 @@ class AnalysisNodeBase:
 
     @staticmethod
     def _handle_error(error: Exception, state: GraphState, error_type: str) -> dict[str, Union[Analysis, int]]:
-        """Handle error by creating fallback or returning original."""
+        """Handle error by re-raising - no fallbacks, fail fast."""
         print(f"❌ {error_type} failed: {str(error)}")
-        if state.analysis:
-            # Return original analysis if refinement fails
-            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
-        # Create fallback for generation failures
-        fallback = AnalysisUtils.create_fallback_analysis(str(error), error_type, state)
-        return {"analysis": fallback, "iteration_count": state.iteration_count + 1}
+        raise RuntimeError(f"{error_type} failed: {str(error)}") from error
 
 
 class LangChainAnalysisNode(AnalysisNodeBase):
@@ -597,10 +532,8 @@ class LangChainAnalysisNode(AnalysisNodeBase):
     @staticmethod
     def execute(state: GraphState) -> dict[str, Union[Analysis, int]]:
         """Execute LangChain analysis node."""
-        if state.transcript_or_url is None:
-            print("🎯 No transcript available - skipping LangChain analysis")
-            result = AnalysisUtils.create_no_transcript_analysis(state)
-            return {"analysis": result, "iteration_count": state.iteration_count + 1}
+        if not state.transcript_or_url or not state.transcript_or_url.strip():
+            raise ValueError("Transcript or URL is required for analysis")
 
         print(f"📝 Using model: {state.analysis_model}")
         llm = ModelClientFactory.create_langchain_llm(state.analysis_model)
@@ -752,13 +685,7 @@ class LangChainQualityNode(QualityNodeBase):
             }
         except Exception as e:
             print(f"❌ LangChain quality check failed: {str(e)}")
-            fallback_quality = QualityUtils.create_fallback_quality(str(e))
-            print(f"📈 Fallback quality score: {fallback_quality.percentage_score}%")
-
-            return {
-                "quality": fallback_quality,
-                "is_complete": state.iteration_count >= Config.MAX_ITERATIONS,
-            }
+            raise RuntimeError(f"LangChain quality check failed: {str(e)}") from e
 
 
 class GeminiQualityNode(QualityNodeBase):
@@ -805,13 +732,7 @@ class GeminiQualityNode(QualityNodeBase):
             }
         except Exception as e:
             print(f"❌ Gemini SDK quality check failed: {str(e)}")
-            fallback_quality = QualityUtils.create_fallback_quality(str(e))
-            print(f"📈 Fallback Gemini quality score: {fallback_quality.percentage_score}%")
-
-            return {
-                "quality": fallback_quality,
-                "is_complete": state.iteration_count >= Config.MAX_ITERATIONS,
-            }
+            raise RuntimeError(f"Gemini SDK quality check failed: {str(e)}") from e
 
 
 # ============================================================================
