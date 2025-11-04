@@ -7,8 +7,8 @@ from typing import Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
-from langchain.chat_models.base import BaseChatModel
 from langchain.prompts import ChatPromptTemplate
+from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
@@ -366,14 +366,7 @@ def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]
     except Exception as e:
         print(f"❌ LangChain analysis failed: {str(e)}")
         # Create a minimal fallback analysis
-        fallback_analysis = Analysis(
-            title="Analysis Generation Failed",
-            summary=f"Unable to generate structured analysis due to: {str(e)[:100]}. The transcript was processed but could not be analyzed.",
-            takeaways=["Analysis failed due to technical issues"],
-            key_facts=["Processing encountered errors"],
-            chapters=[],
-            keywords=["error"]
-        )
+        fallback_analysis = Analysis(title="Analysis Generation Failed", summary=f"Unable to generate structured analysis due to: {str(e)[:100]}. The transcript was processed but could not be analyzed.", takeaways=["Analysis failed due to technical issues"], key_facts=["Processing encountered errors"], chapters=[], keywords=["error"])
         fallback_analysis.target_language = state.target_language if state.target_language else None
         return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
 
@@ -420,15 +413,7 @@ def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]
     except Exception as e:
         print(f"❌ LangChain quality check failed: {str(e)}")
         # Create a minimal fallback quality assessment
-        fallback_quality = Quality(
-            completeness=Rate(rate="Fail", reason=f"Quality check failed: {str(e)[:50]}"),
-            structure=Rate(rate="Fail", reason="Unable to assess structure"),
-            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
-            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
-            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
-            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
-            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness")
-        )
+        fallback_quality = Quality(completeness=Rate(rate="Fail", reason=f"Quality check failed: {str(e)[:50]}"), structure=Rate(rate="Fail", reason="Unable to assess structure"), grammar=Rate(rate="Fail", reason="Unable to assess grammar"), no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"), meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"), useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"), correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"))
         print(f"📈 Fallback quality score: {fallback_quality.percentage_score}%")
 
         return {
@@ -496,14 +481,7 @@ def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     except Exception as e:
         print(f"❌ Gemini SDK analysis failed: {str(e)}")
         # Create a minimal fallback analysis for Gemini
-        fallback_analysis = Analysis(
-            title="Gemini Analysis Failed",
-            summary=f"Unable to generate analysis using Gemini SDK due to: {str(e)[:100]}. The content was processed but analysis failed.",
-            takeaways=["Gemini SDK encountered an error"],
-            key_facts=["Technical issues with Gemini API"],
-            chapters=[],
-            keywords=["gemini-error"]
-        )
+        fallback_analysis = Analysis(title="Gemini Analysis Failed", summary=f"Unable to generate analysis using Gemini SDK due to: {str(e)[:100]}. The content was processed but analysis failed.", takeaways=["Gemini SDK encountered an error"], key_facts=["Technical issues with Gemini API"], chapters=[], keywords=["gemini-error"])
         fallback_analysis.target_language = state.target_language if state.target_language else None
         return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
 
@@ -559,15 +537,7 @@ def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     except Exception as e:
         print(f"❌ Gemini SDK quality check failed: {str(e)}")
         # Create a minimal fallback quality assessment for Gemini
-        fallback_quality = Quality(
-            completeness=Rate(rate="Fail", reason=f"Gemini quality check failed: {str(e)[:50]}"),
-            structure=Rate(rate="Fail", reason="Unable to assess structure"),
-            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
-            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
-            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
-            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
-            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness")
-        )
+        fallback_quality = Quality(completeness=Rate(rate="Fail", reason=f"Gemini quality check failed: {str(e)[:50]}"), structure=Rate(rate="Fail", reason="Unable to assess structure"), grammar=Rate(rate="Fail", reason="Unable to assess grammar"), no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"), meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"), useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"), correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"))
         print(f"📈 Fallback Gemini quality score: {fallback_quality.percentage_score}%")
 
         return {
