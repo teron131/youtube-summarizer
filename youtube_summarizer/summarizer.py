@@ -3,6 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
+import re
 from typing import Any, Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
@@ -227,6 +228,45 @@ class PromptBuilder:
         return "\n".join(lines)
 
     @staticmethod
+    def _build_length_guidelines(fields_info: dict[str, dict[str, Any]]) -> list[str]:
+        """Build length guidelines list from field constraints and descriptions."""
+        lines = []
+        for field_name, info in fields_info.items():
+            display_name = field_name.replace("_", " ").title()
+            min_length = info.get("min_length")
+            max_length = info.get("max_length")
+            desc = info.get("description", "")
+
+            if field_name == "title":
+                # Extract word count from description if available
+                word_match = re.search(r"(\d+)-(\d+)\s+words?", desc, re.IGNORECASE)
+                if word_match:
+                    lines.append(f"- Title: {word_match.group(1)}-{word_match.group(2)} words")
+                else:
+                    lines.append("- Title: 2-15 words")  # Default fallback
+            elif field_name == "summary":
+                # Extract word count from description if available
+                word_match = re.search(r"(\d+)-(\d+)\s+words?", desc, re.IGNORECASE)
+                if word_match:
+                    lines.append(f"- Summary: {word_match.group(1)}-{word_match.group(2)} words")
+                else:
+                    lines.append("- Summary: 150-400 words")  # Default fallback
+            elif field_name == "chapters":
+                # Extract word count from description if available
+                word_match = re.search(r"(\d+)-(\d+)\s+words?", desc, re.IGNORECASE)
+                if word_match:
+                    lines.append(f"- Chapters: {word_match.group(1)}-{word_match.group(2)} words each")
+                else:
+                    lines.append("- Chapters: 80-200 words each")  # Default fallback
+            elif min_length is not None and max_length is not None:
+                if min_length == max_length:
+                    lines.append(f"- {display_name}: Exactly {min_length} items")
+                else:
+                    lines.append(f"- {display_name}: {min_length}-{max_length} items")
+
+        return lines
+
+    @staticmethod
     def build_analysis_prompt(state: GraphState) -> str:
         """Build analysis prompt from Analysis model Field descriptions."""
         schema = schema_to_string(Analysis)
@@ -296,26 +336,7 @@ class PromptBuilder:
 
         # Build length guidelines from Analysis model
         analysis_fields = PromptBuilder._extract_field_info(Analysis)
-        length_lines = []
-        for field_name, info in analysis_fields.items():
-            min_length = info.get("min_length")
-            max_length = info.get("max_length")
-
-            if field_name == "title":
-                length_lines.append("- Title: 2-15 words")
-            elif field_name == "summary":
-                length_lines.append("- Summary: 150-400 words")
-            elif field_name == "chapters":
-                length_lines.append("- Chapters: 80-200 words each")
-            elif field_name == "takeaways" and min_length is not None and max_length is not None:
-                length_lines.append(f"- Takeaways: {min_length}-{max_length} items")
-            elif field_name == "key_facts" and min_length is not None and max_length is not None:
-                length_lines.append(f"- Key Facts: {min_length}-{max_length} items")
-            elif field_name == "keywords" and min_length is not None and max_length is not None:
-                if min_length == max_length:
-                    length_lines.append(f"- Keywords: Exactly {min_length}")
-                else:
-                    length_lines.append(f"- Keywords: {min_length}-{max_length} items")
+        length_lines = PromptBuilder._build_length_guidelines(analysis_fields)
 
         prompt_parts = [
             "Evaluate the analysis on the following aspects. Rate each 'Fail', 'Refine', or 'Pass' with a specific reason.",

@@ -46,12 +46,12 @@ class Config:
 
 
 # ============================================================================
-# Simplified Data Models
+# Data Models
 # ============================================================================
 
 
-class SimpleAnalysis(BaseModel):
-    """Simplified analysis with only essential fields."""
+class Analysis(BaseModel):
+    """Analysis with essential fields."""
 
     summary: str = Field(description="A comprehensive summary of the video content (150-400 words)")
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience", min_length=3, max_length=8)
@@ -65,8 +65,8 @@ class Rate(BaseModel):
     reason: str = Field(description="Reason for the score")
 
 
-class SimpleQuality(BaseModel):
-    """Simplified quality assessment."""
+class Quality(BaseModel):
+    """Quality assessment."""
 
     completeness: Rate = Field(description="Rate for completeness: The entire transcript has been considered")
     accuracy: Rate = Field(description="Rate for accuracy: Content directly supported by transcript (no external additions)")
@@ -112,8 +112,8 @@ class GraphInput(BaseModel):
 class GraphOutput(BaseModel):
     """Output from the summarization workflow."""
 
-    analysis: SimpleAnalysis
-    quality: SimpleQuality
+    analysis: Analysis
+    quality: Quality
     iteration_count: int
 
 
@@ -123,8 +123,8 @@ class GraphState(BaseModel):
     transcript: str
     analysis_model: str = Field(default=Config.ANALYSIS_MODEL)
     quality_model: str = Field(default=Config.QUALITY_MODEL)
-    analysis: Optional[SimpleAnalysis] = None
-    quality: Optional[SimpleQuality] = None
+    analysis: Optional[Analysis] = None
+    quality: Optional[Quality] = None
     iteration_count: int = Field(default=0)
     is_complete: bool = Field(default=False)
 
@@ -135,7 +135,7 @@ class GraphState(BaseModel):
 
 
 class PromptBuilder:
-    """Centralized prompt builder for simplified analysis."""
+    """Centralized prompt builder for analysis."""
 
     @staticmethod
     def _extract_field_info(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
@@ -155,10 +155,52 @@ class PromptBuilder:
         return fields_info
 
     @staticmethod
+    def _build_length_summary(fields_info: dict[str, dict[str, Any]]) -> str:
+        """Build a concise length summary from field constraints."""
+        parts = []
+        for field_name, info in fields_info.items():
+            display_name = field_name.replace("_", " ").title()
+            min_length = info.get("min_length")
+            max_length = info.get("max_length")
+
+            if field_name == "summary":
+                # Extract word count from description if available
+                desc = info.get("description", "")
+                if "150-400 words" in desc or "(150-400 words)" in desc:
+                    parts.append(f"Summary (150-400 words)")
+                else:
+                    parts.append(f"Summary")
+            elif min_length is not None and max_length is not None:
+                parts.append(f"{display_name} ({min_length}-{max_length} items)")
+
+        return ", ".join(parts)
+
+    @staticmethod
+    def _build_length_guidelines(fields_info: dict[str, dict[str, Any]]) -> list[str]:
+        """Build length guidelines list from field constraints."""
+        lines = []
+        for field_name, info in fields_info.items():
+            display_name = field_name.replace("_", " ").title()
+            min_length = info.get("min_length")
+            max_length = info.get("max_length")
+
+            if field_name == "summary":
+                # Extract word count from description if available
+                desc = info.get("description", "")
+                if "150-400 words" in desc or "(150-400 words)" in desc:
+                    lines.append("- Summary: 150-400 words")
+                else:
+                    lines.append("- Summary: As specified in description")
+            elif min_length is not None and max_length is not None:
+                lines.append(f"- {display_name}: {min_length}-{max_length} items")
+
+        return lines
+
+    @staticmethod
     def build_analysis_prompt() -> str:
-        """Build analysis prompt from SimpleAnalysis model."""
-        schema = schema_to_string(SimpleAnalysis)
-        fields_info = PromptBuilder._extract_field_info(SimpleAnalysis)
+        """Build analysis prompt from Analysis model."""
+        schema = schema_to_string(Analysis)
+        fields_info = PromptBuilder._extract_field_info(Analysis)
 
         field_requirements = []
         for field_name, info in fields_info.items():
@@ -195,16 +237,16 @@ class PromptBuilder:
             "- Content matches transcript exactly (no external additions)",
             "- All promotional content removed",
             "- Typos corrected naturally, meaning preserved",
-            "- Length balanced: Summary (150-400 words), Takeaways (3-8), Key Facts (3-6)",
+            f"- Length balanced: {PromptBuilder._build_length_summary(fields_info)}",
         ]
 
         return "\n".join(prompt_parts)
 
     @staticmethod
     def build_quality_prompt() -> str:
-        """Build quality evaluation prompt from SimpleQuality model."""
-        schema = schema_to_string(SimpleQuality)
-        fields_info = PromptBuilder._extract_field_info(SimpleQuality)
+        """Build quality evaluation prompt from Quality model."""
+        schema = schema_to_string(Quality)
+        fields_info = PromptBuilder._extract_field_info(Quality)
 
         aspects_lines = []
         for idx, (field_name, info) in enumerate(fields_info.items(), 1):
@@ -213,6 +255,10 @@ class PromptBuilder:
             description = desc.split(":", 1)[1].strip() if ":" in desc else desc
             aspects_lines.append(f"{idx}. {aspect_name}: {description}")
 
+        # Build length guidelines from Analysis model
+        analysis_fields = PromptBuilder._extract_field_info(Analysis)
+        length_lines = PromptBuilder._build_length_guidelines(analysis_fields)
+
         prompt_parts = [
             "Evaluate the analysis on the following aspects. Rate each 'Fail', 'Refine', or 'Pass' with a specific reason.",
             "",
@@ -220,9 +266,7 @@ class PromptBuilder:
             "\n".join(aspects_lines),
             "",
             "LENGTH GUIDELINES:",
-            "- Summary: 150-400 words",
-            "- Takeaways: 3-8 items",
-            "- Key Facts: 3-6 items",
+            "\n".join(length_lines),
             "",
             "QUALITY STANDARDS:",
             "- Transcript-based content only",
@@ -239,8 +283,8 @@ class PromptBuilder:
     @staticmethod
     def build_improvement_prompt() -> str:
         """Build improvement prompt."""
-        schema = schema_to_string(SimpleAnalysis)
-        fields_info = PromptBuilder._extract_field_info(SimpleAnalysis)
+        schema = schema_to_string(Analysis)
+        fields_info = PromptBuilder._extract_field_info(Analysis)
 
         field_requirements = []
         for field_name, info in fields_info.items():
@@ -300,7 +344,7 @@ class QualityUtils:
     """Utility functions for quality operations."""
 
     @staticmethod
-    def print_quality_breakdown(quality: SimpleQuality) -> None:
+    def print_quality_breakdown(quality: Quality) -> None:
         """Print quality breakdown with all aspects."""
         print("📈 Quality breakdown:")
         print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
@@ -318,7 +362,7 @@ class PromptUtils:
     """Utility functions for prompt operations."""
 
     @staticmethod
-    def create_improvement_context(analysis: SimpleAnalysis, quality: SimpleQuality) -> str:
+    def create_improvement_context(analysis: Analysis, quality: Quality) -> str:
         """Create improvement prompt context from analysis and quality feedback."""
         return f"""# Improve this video analysis based on the following feedback:
 
@@ -336,10 +380,10 @@ Please provide an improved version that addresses the specific issues identified
 # ============================================================================
 
 
-def analysis_node(state: GraphState) -> dict[str, Union[SimpleAnalysis, int]]:
+def analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
     """Generate or refine analysis using OpenRouter."""
     llm = create_openrouter_llm(state.analysis_model)
-    structured_llm = llm.with_structured_output(SimpleAnalysis)
+    structured_llm = llm.with_structured_output(Analysis)
 
     # Refinement path when previous quality feedback exists
     if state.quality is not None and state.analysis is not None:
@@ -359,7 +403,7 @@ def analysis_node(state: GraphState) -> dict[str, Union[SimpleAnalysis, int]]:
         chain = prompt | structured_llm
 
         try:
-            result: SimpleAnalysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
+            result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
             print("✨ Analysis refined successfully")
             return {"analysis": result, "iteration_count": state.iteration_count + 1}
         except Exception as e:
@@ -379,7 +423,7 @@ def analysis_node(state: GraphState) -> dict[str, Union[SimpleAnalysis, int]]:
     chain = prompt | structured_llm
 
     try:
-        result: SimpleAnalysis = chain.invoke({"content": state.transcript})
+        result: Analysis = chain.invoke({"content": state.transcript})
         print("📊 Analysis completed")
         return {"analysis": result, "iteration_count": state.iteration_count + 1}
     except Exception as e:
@@ -392,13 +436,13 @@ def analysis_node(state: GraphState) -> dict[str, Union[SimpleAnalysis, int]]:
 # ============================================================================
 
 
-def quality_node(state: GraphState) -> dict[str, Union[SimpleQuality, bool]]:
+def quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
     """Check the quality of the generated analysis."""
     print("🔍 Performing quality check...")
     print(f"🔍 Using model: {state.quality_model}")
 
     llm = create_openrouter_llm(state.quality_model)
-    structured_llm = llm.with_structured_output(SimpleQuality)
+    structured_llm = llm.with_structured_output(Quality)
 
     quality_prompt = PromptBuilder.build_quality_prompt()
     analysis_text = repr(state.analysis)
@@ -412,7 +456,7 @@ def quality_node(state: GraphState) -> dict[str, Union[SimpleQuality, bool]]:
     chain = prompt | structured_llm
 
     try:
-        quality: SimpleQuality = chain.invoke({"analysis_text": analysis_text})
+        quality: Quality = chain.invoke({"analysis_text": analysis_text})
         QualityUtils.print_quality_breakdown(quality)
 
         return {
