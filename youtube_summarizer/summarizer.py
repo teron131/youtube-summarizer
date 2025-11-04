@@ -7,8 +7,8 @@ from typing import Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
-from langchain.prompts import ChatPromptTemplate
 from langchain_core.language_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
