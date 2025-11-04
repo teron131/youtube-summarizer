@@ -62,22 +62,10 @@ class Analysis(BaseModel):
 
     title: str = Field(description="The main title or topic of the video content")
     summary: str = Field(description="A comprehensive summary of the video content")
-    takeaways: list[str] = Field(
-        description="Key insights and actionable takeaways for the audience",
-        min_items=3,
-        max_items=8,
-    )
-    key_facts: list[str] = Field(
-        description="Important facts, statistics, or data points mentioned",
-        min_items=3,
-        max_items=6,
-    )
+    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience", min_length=3, max_length=8)
+    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned", min_length=3, max_length=6)
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    keywords: list[str] = Field(
-        description="The most relevant keywords in the analysis worthy of highlighting",
-        min_items=3,
-        max_items=3,
-    )
+    keywords: list[str] = Field(description="The most relevant keywords in the analysis worthy of highlighting", min_length=3, max_length=3)
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
@@ -201,8 +189,8 @@ class PromptBuilder:
             fields_info[field_name] = {
                 "description": field_info.get("description", ""),
                 "type": field_info.get("type"),
-                "min_items": field_info.get("minItems"),
-                "max_items": field_info.get("maxItems"),
+                "min_length": field_info.get("minItems"),  # JSON schema uses minItems
+                "max_length": field_info.get("maxItems"),  # JSON schema uses maxItems
                 "required": field_name in schema.get("required", []),
             }
 
@@ -222,17 +210,17 @@ class PromptBuilder:
             requirement = f"- {display_name}: {info['description']}"
 
             # Add constraints
-            min_items = info.get("min_items")
-            max_items = info.get("max_items")
-            if min_items is not None and max_items is not None:
-                if min_items == max_items:
-                    requirement += f" (Exactly {min_items} items)"
+            min_length = info.get("min_length")
+            max_length = info.get("max_length")
+            if min_length is not None and max_length is not None:
+                if min_length == max_length:
+                    requirement += f" (Exactly {min_length} items)"
                 else:
-                    requirement += f" ({min_items}-{max_items} items)"
-            elif min_items is not None:
-                requirement += f" (At least {min_items} items)"
-            elif max_items is not None:
-                requirement += f" (At most {max_items} items)"
+                    requirement += f" ({min_length}-{max_length} items)"
+            elif min_length is not None:
+                requirement += f" (At least {min_length} items)"
+            elif max_length is not None:
+                requirement += f" (At most {max_length} items)"
 
             lines.append(requirement)
 
@@ -310,8 +298,8 @@ class PromptBuilder:
         analysis_fields = PromptBuilder._extract_field_info(Analysis)
         length_lines = []
         for field_name, info in analysis_fields.items():
-            min_items = info.get("min_items")
-            max_items = info.get("max_items")
+            min_length = info.get("min_length")
+            max_length = info.get("max_length")
 
             if field_name == "title":
                 length_lines.append("- Title: 2-15 words")
@@ -319,15 +307,15 @@ class PromptBuilder:
                 length_lines.append("- Summary: 150-400 words")
             elif field_name == "chapters":
                 length_lines.append("- Chapters: 80-200 words each")
-            elif field_name == "takeaways" and min_items is not None and max_items is not None:
-                length_lines.append(f"- Takeaways: {min_items}-{max_items} items")
-            elif field_name == "key_facts" and min_items is not None and max_items is not None:
-                length_lines.append(f"- Key Facts: {min_items}-{max_items} items")
-            elif field_name == "keywords" and min_items is not None and max_items is not None:
-                if min_items == max_items:
-                    length_lines.append(f"- Keywords: Exactly {min_items}")
+            elif field_name == "takeaways" and min_length is not None and max_length is not None:
+                length_lines.append(f"- Takeaways: {min_length}-{max_length} items")
+            elif field_name == "key_facts" and min_length is not None and max_length is not None:
+                length_lines.append(f"- Key Facts: {min_length}-{max_length} items")
+            elif field_name == "keywords" and min_length is not None and max_length is not None:
+                if min_length == max_length:
+                    length_lines.append(f"- Keywords: Exactly {min_length}")
                 else:
-                    length_lines.append(f"- Keywords: {min_items}-{max_items} items")
+                    length_lines.append(f"- Keywords: {min_length}-{max_length} items")
 
         prompt_parts = [
             "Evaluate the analysis on the following aspects. Rate each 'Fail', 'Refine', or 'Pass' with a specific reason.",
