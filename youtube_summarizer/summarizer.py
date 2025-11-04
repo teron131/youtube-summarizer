@@ -3,7 +3,7 @@ This module provides functions for processing transcribed text to generate forma
 """
 
 import os
-from typing import Generator, Literal, Optional, Union
+from typing import Any, Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
@@ -38,8 +38,8 @@ class Chapter(BaseModel):
 class Analysis(BaseModel):
     title: str = Field(description="The main title or topic of the video content")
     summary: str = Field(description="A comprehensive summary of the video content")
-    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
-    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
+    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience", min_items=3, max_items=8)
+    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned", min_items=3, max_items=6)
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
     keywords: list[str] = Field(description="The most relevant keywords in the analysis worthy of highlighting", min_items=3, max_items=3)
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
@@ -126,136 +126,267 @@ class GraphState(BaseModel):
     is_complete: bool = Field(default=False)
 
 
-# Prompt templates
+# Centralized Prompt Builder
+class PromptBuilder:
+    """Centralized prompt builder that extracts requirements from Pydantic model Field descriptions."""
+
+    @staticmethod
+    def _extract_field_info(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
+        """Extract field descriptions and constraints from a Pydantic model."""
+        schema = model.model_json_schema()
+        fields_info = {}
+
+        for field_name, field_info in schema.get("properties", {}).items():
+            fields_info[field_name] = {
+                "description": field_info.get("description", ""),
+                "type": field_info.get("type"),
+                "min_items": field_info.get("minItems"),
+                "max_items": field_info.get("maxItems"),
+                "required": field_name in schema.get("required", []),
+            }
+
+        return fields_info
+
+    @staticmethod
+    def _build_field_requirements(model: type[BaseModel], field_mapping: dict[str, str] | None = None) -> str:
+        """Build field requirements section from model Field descriptions."""
+        fields_info = PromptBuilder._extract_field_info(model)
+        lines = []
+
+        for field_name, info in fields_info.items():
+            if not info["description"]:
+                continue
+
+            # Use custom mapping if provided (e.g., "takeaways" -> "Takeaways")
+            display_name = (field_mapping or {}).get(field_name, field_name.replace("_", " ").title())
+
+            requirement = f"- {display_name}: {info['description']}"
+
+            # Add constraints
+            if info["min_items"] is not None and info["max_items"] is not None:
+                if info["min_items"] == info["max_items"]:
+                    requirement += f" (Exactly {info['min_items']} items)"
+                else:
+                    requirement += f" ({info['min_items']}-{info['max_items']} items)"
+            elif info["min_items"] is not None:
+                requirement += f" (At least {info['min_items']} items)"
+            elif info["max_items"] is not None:
+                requirement += f" (At most {info['max_items']} items)"
+
+            lines.append(requirement)
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def build_analysis_prompt(state: GraphState) -> str:
+        """Build analysis prompt from Analysis model Field descriptions."""
+        schema = schema_to_string(Analysis)
+        field_requirements = PromptBuilder._build_field_requirements(
+            Analysis,
+            field_mapping={
+                "title": "Title",
+                "summary": "Summary",
+                "takeaways": "Takeaways",
+                "key_facts": "Key Facts",
+                "chapters": "Chapters",
+                "keywords": "Keywords",
+            },
+        )
+
+        prompt_parts = [
+            "Create a comprehensive analysis that strictly follows the transcript content.",
+            "",
+            "OUTPUT SCHEMA:",
+            schema,
+            "",
+            "FIELD REQUIREMENTS:",
+            field_requirements,
+            "",
+            "CORE REQUIREMENTS:",
+            "- ACCURACY: Every claim must be directly supported by the transcript",
+            "- TONE: Write in objective, article-like style (avoid 'This video...', 'The speaker...')",
+            "- AVOID META-DESCRIPTIVE LANGUAGE: Do not use phrases like 'This chapter introduces', 'This section covers', 'This analysis explores', etc. Write direct, factual content only",
+            "",
+            "CONTENT FILTERING:",
+            "- Remove all promotional content (speaker intros, calls-to-action, self-promotion)",
+            "- Keep only educational content about the strategy",
+            "- Correct obvious typos naturally",
+            "",
+            "CHAPTER REQUIREMENTS:",
+            "Create 4-8 thematic chapters based on content structure and topic transitions.",
+            "",
+            "QUALITY CHECKS:",
+            "- Content matches transcript exactly (no external additions)",
+            "- All promotional content removed (intros, calls-to-action, self-promotion)",
+            "- Typos corrected naturally, meaning preserved",
+            "- Length balanced: substantial but not overwhelming",
+            "- Keywords highly relevant and searchable",
+        ]
+
+        if state.target_language:
+            prompt_parts.extend(
+                [
+                    "",
+                    "TRANSLATION:",
+                    f"- Translate to {state.target_language} with natural fluency",
+                    "- Preserve technical terms and proper names",
+                    "- Maintain same detail level and structure",
+                ]
+            )
+
+        return "\n".join(prompt_parts)
+
+    @staticmethod
+    def build_quality_prompt(state: GraphState) -> str:
+        """Build quality evaluation prompt from Quality model Field descriptions."""
+        fields_info = PromptBuilder._extract_field_info(Quality)
+        schema = schema_to_string(Quality)
+
+        # Map field names to display names
+        aspect_mapping = {
+            "completeness": "COMPLETENESS",
+            "structure": "STRUCTURE",
+            "grammar": "GRAMMAR",
+            "no_garbage": "PROMOTIONAL REMOVAL",
+            "meta_language_avoidance": "META-LANGUAGE AVOIDANCE",
+            "useful_keywords": "KEYWORDS",
+            "correct_language": "LANGUAGE CONSISTENCY",
+        }
+
+        # Build aspects list from Quality model fields
+        aspects_lines = []
+        for idx, (field_name, info) in enumerate(fields_info.items(), 1):
+            if field_name == "correct_language" and state.target_language:
+                # Override for translation quality
+                aspect_name = "TRANSLATION QUALITY"
+                description = f"Content is properly translated to {state.target_language} with natural fluency and maintained quality"
+            else:
+                aspect_name = aspect_mapping.get(field_name, field_name.upper().replace("_", " "))
+                # Extract the main description (after "Rate for X:")
+                desc = info["description"]
+                if ":" in desc:
+                    description = desc.split(":", 1)[1].strip()
+                else:
+                    description = desc
+
+            aspects_lines.append(f"{idx}. {aspect_name}: {description}")
+
+        # Build length guidelines from Analysis model
+        analysis_fields = PromptBuilder._extract_field_info(Analysis)
+        length_lines = []
+        for field_name, info in analysis_fields.items():
+            min_items = info.get("min_items")
+            max_items = info.get("max_items")
+
+            if field_name == "title":
+                length_lines.append("- Title: 2-15 words")
+            elif field_name == "summary":
+                length_lines.append("- Summary: 150-400 words")
+            elif field_name == "chapters":
+                length_lines.append("- Chapters: 80-200 words each")
+            elif field_name == "takeaways":
+                if min_items is not None and max_items is not None:
+                    length_lines.append(f"- Takeaways: {min_items}-{max_items} items")
+            elif field_name == "key_facts":
+                if min_items is not None and max_items is not None:
+                    length_lines.append(f"- Key Facts: {min_items}-{max_items} items")
+            elif field_name == "keywords":
+                if min_items is not None and max_items is not None:
+                    if min_items == max_items:
+                        length_lines.append(f"- Keywords: Exactly {min_items}")
+                    else:
+                        length_lines.append(f"- Keywords: {min_items}-{max_items} items")
+
+        prompt_parts = [
+            "Evaluate the analysis on the following aspects. Rate each 'Fail', 'Refine', or 'Pass' with a specific reason.",
+            "",
+            "ASPECTS:",
+            "\n".join(aspects_lines),
+            "",
+            "LENGTH GUIDELINES:",
+            "\n".join(length_lines),
+            "",
+            "QUALITY STANDARDS:",
+            "- Transcript-based content only",
+            "- Natural chapter flow",
+            "- Professional article-like tone",
+            "",
+            "Provide specific rates and reasons for each aspect.",
+            "",
+            "OUTPUT SCHEMA:",
+            schema,
+        ]
+
+        return "\n".join(prompt_parts)
+
+    @staticmethod
+    def build_improvement_prompt(state: GraphState) -> str:
+        """Build improvement prompt from Analysis model Field descriptions."""
+        schema = schema_to_string(Analysis)
+        field_requirements = PromptBuilder._build_field_requirements(
+            Analysis,
+            field_mapping={
+                "title": "Title",
+                "summary": "Summary",
+                "takeaways": "Takeaways",
+                "key_facts": "Key Facts",
+                "chapters": "Chapters",
+                "keywords": "Keywords",
+            },
+        )
+
+        prompt_parts = [
+            "Improve the analysis based on quality feedback while maintaining transcript accuracy.",
+            "",
+            "IMPROVEMENT PRIORITIES:",
+            "1. TRANSCRIPT ACCURACY: All content must be transcript-supported",
+            "2. PROMOTIONAL REMOVAL: Remove all intros, calls-to-action, self-promotion",
+            "3. WRITING STYLE: Use objective, article-like tone (avoid 'This video...', 'The speaker...')",
+            "4. AVOID META-DESCRIPTIVE LANGUAGE: Remove phrases like 'This chapter introduces', 'This section covers', etc. Write direct, factual content only",
+            "5. TYPO CORRECTION: Fix obvious typos naturally",
+            "6. ARRAY FORMATTING: Return takeaways/key_facts as simple string arrays",
+            "",
+            "CONTENT TARGETS:",
+            field_requirements,
+        ]
+
+        if state.target_language:
+            prompt_parts.extend(
+                [
+                    "",
+                    "TRANSLATION IMPROVEMENT REQUIREMENTS:",
+                    f"- Maintain all content in {state.target_language}",
+                    "- Preserve translation quality while fixing identified issues",
+                    "- Keep technical terms and proper names appropriate for the target language",
+                    "- Maintain natural fluency and cultural relevance",
+                ]
+            )
+
+        prompt_parts.extend(
+            [
+                "",
+                "OUTPUT SCHEMA:",
+                schema,
+            ]
+        )
+
+        return "\n".join(prompt_parts)
+
+
+# Prompt templates (now using centralized builder)
 def get_analysis_prompt(state: GraphState) -> str:
-    """Generate streamlined analysis prompt with essential quality guidelines."""
-    schema = schema_to_string(Analysis)
-    base_prompt = f"""Create a comprehensive analysis that strictly follows the transcript content.
-
-OUTPUT SCHEMA:
-{schema}
-
-CORE REQUIREMENTS:
-- ACCURACY: Every claim must be directly supported by the transcript
-- LENGTH: Summary (150-400 words), Chapters (80-200 words each), Takeaways (3-8), Key Facts (3-6)
-- TONE: Write in objective, article-like style (avoid "This video...", "The speaker...")
-- AVOID META-DESCRIPTIVE LANGUAGE: Do not use phrases like "This chapter introduces", "This section covers", "This analysis explores", etc. Write direct, factual content only
-
-CONTENT FILTERING:
-- Remove all promotional content (speaker intros, calls-to-action, self-promotion)
-- Keep only educational content about the strategy
-- Correct obvious typos naturally
-
-CHAPTER REQUIREMENTS:
-"""
-
-    # Generate chapters based on content structure and topic transitions
-    base_prompt += """Create 4-8 thematic chapters based on content structure and topic transitions."""
-
-    base_prompt += """
-
-QUALITY CHECKS:
-- Content matches transcript exactly (no external additions)
-- All promotional content removed (intros, calls-to-action, self-promotion)
-- Typos corrected naturally, meaning preserved
-- Length balanced: substantial but not overwhelming
-- Keywords highly relevant and searchable"""
-
-    if state.target_language:
-        base_prompt += f"""
-
-TRANSLATION:
-- Translate to {state.target_language} with natural fluency
-- Preserve technical terms and proper names
-- Maintain same detail level and structure"""
-    return base_prompt
+    """Generate analysis prompt using centralized builder."""
+    return PromptBuilder.build_analysis_prompt(state)
 
 
 def get_quality_prompt(state: GraphState) -> str:
-    """Generate streamlined quality evaluation prompt."""
-    base_prompt = """Evaluate the analysis on 10 aspects. Rate each "Fail", "Refine", or "Pass" with a specific reason.
-
-ASPECTS:
-1. TRANSCRIPT ACCURACY: Content directly supported by transcript (no external additions)
-2. CONTENT LENGTH: Balanced length following guidelines (not too short/long)
-3. COMPLETENESS: Entire content properly analyzed
-4. STRUCTURE: Follows required schema perfectly with takeaways/key_facts as simple arrays
-5. GRAMMAR: No typos/mistakes (semicolon usage in lists acceptable)
-6. WRITING STYLE: Objective, article-like tone (no video references or meta-descriptive phrases like "This chapter introduces")
-7. PROMOTIONAL REMOVAL: All promotional content completely removed
-8. META-LANGUAGE AVOIDANCE: No phrases like "This chapter introduces", "This section covers", "This analysis explores", etc.
-9. ARRAY VALIDITY: Takeaways/key_facts are valid arrays with appropriate content
-10. KEYWORDS: Highly relevant and useful"""
-
-    if state.target_language:
-        base_prompt += f"""
-11. TRANSLATION QUALITY: Content is properly translated to {state.target_language} with natural fluency and maintained quality"""
-    else:
-        base_prompt += """
-11. LANGUAGE CONSISTENCY: Content matches original language"""
-
-    base_prompt += """
-
-LENGTH GUIDELINES:
-- Title: 2-15 words
-- Summary: 150-400 words
-- Chapters: 80-200 words each
-- Takeaways: 3-8 items
-- Key Facts: 3-6 items
-- Keywords: Exactly 3
-
-QUALITY STANDARDS:
-- Transcript-based content only
-- Natural chapter flow
-- Professional article-like tone
-
-Provide specific rates and reasons for each aspect."""
-
-    # Provide explicit output schema to guide structured responses
-    base_prompt += f"""
-
-OUTPUT SCHEMA:
-{schema_to_string(Quality)}"""
-    return base_prompt
+    """Generate quality evaluation prompt using centralized builder."""
+    return PromptBuilder.build_quality_prompt(state)
 
 
 def get_improvement_prompt(state: GraphState) -> str:
-    """Generate streamlined improvement prompt."""
-    base_prompt = """Improve the analysis based on quality feedback while maintaining transcript accuracy.
-
-IMPROVEMENT PRIORITIES:
-1. TRANSCRIPT ACCURACY: All content must be transcript-supported
-2. PROMOTIONAL REMOVAL: Remove all intros, calls-to-action, self-promotion
-3. LENGTH BALANCE: Follow guidelines (Summary: 150-400 words, Chapters: 80-200 each)
-4. WRITING STYLE: Use objective, article-like tone (avoid "This video...", "The speaker...")
-5. AVOID META-DESCRIPTIVE LANGUAGE: Remove phrases like "This chapter introduces", "This section covers", etc. Write direct, factual content only
-6. TYPO CORRECTION: Fix obvious typos naturally
-7. ARRAY FORMATTING: Return takeaways/key_facts as simple string arrays
-
-CONTENT TARGETS:
-- Title: 2-15 words
-- Summary: 150-400 words
-- Chapters: 80-200 words each
-- Takeaways: Simple array with 3-8 strings
-- Key Facts: Simple array with 3-6 strings
-- Keywords: Exactly 3"""
-
-    if state.target_language:
-        base_prompt += f"""
-
-TRANSLATION IMPROVEMENT REQUIREMENTS:
-- Maintain all content in {state.target_language}
-- Preserve translation quality while fixing identified issues
-- Keep technical terms and proper names appropriate for the target language
-- Maintain natural fluency and cultural relevance"""
-
-    # Provide explicit output schema to guide structured responses
-    base_prompt += f"""
-
-OUTPUT SCHEMA:
-{schema_to_string(Analysis)}"""
-
-    return base_prompt
+    """Generate improvement prompt using centralized builder."""
+    return PromptBuilder.build_improvement_prompt(state)
 
 
 def langchain_llm(model: str) -> BaseChatModel:
