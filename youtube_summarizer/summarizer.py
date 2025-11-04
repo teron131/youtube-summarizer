@@ -30,6 +30,11 @@ class Config:
     ANALYSIS_MODEL = "x-ai/grok-4-fast"
     QUALITY_MODEL = "x-ai/grok-4-fast"
 
+    # Gemini-specific configuration
+    GEMINI_DEFAULT_MODEL = "gemini-2.5-pro"
+    GEMINI_QUALITY_MODEL = "gemini-2.5-flash"
+    GEMINI_THINKING_BUDGET = 4096
+
     # Quality thresholds
     MIN_QUALITY_SCORE = 90
     MAX_ITERATIONS = 2

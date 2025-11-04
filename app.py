@@ -355,11 +355,7 @@ async def health_check():
 @app.get("/config", response_model=ConfigurationResponse)
 async def get_configuration():
     """Get available models and languages for frontend configuration."""
-    from youtube_summarizer.summarizer import (
-        ANALYSIS_MODEL,
-        QUALITY_MODEL,
-        TARGET_LANGUAGE,
-    )
+    from youtube_summarizer.summarizer import Config
 
     # Simple configuration for API response
     available_models = {
@@ -382,9 +378,9 @@ async def get_configuration():
         message="Configuration retrieved successfully",
         available_models=available_models,
         supported_languages=supported_languages,
-        default_analysis_model=ANALYSIS_MODEL,
-        default_quality_model=QUALITY_MODEL,
-        default_target_language=TARGET_LANGUAGE,
+        default_analysis_model=Config.ANALYSIS_MODEL,
+        default_quality_model=Config.QUALITY_MODEL,
+        default_target_language=Config.TARGET_LANGUAGE,
     )
 
 
