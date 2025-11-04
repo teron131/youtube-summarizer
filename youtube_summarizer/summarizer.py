@@ -448,13 +448,22 @@ class AnalysisUtils:
     @staticmethod
     def create_fallback_analysis(error_msg: str, error_type: str, state: GraphState) -> Analysis:
         """Create a fallback analysis when generation fails."""
+        error_keyword = error_type.lower().replace(" ", "-")
         analysis = Analysis(
             title=f"{error_type} Analysis Failed",
             summary=f"Unable to generate analysis due to: {error_msg[:100]}. The content was processed but analysis failed.",
-            takeaways=[f"{error_type} encountered an error"],
-            key_facts=["Technical issues with analysis"],
+            takeaways=[
+                f"{error_type} encountered an error",
+                "Analysis generation was unsuccessful",
+                "Please try again or check API configuration",
+            ],
+            key_facts=[
+                "Technical issues with analysis",
+                "API request failed during processing",
+                "Unable to complete analysis workflow",
+            ],
             chapters=[],
-            keywords=[error_type.lower().replace(" ", "-")],
+            keywords=[error_keyword, "error", "failed"],
         )
         if state.target_language:
             analysis.target_language = state.target_language
@@ -466,10 +475,18 @@ class AnalysisUtils:
         analysis = Analysis(
             title="No Transcript Available",
             summary="This video does not have a transcript available for analysis.",
-            takeaways=["No transcript available"],
-            key_facts=["No transcript available"],
+            takeaways=[
+                "No transcript available for this video",
+                "Transcript data is required for analysis",
+                "Please try a different video with captions enabled",
+            ],
+            key_facts=[
+                "No transcript available",
+                "Video may not have captions enabled",
+                "Transcript extraction was unsuccessful",
+            ],
             chapters=[],
-            keywords=["no-transcript"],
+            keywords=["no-transcript", "unavailable", "missing"],
         )
         if state.target_language:
             analysis.target_language = state.target_language
