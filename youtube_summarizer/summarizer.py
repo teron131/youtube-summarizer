@@ -7,10 +7,9 @@ from typing import Generator, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from google.genai import Client, types
+from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
@@ -20,8 +19,8 @@ load_dotenv()
 
 
 # Global configuration
-ANALYSIS_MODEL = "google/gemini-2.5-pro"
-QUALITY_MODEL = "google/gemini-2.5-flash"
+ANALYSIS_MODEL = "x-ai/grok-4-fast"
+QUALITY_MODEL = "x-ai/grok-4-fast"
 MIN_QUALITY_SCORE = 90
 MAX_ITERATIONS = 2
 
@@ -42,7 +41,7 @@ class Analysis(BaseModel):
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience")
     key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting")
+    keywords: list[str] = Field(description="The most relevant keywords in the analysis worthy of highlighting", min_items=3, max_items=3)
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
@@ -262,15 +261,19 @@ OUTPUT SCHEMA:
 def langchain_llm(model: str) -> BaseChatModel:
     """Create LangChain LLM instance based on model format."""
     if "/" in model:
-        return ChatOpenAI(
+        # OpenRouter format (e.g., "google/gemini-2.5-flash")
+        return init_chat_model(
             model=model,
+            model_provider="openai",
             api_key=os.getenv("OPENROUTER_API_KEY"),
             base_url="https://openrouter.ai/api/v1",
             temperature=0.0,
         )
     else:
-        return ChatGoogleGenerativeAI(
+        # Native Gemini format (e.g., "gemini-2.5-flash")
+        return init_chat_model(
             model=model,
+            model_provider="google_genai",
             api_key=os.getenv("GEMINI_API_KEY"),
             temperature=0.0,
         )

@@ -1,19 +1,18 @@
 """
 Minimalistic test script to get transcript using Scrape Creators API
-and generate analysis using deepagents (not LangGraph).
-
-Installation:
-    uv add deepagents
+and generate analysis using LangChain agent (not LangGraph).
 
 Environment Variables Required:
     - SCRAPECREATORS_API_KEY: Your Scrape Creators API key
-    - OPENROUTER_API_KEY: Your OpenRouter API key (for structured output conversion)
+    - OPENROUTER_API_KEY: Your OpenRouter API key (or GEMINI_API_KEY for Gemini)
 
 Usage:
-    uv run python test.py [youtube_url]
+    uv run python test.py [youtube_url] [model_name]
 
-Example:
+Examples:
     uv run python test.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    uv run python test.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ" "google/gemini-2.5-flash"
+    uv run python test.py "https://www.youtube.com/watch?v=dQw4w9WgXcQ" "google/gemini-2.5-pro"
 """
 
 import json
@@ -23,9 +22,9 @@ import time
 from typing import Optional
 
 import requests
-from deepagents import create_deep_agent
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -44,6 +43,7 @@ class Analysis(BaseModel):
     key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned")
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
     keywords: list[str] = Field(description="The exact keywords in the analysis worthy of highlighting")
+    target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
 def get_transcript_from_scrape_creators(youtube_url: str) -> str:
@@ -52,7 +52,7 @@ def get_transcript_from_scrape_creators(youtube_url: str) -> str:
     if not api_key:
         raise ValueError("SCRAPECREATORS_API_KEY environment variable is required")
 
-    print(f"🔗 Fetching transcript from Scrape Creators API for: {youtube_url}")
+    print(f"🔗 Fetching transcript from Scrape Creators API...")
     start_time = time.time()
 
     url = f"https://api.scrapecreators.com/v1/youtube/video?url={youtube_url}&get_transcript=true"
@@ -73,175 +73,172 @@ def get_transcript_from_scrape_creators(youtube_url: str) -> str:
     return transcript
 
 
-def analyze_with_deepagent(transcript: str, model: Optional[str] = None, use_structured_output: bool = True) -> Analysis:
-    """Analyze transcript using deepagents.
+def create_llm(model: str):
+    """Create LangChain LLM instance based on model format."""
+    if "/" in model:
+        # OpenRouter format (e.g., "google/gemini-2.5-flash")
+        return init_chat_model(
+            model=model,
+            model_provider="openai",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0.0,
+        )
+    else:
+        # Direct Gemini format (e.g., "gemini-2.5-flash")
+        return init_chat_model(
+            model=model,
+            model_provider="google_genai",
+            api_key=os.getenv("GEMINI_API_KEY"),
+            temperature=0.0,
+        )
+
+
+def analyze_with_agent(transcript: str, model: str = "google/gemini-2.5-flash") -> Analysis:
+    """Analyze transcript using LangChain agent (not LangGraph).
 
     Args:
         transcript: The video transcript text
-        model: Optional model name (defaults to deepagents default)
-        use_structured_output: If True, use LangChain structured output after deepagents
+        model: Model name (defaults to fast flash model)
     """
-    print(f"🤖 Starting analysis with deepagents...")
+    print(f"🤖 Starting analysis with LangChain agent...")
+    print(f"📝 Model: {model}")
     print(f"📝 Transcript length: {len(transcript)} characters")
 
     start_time = time.time()
 
-    # Create analysis prompt
-    analysis_prompt = f"""Analyze the following video transcript and create a comprehensive structured analysis.
+    # Create LLM
+    llm = create_llm(model)
 
-OUTPUT REQUIREMENTS:
-- Title: 2-15 words describing the main topic
-- Summary: 150-400 words comprehensive summary
-- Takeaways: 3-8 key insights
-- Key Facts: 3-6 important facts, statistics, or data points
-- Chapters: 4-8 thematic chapters (each with header, summary, and key_points)
-- Keywords: Exactly 3 highly relevant keywords
+    # Create agent with direct structured output (simpler and faster)
+    # No tools needed - agent will use structured output directly
+    agent = create_agent(
+        model=llm,
+        tools=[],  # No tools needed for structured output
+        response_format=Analysis,
+        system_prompt="""Create a comprehensive analysis that strictly follows the transcript content.
 
 CORE REQUIREMENTS:
 - ACCURACY: Every claim must be directly supported by the transcript
+- LENGTH: Summary (150-400 words), Chapters (80-200 words each), Takeaways (3-8), Key Facts (3-6)
 - TONE: Write in objective, article-like style (avoid "This video...", "The speaker...")
-- AVOID META-DESCRIPTIVE LANGUAGE: Do not use phrases like "This chapter introduces", "This section covers"
-- CONTENT FILTERING: Remove all promotional content (speaker intros, calls-to-action, self-promotion)
+- AVOID META-DESCRIPTIVE LANGUAGE: Do not use phrases like "This chapter introduces", "This section covers", "This analysis explores", etc. Write direct, factual content only
 
-TRANSCRIPT:
-{transcript[:10000]}"""  # Limit transcript length for deepagents (can be adjusted)
+CONTENT FILTERING:
+- Remove all promotional content (speaker intros, calls-to-action, self-promotion)
+- Keep only educational content about the strategy
+- Correct obvious typos naturally
 
-    if len(transcript) > 10000:
-        print(f"⚠️  Transcript truncated to 10000 characters for deepagents processing")
+CHAPTER REQUIREMENTS:
+Create 4-8 thematic chapters based on content structure and topic transitions.
 
-    # Create deep agent
-    # Note: deepagents uses LangGraph under the hood but provides a simpler interface
-    agent = create_deep_agent(
-        system_prompt="""You are an expert content analyst. Your job is to analyze video transcripts and create comprehensive, structured summaries.
+QUALITY CHECKS:
+- Content matches transcript exactly (no external additions)
+- All promotional content removed (intros, calls-to-action, self-promotion)
+- Typos corrected naturally, meaning preserved
+- Length balanced: substantial but not overwhelming
+- Keywords highly relevant and searchable
 
-IMPORTANT: Write your analysis to a file called 'analysis.json' in valid JSON format matching this structure:
-{
-  "title": "string",
-  "summary": "string",
-  "takeaways": ["string"],
-  "key_facts": ["string"],
-  "chapters": [{"header": "string", "summary": "string", "key_points": ["string"]}],
-  "keywords": ["string"]
-}""",
+LENGTH GUIDELINES:
+- Title: 2-15 words
+- Summary: 150-400 words
+- Chapters: 80-200 words each
+- Takeaways: 3-8 items
+- Key Facts: 3-6 items
+- Keywords: Exactly 3""",
     )
 
-    # Run the agent
-    print("🔄 Running deepagent analysis...")
-    try:
-        result = agent.invoke({"messages": [("user", analysis_prompt)]})
+    # Create analysis prompt
+    prompt = f"""Analyze this video transcript and create a comprehensive analysis:
 
-        # Extract the final message content
-        if isinstance(result, dict) and "messages" in result:
-            final_message = result["messages"][-1]
-            analysis_text = final_message.content if hasattr(final_message, "content") else str(final_message)
+{transcript}
+
+Extract all key information accurately from the transcript, structure it into thematic chapters, and identify the most important takeaways and facts."""
+
+    try:
+        print("🔄 Generating analysis with agent...")
+        result = agent.invoke({"messages": [{"role": "user", "content": prompt}]})
+
+        # Extract structured response
+        if "structured_response" in result:
+            analysis: Analysis = result["structured_response"]
         else:
-            analysis_text = str(result)
+            # Fallback: try to parse from messages
+            last_message = result["messages"][-1].content
+            # Try to extract JSON from the message
+            import re
+
+            json_match = re.search(r"\{.*\}", last_message, re.DOTALL)
+            if json_match:
+                analysis_dict = json.loads(json_match.group())
+                analysis = Analysis(**analysis_dict)
+            else:
+                raise ValueError("Could not extract structured response from agent")
 
         elapsed = time.time() - start_time
-        print(f"✅ Deepagent analysis completed in {elapsed:.2f}s")
-        print(f"📊 Analysis result length: {len(analysis_text)} characters")
+        print(f"✅ Analysis completed in {elapsed:.2f}s")
+        print(f"📊 Generated {len(analysis.chapters)} chapters")
 
-        # Try to extract JSON from the response or use structured output
-        if use_structured_output:
-            print("🔄 Converting to structured output using LangChain...")
-            return _convert_to_structured_output(analysis_text, transcript)
-        else:
-            # Try to parse JSON from the text response
-            json_match = _extract_json_from_text(analysis_text)
-            if json_match:
-                return Analysis.model_validate(json_match)
-            else:
-                print("⚠️  Could not extract JSON, returning text analysis")
-                return Analysis(title="Analysis Generated", summary=analysis_text[:500] + "..." if len(analysis_text) > 500 else analysis_text, takeaways=["See full analysis above"], key_facts=["See full analysis above"], chapters=[], keywords=["analysis"])
+        return analysis
 
     except Exception as e:
-        print(f"❌ Deepagent error: {e}")
-        # Fallback to direct LangChain structured output
-        print("🔄 Falling back to direct LangChain structured output...")
-        return _convert_to_structured_output(transcript, transcript)
+        print(f"❌ Analysis failed: {e}")
+        import traceback
 
-
-def _extract_json_from_text(text: str) -> Optional[dict]:
-    """Try to extract JSON from text response."""
-    # Look for JSON-like structures
-    try:
-        # Try to find JSON object in the text
-        start_idx = text.find("{")
-        end_idx = text.rfind("}") + 1
-        if start_idx >= 0 and end_idx > start_idx:
-            json_str = text[start_idx:end_idx]
-            return json.loads(json_str)
-    except:
-        pass
-    return None
-
-
-def _convert_to_structured_output(analysis_text: str, transcript: str) -> Analysis:
-    """Convert text analysis to structured output using LangChain."""
-    from langchain.prompts import ChatPromptTemplate
-
-    # Use OpenRouter for fast models
-    llm = ChatOpenAI(
-        model="google/gemini-2.5-flash",  # Fast model
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        base_url="https://openrouter.ai/api/v1",
-        temperature=0.0,
-    )
-
-    structured_llm = llm.with_structured_output(Analysis)
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """Convert the following analysis into the required structured format.
-Ensure all fields are properly filled and the structure matches the Analysis schema exactly.""",
-            ),
-            (
-                "human",
-                """Analysis to convert:
-{analysis_text}
-
-Original transcript (for reference):
-{transcript}""",
-            ),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    result = chain.invoke({"analysis_text": analysis_text[:5000], "transcript": transcript[:2000]})  # Limit length  # Just for reference
-
-    return result
+        traceback.print_exc()
+        raise
 
 
 def main():
     """Main test function."""
-    # Test with a sample YouTube URL
-    test_url = "https://youtu.be/pmdiKAE_GLs"  # Replace with your test URL
+    # Default test URL
+    test_url = "https://youtu.be/pmdiKAE_GLs"
+    model = "x-ai/grok-4-fast"  # Fast default model
 
     if len(sys.argv) > 1:
         test_url = sys.argv[1]
+    if len(sys.argv) > 2:
+        model = sys.argv[2]
 
     print("=" * 80)
-    print("MINIMALISTIC TEST: Scrape Creators API + DeepAgent")
+    print("MINIMALISTIC TEST: Scrape Creators API + LangChain Agent")
     print("=" * 80)
-    print(f"📹 Video URL: {test_url}\n")
+    print(f"📹 Video URL: {test_url}")
+    print(f"🤖 Model: {model}\n")
 
     try:
         # Step 1: Get transcript
         transcript = get_transcript_from_scrape_creators(test_url)
 
-        # Step 2: Analyze with deepagent
-        analysis = analyze_with_deepagent(transcript)
+        # Step 2: Analyze with LangChain agent
+        analysis = analyze_with_agent(transcript, model=model)
+
+        # Step 3: Display results
+        print("\n" + "=" * 80)
+        print("ANALYSIS RESULTS")
+        print("=" * 80)
+        print(f"\n📌 Title: {analysis.title}")
+        print(f"\n📝 Summary: {analysis.summary[:200]}...")
+        print(f"\n🎯 Takeaways ({len(analysis.takeaways)}):")
+        for i, takeaway in enumerate(analysis.takeaways, 1):
+            print(f"  {i}. {takeaway}")
+        print(f"\n📊 Key Facts ({len(analysis.key_facts)}):")
+        for i, fact in enumerate(analysis.key_facts, 1):
+            print(f"  {i}. {fact}")
+        print(f"\n📚 Chapters ({len(analysis.chapters)}):")
+        for i, chapter in enumerate(analysis.chapters, 1):
+            print(f"  {i}. {chapter.header}")
+            print(f"     {chapter.summary[:100]}...")
+        print(f"\n🔑 Keywords: {', '.join(analysis.keywords)}")
 
         print("\n✅ Test completed successfully!")
-        print(f"📊 Generated analysis with {len(analysis.chapters)} chapters")
 
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
 
         traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
