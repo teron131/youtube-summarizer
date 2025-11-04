@@ -18,39 +18,74 @@ from .utils import is_youtube_url, schema_to_string
 load_dotenv()
 
 
-# Global configuration
-ANALYSIS_MODEL = "x-ai/grok-4-fast"
-QUALITY_MODEL = "x-ai/grok-4-fast"
-MIN_QUALITY_SCORE = 90
-MAX_ITERATIONS = 2
+# ============================================================================
+# Configuration
+# ============================================================================
 
-# Translation configuration
-ENABLE_TRANSLATION = False
-TARGET_LANGUAGE = "zh-TW"  # ISO language code (en, es, fr, de, etc.)
+
+class Config:
+    """Centralized configuration for the summarization workflow."""
+
+    # Model configuration
+    ANALYSIS_MODEL = "x-ai/grok-4-fast"
+    QUALITY_MODEL = "x-ai/grok-4-fast"
+
+    # Quality thresholds
+    MIN_QUALITY_SCORE = 90
+    MAX_ITERATIONS = 2
+
+    # Translation configuration
+    ENABLE_TRANSLATION = False
+    TARGET_LANGUAGE = "zh-TW"  # ISO language code (en, es, fr, de, etc.)
+
+
+# ============================================================================
+# Data Models
+# ============================================================================
 
 
 class Chapter(BaseModel):
+    """Represents a single chapter in the analysis."""
+
     header: str = Field(description="A descriptive title for the chapter")
     summary: str = Field(description="A comprehensive summary of the chapter content")
     key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
 
 
 class Analysis(BaseModel):
+    """Complete analysis of video content."""
+
     title: str = Field(description="The main title or topic of the video content")
     summary: str = Field(description="A comprehensive summary of the video content")
-    takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience", min_items=3, max_items=8)
-    key_facts: list[str] = Field(description="Important facts, statistics, or data points mentioned", min_items=3, max_items=6)
+    takeaways: list[str] = Field(
+        description="Key insights and actionable takeaways for the audience",
+        min_items=3,
+        max_items=8,
+    )
+    key_facts: list[str] = Field(
+        description="Important facts, statistics, or data points mentioned",
+        min_items=3,
+        max_items=6,
+    )
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
-    keywords: list[str] = Field(description="The most relevant keywords in the analysis worthy of highlighting", min_items=3, max_items=3)
+    keywords: list[str] = Field(
+        description="The most relevant keywords in the analysis worthy of highlighting",
+        min_items=3,
+        max_items=3,
+    )
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
 
 class Rate(BaseModel):
+    """Quality rating for a single aspect."""
+
     rate: Literal["Fail", "Refine", "Pass"] = Field(description="Score for the quality aspect (Fail=poor, Refine=adequate, Pass=excellent)")
     reason: str = Field(description="Reason for the score")
 
 
 class Quality(BaseModel):
+    """Quality assessment of the analysis."""
+
     completeness: Rate = Field(description="Rate for completeness: The entire transcript has been considered")
     structure: Rate = Field(description="Rate for structure: The result is in desired structures")
     grammar: Rate = Field(description="Rate for grammar: No typos, grammatical mistakes, appropriate wordings")
@@ -59,18 +94,28 @@ class Quality(BaseModel):
     useful_keywords: Rate = Field(description="Rate for keywords: The keywords are useful for highlighting the analysis")
     correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
 
-    # Computed properties
+    @property
+    def all_aspects(self) -> list[Rate]:
+        """Return all quality aspects as a list."""
+        return [
+            self.completeness,
+            self.structure,
+            self.grammar,
+            self.no_garbage,
+            self.useful_keywords,
+            self.correct_language,
+        ]
+
     @property
     def total_score(self) -> int:
         """Calculate total score based on all quality aspects."""
         score_map = {"Fail": 0, "Refine": 1, "Pass": 2}
-        aspects = [self.completeness, self.structure, self.grammar, self.no_garbage, self.useful_keywords, self.correct_language]
-        return sum(score_map[aspect.rate] for aspect in aspects)
+        return sum(score_map[aspect.rate] for aspect in self.all_aspects)
 
     @property
     def max_possible_score(self) -> int:
         """Calculate maximum possible score (all aspects = Pass)."""
-        return len([self.completeness, self.structure, self.grammar, self.no_garbage, self.useful_keywords, self.correct_language]) * 2
+        return len(self.all_aspects) * 2
 
     @property
     def percentage_score(self) -> int:
@@ -79,20 +124,16 @@ class Quality(BaseModel):
 
     @property
     def is_acceptable(self) -> bool:
-        """Whether the analysis meets quality standards (score >= 90%)."""
-        return self.percentage_score >= MIN_QUALITY_SCORE
+        """Whether the analysis meets quality standards."""
+        return self.percentage_score >= Config.MIN_QUALITY_SCORE
 
 
 class GraphInput(BaseModel):
     """Input for the summarization workflow."""
 
     transcript_or_url: str
-
-    # Model selection
-    analysis_model: str = Field(default=ANALYSIS_MODEL)
-    quality_model: str = Field(default=QUALITY_MODEL)
-
-    # Translation options
+    analysis_model: str = Field(default=Config.ANALYSIS_MODEL)
+    quality_model: str = Field(default=Config.QUALITY_MODEL)
     target_language: Optional[str] = Field(default=None)
 
 
@@ -107,28 +148,43 @@ class GraphOutput(BaseModel):
 class GraphState(BaseModel):
     """Flattened state for the summarization workflow."""
 
-    # Input
     transcript_or_url: str
-
-    # Model selection
-    analysis_model: str = Field(default=ANALYSIS_MODEL)
-    quality_model: str = Field(default=QUALITY_MODEL)
-
-    # Translation options
+    analysis_model: str = Field(default=Config.ANALYSIS_MODEL)
+    quality_model: str = Field(default=Config.QUALITY_MODEL)
     target_language: Optional[str] = Field(default=None)
-
-    # Analysis results
     analysis: Optional[Analysis] = None
     quality: Optional[Quality] = None
-
-    # Control fields
     iteration_count: int = Field(default=0)
     is_complete: bool = Field(default=False)
 
 
-# Centralized Prompt Builder
+# ============================================================================
+# Prompt Builder
+# ============================================================================
+
+
 class PromptBuilder:
     """Centralized prompt builder that extracts requirements from Pydantic model Field descriptions."""
+
+    # Field display name mappings
+    ANALYSIS_FIELD_MAPPING = {
+        "title": "Title",
+        "summary": "Summary",
+        "takeaways": "Takeaways",
+        "key_facts": "Key Facts",
+        "chapters": "Chapters",
+        "keywords": "Keywords",
+    }
+
+    QUALITY_ASPECT_MAPPING = {
+        "completeness": "COMPLETENESS",
+        "structure": "STRUCTURE",
+        "grammar": "GRAMMAR",
+        "no_garbage": "PROMOTIONAL REMOVAL",
+        "meta_language_avoidance": "META-LANGUAGE AVOIDANCE",
+        "useful_keywords": "KEYWORDS",
+        "correct_language": "LANGUAGE CONSISTENCY",
+    }
 
     @staticmethod
     def _extract_field_info(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
@@ -157,21 +213,21 @@ class PromptBuilder:
             if not info["description"]:
                 continue
 
-            # Use custom mapping if provided (e.g., "takeaways" -> "Takeaways")
             display_name = (field_mapping or {}).get(field_name, field_name.replace("_", " ").title())
-
             requirement = f"- {display_name}: {info['description']}"
 
             # Add constraints
-            if info["min_items"] is not None and info["max_items"] is not None:
-                if info["min_items"] == info["max_items"]:
-                    requirement += f" (Exactly {info['min_items']} items)"
+            min_items = info.get("min_items")
+            max_items = info.get("max_items")
+            if min_items is not None and max_items is not None:
+                if min_items == max_items:
+                    requirement += f" (Exactly {min_items} items)"
                 else:
-                    requirement += f" ({info['min_items']}-{info['max_items']} items)"
-            elif info["min_items"] is not None:
-                requirement += f" (At least {info['min_items']} items)"
-            elif info["max_items"] is not None:
-                requirement += f" (At most {info['max_items']} items)"
+                    requirement += f" ({min_items}-{max_items} items)"
+            elif min_items is not None:
+                requirement += f" (At least {min_items} items)"
+            elif max_items is not None:
+                requirement += f" (At most {max_items} items)"
 
             lines.append(requirement)
 
@@ -181,17 +237,7 @@ class PromptBuilder:
     def build_analysis_prompt(state: GraphState) -> str:
         """Build analysis prompt from Analysis model Field descriptions."""
         schema = schema_to_string(Analysis)
-        field_requirements = PromptBuilder._build_field_requirements(
-            Analysis,
-            field_mapping={
-                "title": "Title",
-                "summary": "Summary",
-                "takeaways": "Takeaways",
-                "key_facts": "Key Facts",
-                "chapters": "Chapters",
-                "keywords": "Keywords",
-            },
-        )
+        field_requirements = PromptBuilder._build_field_requirements(Analysis, PromptBuilder.ANALYSIS_FIELD_MAPPING)
 
         prompt_parts = [
             "Create a comprehensive analysis that strictly follows the transcript content.",
@@ -242,32 +288,16 @@ class PromptBuilder:
         fields_info = PromptBuilder._extract_field_info(Quality)
         schema = schema_to_string(Quality)
 
-        # Map field names to display names
-        aspect_mapping = {
-            "completeness": "COMPLETENESS",
-            "structure": "STRUCTURE",
-            "grammar": "GRAMMAR",
-            "no_garbage": "PROMOTIONAL REMOVAL",
-            "meta_language_avoidance": "META-LANGUAGE AVOIDANCE",
-            "useful_keywords": "KEYWORDS",
-            "correct_language": "LANGUAGE CONSISTENCY",
-        }
-
         # Build aspects list from Quality model fields
         aspects_lines = []
         for idx, (field_name, info) in enumerate(fields_info.items(), 1):
             if field_name == "correct_language" and state.target_language:
-                # Override for translation quality
                 aspect_name = "TRANSLATION QUALITY"
                 description = f"Content is properly translated to {state.target_language} with natural fluency and maintained quality"
             else:
-                aspect_name = aspect_mapping.get(field_name, field_name.upper().replace("_", " "))
-                # Extract the main description (after "Rate for X:")
+                aspect_name = PromptBuilder.QUALITY_ASPECT_MAPPING.get(field_name, field_name.upper().replace("_", " "))
                 desc = info["description"]
-                if ":" in desc:
-                    description = desc.split(":", 1)[1].strip()
-                else:
-                    description = desc
+                description = desc.split(":", 1)[1].strip() if ":" in desc else desc
 
             aspects_lines.append(f"{idx}. {aspect_name}: {description}")
 
@@ -284,18 +314,15 @@ class PromptBuilder:
                 length_lines.append("- Summary: 150-400 words")
             elif field_name == "chapters":
                 length_lines.append("- Chapters: 80-200 words each")
-            elif field_name == "takeaways":
-                if min_items is not None and max_items is not None:
-                    length_lines.append(f"- Takeaways: {min_items}-{max_items} items")
-            elif field_name == "key_facts":
-                if min_items is not None and max_items is not None:
-                    length_lines.append(f"- Key Facts: {min_items}-{max_items} items")
-            elif field_name == "keywords":
-                if min_items is not None and max_items is not None:
-                    if min_items == max_items:
-                        length_lines.append(f"- Keywords: Exactly {min_items}")
-                    else:
-                        length_lines.append(f"- Keywords: {min_items}-{max_items} items")
+            elif field_name == "takeaways" and min_items is not None and max_items is not None:
+                length_lines.append(f"- Takeaways: {min_items}-{max_items} items")
+            elif field_name == "key_facts" and min_items is not None and max_items is not None:
+                length_lines.append(f"- Key Facts: {min_items}-{max_items} items")
+            elif field_name == "keywords" and min_items is not None and max_items is not None:
+                if min_items == max_items:
+                    length_lines.append(f"- Keywords: Exactly {min_items}")
+                else:
+                    length_lines.append(f"- Keywords: {min_items}-{max_items} items")
 
         prompt_parts = [
             "Evaluate the analysis on the following aspects. Rate each 'Fail', 'Refine', or 'Pass' with a specific reason.",
@@ -323,17 +350,7 @@ class PromptBuilder:
     def build_improvement_prompt(state: GraphState) -> str:
         """Build improvement prompt from Analysis model Field descriptions."""
         schema = schema_to_string(Analysis)
-        field_requirements = PromptBuilder._build_field_requirements(
-            Analysis,
-            field_mapping={
-                "title": "Title",
-                "summary": "Summary",
-                "takeaways": "Takeaways",
-                "key_facts": "Key Facts",
-                "chapters": "Chapters",
-                "keywords": "Keywords",
-            },
-        )
+        field_requirements = PromptBuilder._build_field_requirements(Analysis, PromptBuilder.ANALYSIS_FIELD_MAPPING)
 
         prompt_parts = [
             "Improve the analysis based on quality feedback while maintaining transcript accuracy.",
@@ -373,49 +390,133 @@ class PromptBuilder:
         return "\n".join(prompt_parts)
 
 
-# Prompt templates (now using centralized builder)
-def get_analysis_prompt(state: GraphState) -> str:
-    """Generate analysis prompt using centralized builder."""
-    return PromptBuilder.build_analysis_prompt(state)
+# ============================================================================
+# Model Clients
+# ============================================================================
 
 
-def get_quality_prompt(state: GraphState) -> str:
-    """Generate quality evaluation prompt using centralized builder."""
-    return PromptBuilder.build_quality_prompt(state)
-
-
-def get_improvement_prompt(state: GraphState) -> str:
-    """Generate improvement prompt using centralized builder."""
-    return PromptBuilder.build_improvement_prompt(state)
-
-
-def langchain_llm(model: str) -> BaseChatModel:
-    """Create LangChain LLM instance based on model format."""
-    if "/" in model:
-        # OpenRouter format (e.g., "google/gemini-2.5-flash")
-        return init_chat_model(
-            model=model,
-            model_provider="openai",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-            base_url="https://openrouter.ai/api/v1",
-            temperature=0.0,
-        )
-    else:
-        # Native Gemini format (e.g., "gemini-2.5-flash")
-        return init_chat_model(
-            model=model,
-            model_provider="google_genai",
-            api_key=os.getenv("GEMINI_API_KEY"),
-            temperature=0.0,
-        )
-
-
-class ContextProcessor:
-    """Base class for analysis processing with common functionality."""
+class ModelClientFactory:
+    """Factory for creating model clients (LangChain or Gemini SDK)."""
 
     @staticmethod
-    def create_improvement_prompt(analysis: Analysis, quality: Quality) -> str:
-        """Create improvement prompt from analysis and quality feedback."""
+    def create_langchain_llm(model: str) -> BaseChatModel:
+        """Create LangChain LLM instance based on model format."""
+        if "/" in model:
+            # OpenRouter format (e.g., "google/gemini-2.5-flash")
+            return init_chat_model(
+                model=model,
+                model_provider="openai",
+                api_key=os.getenv("OPENROUTER_API_KEY"),
+                base_url="https://openrouter.ai/api/v1",
+                temperature=0.0,
+            )
+        else:
+            # Native Gemini format (e.g., "gemini-2.5-flash")
+            return init_chat_model(
+                model=model,
+                model_provider="google_genai",
+                api_key=os.getenv("GEMINI_API_KEY"),
+                temperature=0.0,
+            )
+
+    @staticmethod
+    def create_gemini_client() -> Client:
+        """Create Gemini SDK client."""
+        return Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    @staticmethod
+    def extract_gemini_model_name(model: str) -> str:
+        """Extract Gemini model name from OpenRouter format or return default."""
+        if "google/" in model:
+            return model.split("/")[1]
+        return Config.GEMINI_DEFAULT_MODEL
+
+
+# ============================================================================
+# Utilities
+# ============================================================================
+
+
+class AnalysisUtils:
+    """Utility functions for analysis operations."""
+
+    @staticmethod
+    def create_fallback_analysis(error_msg: str, error_type: str, state: GraphState) -> Analysis:
+        """Create a fallback analysis when generation fails."""
+        analysis = Analysis(
+            title=f"{error_type} Analysis Failed",
+            summary=f"Unable to generate analysis due to: {error_msg[:100]}. The content was processed but analysis failed.",
+            takeaways=[f"{error_type} encountered an error"],
+            key_facts=["Technical issues with analysis"],
+            chapters=[],
+            keywords=[error_type.lower().replace(" ", "-")],
+        )
+        if state.target_language:
+            analysis.target_language = state.target_language
+        return analysis
+
+    @staticmethod
+    def create_no_transcript_analysis(state: GraphState) -> Analysis:
+        """Create analysis indicating no transcript is available."""
+        analysis = Analysis(
+            title="No Transcript Available",
+            summary="This video does not have a transcript available for analysis.",
+            takeaways=["No transcript available"],
+            key_facts=["No transcript available"],
+            chapters=[],
+            keywords=["no-transcript"],
+        )
+        if state.target_language:
+            analysis.target_language = state.target_language
+        return analysis
+
+    @staticmethod
+    def set_target_language(analysis: Analysis, target_language: Optional[str]) -> None:
+        """Set target language on analysis if provided."""
+        if target_language:
+            analysis.target_language = target_language
+
+
+class QualityUtils:
+    """Utility functions for quality operations."""
+
+    @staticmethod
+    def create_fallback_quality(error_msg: str) -> Quality:
+        """Create a fallback quality assessment when quality check fails."""
+        return Quality(
+            completeness=Rate(rate="Fail", reason=f"Quality check failed: {error_msg[:50]}"),
+            structure=Rate(rate="Fail", reason="Unable to assess structure"),
+            grammar=Rate(rate="Fail", reason="Unable to assess grammar"),
+            no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"),
+            meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"),
+            useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"),
+            correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"),
+        )
+
+    @staticmethod
+    def print_quality_breakdown(quality: Quality, provider: str = "") -> None:
+        """Print quality breakdown with all aspects."""
+        prefix = f"📈 {provider} quality breakdown:" if provider else "📈 Quality breakdown:"
+        print(prefix)
+        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
+        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
+        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
+        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
+        print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
+        print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
+        print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
+        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
+
+        if not quality.is_acceptable:
+            print(f"⚠️  Quality below threshold ({Config.MIN_QUALITY_SCORE}%), refinement needed")
+
+
+class PromptUtils:
+    """Utility functions for prompt operations."""
+
+    @staticmethod
+    def create_improvement_context(analysis: Analysis, quality: Quality) -> str:
+        """Create improvement prompt context from analysis and quality feedback."""
         return f"""# Improve this video analysis based on the following feedback:
 
 ## Analysis:
@@ -427,267 +528,287 @@ class ContextProcessor:
 Please provide an improved version that addresses the specific issues identified above to improve the overall quality score."""
 
 
-# Workflow node functions
+# ============================================================================
+# Analysis Nodes (Shared Base Logic)
+# ============================================================================
+
+
+class AnalysisNodeBase:
+    """Base class for analysis nodes with shared logic."""
+
+    @staticmethod
+    def _is_refinement_mode(state: GraphState) -> bool:
+        """Check if we're in refinement mode (have previous quality feedback)."""
+        return state.quality is not None and state.analysis is not None
+
+    @staticmethod
+    def _prepare_refinement_inputs(state: GraphState) -> tuple[str, str]:
+        """Prepare inputs for refinement mode."""
+        improvement_context = PromptUtils.create_improvement_context(state.analysis, state.quality)
+        improvement_system_prompt = PromptBuilder.build_improvement_prompt(state)
+        transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
+        full_improvement_prompt = f"{transcript_context}\n\n{improvement_context}"
+        return improvement_system_prompt, full_improvement_prompt
+
+    @staticmethod
+    def _handle_result(result: Analysis, state: GraphState, success_msg: str) -> dict[str, Union[Analysis, int]]:
+        """Handle successful result by setting target language and returning."""
+        AnalysisUtils.set_target_language(result, state.target_language)
+        print(success_msg)
+        return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
+    @staticmethod
+    def _handle_error(error: Exception, state: GraphState, error_type: str) -> dict[str, Union[Analysis, int]]:
+        """Handle error by creating fallback or returning original."""
+        print(f"❌ {error_type} failed: {str(error)}")
+        if state.analysis:
+            # Return original analysis if refinement fails
+            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
+        # Create fallback for generation failures
+        fallback = AnalysisUtils.create_fallback_analysis(str(error), error_type, state)
+        return {"analysis": fallback, "iteration_count": state.iteration_count + 1}
+
+
+class LangChainAnalysisNode(AnalysisNodeBase):
+    """LangChain-based analysis node."""
+
+    @staticmethod
+    def execute(state: GraphState) -> dict[str, Union[Analysis, int]]:
+        """Execute LangChain analysis node."""
+        if state.transcript_or_url is None:
+            print("🎯 No transcript available - skipping LangChain analysis")
+            result = AnalysisUtils.create_no_transcript_analysis(state)
+            return {"analysis": result, "iteration_count": state.iteration_count + 1}
+
+        print(f"📝 Using model: {state.analysis_model}")
+        llm = ModelClientFactory.create_langchain_llm(state.analysis_model)
+        structured_llm = llm.with_structured_output(Analysis)
+
+        if AnalysisNodeBase._is_refinement_mode(state):
+            print("🔧 Super node mode: refining analysis with LangChain based on quality feedback...")
+            system_prompt, improvement_prompt = AnalysisNodeBase._prepare_refinement_inputs(state)
+
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", system_prompt),
+                    ("human", "{improvement_prompt}"),
+                ]
+            )
+            chain = prompt | structured_llm
+
+            try:
+                result: Analysis = chain.invoke({"improvement_prompt": improvement_prompt})
+                return AnalysisNodeBase._handle_result(result, state, "✨ LangChain super node refined analysis")
+            except Exception as e:
+                return AnalysisNodeBase._handle_error(e, state, "LangChain refinement")
+
+        # Generation path
+        print(f"📝 Super node mode: generating initial analysis. Transcript length: {len(state.transcript_or_url)}")
+        print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
+        if state.target_language:
+            print(f"🌐 Translation enabled: {state.target_language}")
+
+        analysis_prompt = PromptBuilder.build_analysis_prompt(state)
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", analysis_prompt),
+                ("human", "{content}"),
+            ]
+        )
+        chain = prompt | structured_llm
+
+        try:
+            result: Analysis = chain.invoke({"content": state.transcript_or_url})
+            return AnalysisNodeBase._handle_result(result, state, "📊 LangChain analysis completed")
+        except Exception as e:
+            return AnalysisNodeBase._handle_error(e, state, "LangChain analysis")
+
+
+class GeminiAnalysisNode(AnalysisNodeBase):
+    """Gemini SDK-based analysis node."""
+
+    @staticmethod
+    def execute(state: GraphState) -> dict[str, Union[Analysis, int]]:
+        """Execute Gemini analysis node."""
+        print(f"🔗 Using model: {state.analysis_model}")
+        client = ModelClientFactory.create_gemini_client()
+        model_name = ModelClientFactory.extract_gemini_model_name(state.analysis_model)
+
+        if AnalysisNodeBase._is_refinement_mode(state):
+            print("🔧 Super node mode: refining analysis with Gemini SDK based on quality feedback...")
+            system_prompt, improvement_prompt = AnalysisNodeBase._prepare_refinement_inputs(state)
+
+            content_parts = [
+                types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+                types.Part(text=improvement_prompt),
+            ]
+
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=types.Content(parts=content_parts),
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0,
+                        response_mime_type="application/json",
+                        response_schema=Analysis,
+                        thinking_config=types.ThinkingConfig(thinking_budget=Config.GEMINI_THINKING_BUDGET),
+                    ),
+                )
+                result: Analysis = response.parsed
+                return AnalysisNodeBase._handle_result(result, state, "✨ Gemini SDK super node refined analysis")
+            except Exception as e:
+                return AnalysisNodeBase._handle_error(e, state, "Gemini SDK refinement")
+
+        # Generation path
+        print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
+        analysis_prompt = PromptBuilder.build_analysis_prompt(state)
+        content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
+
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=types.Content(parts=content_parts),
+                config=types.GenerateContentConfig(
+                    system_instruction=analysis_prompt,
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=Analysis,
+                    thinking_config=types.ThinkingConfig(thinking_budget=Config.GEMINI_THINKING_BUDGET),
+                ),
+            )
+            result: Analysis = response.parsed
+            return AnalysisNodeBase._handle_result(result, state, "📊 Gemini SDK analysis completed")
+        except Exception as e:
+            return AnalysisNodeBase._handle_error(e, state, "Gemini SDK analysis")
+
+
+# ============================================================================
+# Quality Nodes (Shared Base Logic)
+# ============================================================================
+
+
+class QualityNodeBase:
+    """Base class for quality nodes with shared logic."""
+
+    @staticmethod
+    def _calculate_completion(quality: Quality, state: GraphState) -> bool:
+        """Calculate if workflow should complete."""
+        return quality.percentage_score >= Config.MIN_QUALITY_SCORE or state.iteration_count >= Config.MAX_ITERATIONS
+
+
+class LangChainQualityNode(QualityNodeBase):
+    """LangChain-based quality node."""
+
+    @staticmethod
+    def execute(state: GraphState) -> dict[str, Union[Quality, bool]]:
+        """Execute LangChain quality check."""
+        print("🔍 Performing quality check with LangChain...")
+        print(f"🔍 Using model: {state.quality_model}")
+
+        llm = ModelClientFactory.create_langchain_llm(state.quality_model)
+        structured_llm = llm.with_structured_output(Quality)
+
+        quality_prompt = PromptBuilder.build_quality_prompt(state)
+        analysis_text = repr(state.analysis)
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", quality_prompt),
+                ("human", "{analysis_text}"),
+            ]
+        )
+        chain = prompt | structured_llm
+
+        try:
+            quality: Quality = chain.invoke({"analysis_text": analysis_text})
+            QualityUtils.print_quality_breakdown(quality, "LangChain")
+
+            return {
+                "quality": quality,
+                "is_complete": QualityNodeBase._calculate_completion(quality, state),
+            }
+        except Exception as e:
+            print(f"❌ LangChain quality check failed: {str(e)}")
+            fallback_quality = QualityUtils.create_fallback_quality(str(e))
+            print(f"📈 Fallback quality score: {fallback_quality.percentage_score}%")
+
+            return {
+                "quality": fallback_quality,
+                "is_complete": state.iteration_count >= Config.MAX_ITERATIONS,
+            }
+
+
+class GeminiQualityNode(QualityNodeBase):
+    """Gemini SDK-based quality node."""
+
+    @staticmethod
+    def execute(state: GraphState) -> dict[str, Union[Quality, bool]]:
+        """Execute Gemini quality check."""
+        print("🔍 Performing quality check with Gemini SDK...")
+        print(f"🔍 Using model: {state.quality_model}")
+
+        client = ModelClientFactory.create_gemini_client()
+        model_name = ModelClientFactory.extract_gemini_model_name(state.quality_model)
+        if model_name == Config.GEMINI_DEFAULT_MODEL:
+            model_name = Config.GEMINI_QUALITY_MODEL
+
+        quality_prompt = PromptBuilder.build_quality_prompt(state)
+        analysis_text = repr(state.analysis)
+
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=types.Content(
+                    parts=[
+                        types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
+                        types.Part(text=analysis_text),
+                    ]
+                ),
+                config=types.GenerateContentConfig(
+                    system_instruction=quality_prompt,
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=Quality,
+                    thinking_config=types.ThinkingConfig(thinking_budget=Config.GEMINI_THINKING_BUDGET),
+                ),
+            )
+
+            quality: Quality = response.parsed
+            QualityUtils.print_quality_breakdown(quality, "Gemini")
+
+            return {
+                "quality": quality,
+                "is_complete": QualityNodeBase._calculate_completion(quality, state),
+            }
+        except Exception as e:
+            print(f"❌ Gemini SDK quality check failed: {str(e)}")
+            fallback_quality = QualityUtils.create_fallback_quality(str(e))
+            print(f"📈 Fallback Gemini quality score: {fallback_quality.percentage_score}%")
+
+            return {
+                "quality": fallback_quality,
+                "is_complete": state.iteration_count >= Config.MAX_ITERATIONS,
+            }
+
+
+# ============================================================================
+# Graph Workflow
+# ============================================================================
+
+
 def langchain_or_gemini(state: GraphState) -> str:
     """Determine whether to use Gemini SDK or LangChain based on input type."""
     return "gemini_analysis" if is_youtube_url(state.transcript_or_url) else "langchain_analysis"
 
 
-def langchain_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Super node: generate or refine analysis using LangChain.
-
-    - If there is no prior quality feedback, generate a fresh analysis.
-    - If quality feedback exists, refine using the feedback and original context.
-    """
-    # Skip LangChain if no transcript is available
-    if state.transcript_or_url is None:
-        print("🎯 No transcript available - skipping LangChain analysis")
-        # Create a minimal analysis indicating no transcript
-        result = Analysis(title="No Transcript Available", summary="This video does not have a transcript available for analysis.", takeaways=["No transcript available"], key_facts=["No transcript available"], chapters=[], keywords=["no-transcript"])
-        result.target_language = state.target_language if state.target_language else None
-        return {"analysis": result, "iteration_count": state.iteration_count + 1}
-
-    print(f"📝 Using model: {state.analysis_model}")
-    llm = langchain_llm(state.analysis_model)
-    structured_llm = llm.with_structured_output(Analysis)
-
-    # Refinement path when previous quality feedback exists
-    if state.quality is not None and state.analysis is not None:
-        print("🔧 Super node mode: refining analysis with LangChain based on quality feedback...")
-        improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
-        improvement_system_prompt = get_improvement_prompt(state)
-
-        # Include original transcript context to anchor refinements
-        transcript_context = f"Original Transcript:\n{state.transcript_or_url}"
-        full_improvement_prompt = f"{transcript_context}\n\n{improvement_prompt}"
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", improvement_system_prompt),
-                ("human", "{improvement_prompt}"),
-            ]
-        )
-        chain = prompt | structured_llm
-        try:
-            result: Analysis = chain.invoke({"improvement_prompt": full_improvement_prompt})
-            result.target_language = state.target_language if state.target_language else None
-            print("✨ LangChain super node refined analysis")
-            return {"analysis": result, "iteration_count": state.iteration_count + 1}
-        except Exception as e:
-            print(f"❌ LangChain refinement failed: {str(e)}")
-            # Return the original analysis if refinement fails
-            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
-
-    # Generation path (no previous feedback)
-    print(f"📝 Super node mode: generating initial analysis. Transcript length: {len(state.transcript_or_url)}")
-    print(f"📝 Text preview: {state.transcript_or_url[:200]}...")
-    if state.target_language:
-        print(f"🌐 Translation enabled: {state.target_language}")
-
-    content = state.transcript_or_url
-    analysis_prompt = get_analysis_prompt(state)
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", analysis_prompt),
-            ("human", "{content}"),
-        ]
-    )
-    chain = prompt | structured_llm
-    try:
-        result: Analysis = chain.invoke({"content": content})
-        result.target_language = state.target_language if state.target_language else None
-        print("📊 LangChain analysis completed")
-        return {"analysis": result, "iteration_count": state.iteration_count + 1}
-    except Exception as e:
-        print(f"❌ LangChain analysis failed: {str(e)}")
-        # Create a minimal fallback analysis
-        fallback_analysis = Analysis(title="Analysis Generation Failed", summary=f"Unable to generate structured analysis due to: {str(e)[:100]}. The transcript was processed but could not be analyzed.", takeaways=["Analysis failed due to technical issues"], key_facts=["Processing encountered errors"], chapters=[], keywords=["error"])
-        fallback_analysis.target_language = state.target_language if state.target_language else None
-        return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
-
-
-def langchain_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
-    """Check the quality of the generated analysis using LangChain."""
-    print("🔍 Performing quality check with LangChain...")
-    print(f"🔍 Using model: {state.quality_model}")
-
-    llm = langchain_llm(state.quality_model)
-    structured_llm = llm.with_structured_output(Quality)
-
-    quality_prompt = get_quality_prompt(state)
-    analysis_text = repr(state.analysis)
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", quality_prompt),
-            ("human", "{analysis_text}"),
-        ]
-    )
-
-    chain = prompt | structured_llm
-    try:
-        quality: Quality = chain.invoke({"analysis_text": analysis_text})
-
-        # is_acceptable is now computed automatically by the Quality model
-        print(f"📈 LangChain quality breakdown:")
-        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-        print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
-        print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
-        print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
-        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
-
-        if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
-
-        return {
-            "quality": quality,
-            "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
-        }
-    except Exception as e:
-        print(f"❌ LangChain quality check failed: {str(e)}")
-        # Create a minimal fallback quality assessment
-        fallback_quality = Quality(completeness=Rate(rate="Fail", reason=f"Quality check failed: {str(e)[:50]}"), structure=Rate(rate="Fail", reason="Unable to assess structure"), grammar=Rate(rate="Fail", reason="Unable to assess grammar"), no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"), meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"), useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"), correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"))
-        print(f"📈 Fallback quality score: {fallback_quality.percentage_score}%")
-
-        return {
-            "quality": fallback_quality,
-            "is_complete": state.iteration_count >= MAX_ITERATIONS,  # Complete if max iterations reached
-        }
-
-
-def gemini_analysis_node(state: GraphState) -> dict[str, Union[Analysis, int]]:
-    """Super node: generate or refine analysis using Gemini SDK for URLs."""
-    print(f"🔗 Using model: {state.analysis_model}")
-    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-    # Refinement path when quality feedback exists
-    if state.quality is not None and state.analysis is not None:
-        print("🔧 Super node mode: refining analysis with Gemini SDK based on quality feedback...")
-        improvement_prompt = ContextProcessor.create_improvement_prompt(state.analysis, state.quality)
-        improvement_system_prompt = get_improvement_prompt(state)
-
-        # Prepare content parts with full context
-        content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)), types.Part(text=improvement_prompt)]
-
-        try:
-            response = client.models.generate_content(
-                model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-                contents=types.Content(parts=content_parts),
-                config=types.GenerateContentConfig(
-                    system_instruction=improvement_system_prompt,
-                    temperature=0,
-                    response_mime_type="application/json",
-                    response_schema=Analysis,
-                    thinking_config=types.ThinkingConfig(thinking_budget=2048),
-                ),
-            )
-            result: Analysis = response.parsed
-            result.target_language = state.target_language if state.target_language else None
-            print("✨ Gemini SDK super node refined analysis")
-            return {"analysis": result, "iteration_count": state.iteration_count + 1}
-        except Exception as e:
-            print(f"❌ Gemini SDK refinement failed: {str(e)}")
-            # Return the original analysis if refinement fails
-            return {"analysis": state.analysis, "iteration_count": state.iteration_count + 1}
-
-    # Generation path
-    print(f"🔗 Super node mode: generating initial analysis. URL: {state.transcript_or_url}")
-    analysis_prompt = get_analysis_prompt(state)
-    content_parts = [types.Part(file_data=types.FileData(file_uri=state.transcript_or_url))]
-
-    try:
-        response = client.models.generate_content(
-            model=state.analysis_model.split("/")[1] if "google/" in state.analysis_model else "gemini-2.5-pro",
-            contents=types.Content(parts=content_parts),
-            config=types.GenerateContentConfig(
-                system_instruction=analysis_prompt,
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=Analysis,
-                thinking_config=types.ThinkingConfig(thinking_budget=2048),
-            ),
-        )
-        result: Analysis = response.parsed
-        result.target_language = state.target_language if state.target_language else None
-        print("📊 Gemini SDK analysis completed")
-        return {"analysis": result, "iteration_count": state.iteration_count + 1}
-    except Exception as e:
-        print(f"❌ Gemini SDK analysis failed: {str(e)}")
-        # Create a minimal fallback analysis for Gemini
-        fallback_analysis = Analysis(title="Gemini Analysis Failed", summary=f"Unable to generate analysis using Gemini SDK due to: {str(e)[:100]}. The content was processed but analysis failed.", takeaways=["Gemini SDK encountered an error"], key_facts=["Technical issues with Gemini API"], chapters=[], keywords=["gemini-error"])
-        fallback_analysis.target_language = state.target_language if state.target_language else None
-        return {"analysis": fallback_analysis, "iteration_count": state.iteration_count + 1}
-
-
-def gemini_quality_node(state: GraphState) -> dict[str, Union[Quality, bool]]:
-    """Check quality using Gemini SDK."""
-    print("🔍 Performing quality check with Gemini SDK...")
-    print(f"🔍 Using model: {state.quality_model}")
-
-    client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-    quality_prompt = get_quality_prompt(state)
-    analysis_text = repr(state.analysis)
-
-    try:
-        response = client.models.generate_content(
-            model=state.quality_model.split("/")[1] if "google/" in state.quality_model else "gemini-2.5-flash",
-            contents=types.Content(
-                parts=[
-                    types.Part(file_data=types.FileData(file_uri=state.transcript_or_url)),
-                    types.Part(text=analysis_text),
-                ]
-            ),
-            config=types.GenerateContentConfig(
-                system_instruction=quality_prompt,
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=Quality,
-                thinking_config=types.ThinkingConfig(thinking_budget=2048),
-            ),
-        )
-
-        quality: Quality = response.parsed
-
-        # is_acceptable is now computed automatically by the Quality model
-        print(f"📈 Gemini quality breakdown:")
-        print(f"Completeness: {quality.completeness.rate} - {quality.completeness.reason}")
-        print(f"Structure: {quality.structure.rate} - {quality.structure.reason}")
-        print(f"Grammar: {quality.grammar.rate} - {quality.grammar.reason}")
-        print(f"No Garbage: {quality.no_garbage.rate} - {quality.no_garbage.reason}")
-        print(f"Meta-Language Avoidance: {quality.meta_language_avoidance.rate} - {quality.meta_language_avoidance.reason}")
-        print(f"Useful Keywords: {quality.useful_keywords.rate} - {quality.useful_keywords.reason}")
-        print(f"Correct Language: {quality.correct_language.rate} - {quality.correct_language.reason}")
-        print(f"Total Score: {quality.total_score}/{quality.max_possible_score} ({quality.percentage_score}%)")
-
-        if not quality.is_acceptable:
-            print(f"⚠️  Quality below threshold ({MIN_QUALITY_SCORE}%), refinement needed")
-
-        return {
-            "quality": quality,
-            "is_complete": quality.percentage_score >= MIN_QUALITY_SCORE or state.iteration_count >= MAX_ITERATIONS,
-        }
-    except Exception as e:
-        print(f"❌ Gemini SDK quality check failed: {str(e)}")
-        # Create a minimal fallback quality assessment for Gemini
-        fallback_quality = Quality(completeness=Rate(rate="Fail", reason=f"Gemini quality check failed: {str(e)[:50]}"), structure=Rate(rate="Fail", reason="Unable to assess structure"), grammar=Rate(rate="Fail", reason="Unable to assess grammar"), no_garbage=Rate(rate="Fail", reason="Unable to assess content quality"), meta_language_avoidance=Rate(rate="Fail", reason="Unable to assess meta-language"), useful_keywords=Rate(rate="Fail", reason="Unable to assess keywords"), correct_language=Rate(rate="Fail", reason="Unable to assess language correctness"))
-        print(f"📈 Fallback Gemini quality score: {fallback_quality.percentage_score}%")
-
-        return {
-            "quality": fallback_quality,
-            "is_complete": state.iteration_count >= MAX_ITERATIONS,  # Complete if max iterations reached
-        }
-
-
-# Conditional routing functions
 def should_continue_langchain(state: GraphState) -> str:
     """Determine next step in LangChain workflow."""
     if state.is_complete:
         print(f"🔄 LangChain workflow complete (is_complete=True)")
         return END
-    elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 LangChain quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
+    elif state.quality and not state.quality.is_acceptable and state.iteration_count < Config.MAX_ITERATIONS:
+        print(f"🔄 LangChain quality {state.quality.percentage_score}% below threshold {Config.MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
         return "langchain_analysis"
     else:
         print(f"🔄 LangChain workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
@@ -699,8 +820,8 @@ def should_continue_gemini(state: GraphState) -> str:
     if state.is_complete:
         print(f"🔄 Gemini workflow complete (is_complete=True)")
         return END
-    elif state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 Gemini quality {state.quality.percentage_score}% below threshold {MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
+    elif state.quality and not state.quality.is_acceptable and state.iteration_count < Config.MAX_ITERATIONS:
+        print(f"🔄 Gemini quality {state.quality.percentage_score}% below threshold {Config.MIN_QUALITY_SCORE}%, re-entering analysis super node (iteration {state.iteration_count + 1})")
         return "gemini_analysis"
     else:
         print(f"🔄 Gemini workflow ending (quality: {state.quality.percentage_score if state.quality else 'None'}%, iterations: {state.iteration_count})")
@@ -712,10 +833,10 @@ def create_summarization_graph() -> StateGraph:
     builder = StateGraph(GraphState)
 
     # Add nodes
-    builder.add_node("langchain_analysis", langchain_analysis_node)
-    builder.add_node("langchain_quality", langchain_quality_node)
-    builder.add_node("gemini_analysis", gemini_analysis_node)
-    builder.add_node("gemini_quality", gemini_quality_node)
+    builder.add_node("langchain_analysis", LangChainAnalysisNode.execute)
+    builder.add_node("langchain_quality", LangChainQualityNode.execute)
+    builder.add_node("gemini_analysis", GeminiAnalysisNode.execute)
+    builder.add_node("gemini_quality", GeminiQualityNode.execute)
 
     # Add conditional routing from START
     builder.add_conditional_edges(
@@ -765,11 +886,15 @@ def create_compiled_graph():
     return graph
 
 
+# ============================================================================
+# Public API
+# ============================================================================
+
+
 def summarize_video(transcript_or_url: str) -> Analysis:
     """Summarize the text using LangChain with LangGraph self-checking workflow."""
     graph = create_compiled_graph()
 
-    # LangGraph returns a dictionary instead of Pydantic model
     result: dict = graph.invoke(GraphInput(transcript_or_url=transcript_or_url))
     result: GraphOutput = GraphOutput.model_validate(result)
 
@@ -786,7 +911,6 @@ def stream_summarize_video(transcript_or_url: str) -> Generator[GraphState, None
     """
     graph = create_compiled_graph()
 
-    # LangGraph returns a dictionary instead of Pydantic model
     for chunk in graph.stream(
         GraphInput(transcript_or_url=transcript_or_url),
         stream_mode="values",
