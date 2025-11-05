@@ -25,14 +25,14 @@ SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
 
 
 class Channel(BaseModel):
-    id: str
-    url: str
-    handle: str
-    title: str
+    id: Optional[str] = None
+    url: Optional[str] = None
+    handle: Optional[str] = None
+    title: Optional[str] = None
 
 
 class WatchNextVideo(BaseModel):
-    id: str
+    id: Optional[str] = None
     title: Optional[str] = None
     thumbnail: Optional[str] = None
     channel: Optional[Channel] = None
