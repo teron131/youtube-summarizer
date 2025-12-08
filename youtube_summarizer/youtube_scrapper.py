@@ -30,7 +30,25 @@ SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
 class Channel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    id: Optional[str] = None
+    url: Optional[str] = None
+    handle: Optional[str] = None
     title: Optional[str] = None
+
+
+class WatchNextVideo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[str] = None
+    title: Optional[str] = None
+    thumbnail: Optional[str] = None
+    channel: Optional[Channel] = None
+    publishDateText: Optional[str] = None
+    publishDate: Optional[str] = None  # API returns ISO string, not datetime
+    viewCountText: Optional[str] = None
+    viewCountInt: Optional[int] = None
+    lengthText: Optional[str] = None
+    videoUrl: Optional[str] = None
 
 
 class TranscriptSegment(BaseModel):
