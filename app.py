@@ -32,11 +32,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
+
 from youtube_summarizer.summarizer import (
     Analysis,
-    GraphOutput,
     Quality,
+    SummarizerOutput,
+    create_graph,
     stream_summarize_video,
+    summarize_video,
 )
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
 from youtube_summarizer.youtube_scrapper import scrap_youtube
@@ -355,11 +358,16 @@ async def health_check():
 @app.get("/config", response_model=ConfigurationResponse)
 async def get_configuration():
     """Get available models and languages for frontend configuration."""
-    from youtube_summarizer.summarizer import Config
+    from youtube_summarizer.summarizer import (
+        ANALYSIS_MODEL,
+        QUALITY_MODEL,
+        TARGET_LANGUAGE,
+    )
 
     # Simple configuration for API response
     available_models = {
-        "google/gemini-2.5-pro": "Gemini 2.5 Pro (Recommended)",
+        "x-ai/grok-4.1-fast": "Grok 4.1 Fast (Recommended)",
+        "google/gemini-2.5-pro": "Gemini 2.5 Pro",
         "google/gemini-2.5-flash": "Gemini 2.5 Flash (Fast)",
         "anthropic/claude-sonnet-4": "Claude Sonnet 4",
     }
@@ -378,9 +386,9 @@ async def get_configuration():
         message="Configuration retrieved successfully",
         available_models=available_models,
         supported_languages=supported_languages,
-        default_analysis_model=Config.ANALYSIS_MODEL,
-        default_quality_model=Config.QUALITY_MODEL,
-        default_target_language=Config.TARGET_LANGUAGE,
+        default_analysis_model=ANALYSIS_MODEL,
+        default_quality_model=QUALITY_MODEL,
+        default_target_language=TARGET_LANGUAGE,
     )
 
 
@@ -413,77 +421,56 @@ async def scrap_video(request: YouTubeRequest):
 @app.post("/summarize", response_model=SummarizeResponse)
 async def summarize(request: SummarizeRequest):
     """Generate AI analysis using LangGraph workflow."""
-    if not os.getenv("GEMINI_API_KEY"):
+    if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         create_error_response(500, "config_missing")
 
     start_time = datetime.now()
 
     try:
-        from youtube_summarizer.summarizer import (
-            GraphInput,
-            GraphOutput,
-            create_compiled_graph,
-        )
+        from youtube_summarizer.summarizer import SummarizerState
 
         # Handle content validation based on content_type
         if request.content_type == "url":
-            # For URL type, we need to scrape to get transcript
+            # For URL type, use URL directly - summarize_video will handle transcript extraction
             if not request.content or not is_youtube_url(request.content):
                 raise HTTPException(status_code=400, detail="Valid YouTube URL is required when content_type is 'url'")
-
-            # Scrape the video to get transcript
-            print(f"🔗 Scraping YouTube video: {request.content}")
-            scrap_result = await run_async_task(scrap_youtube, request.content)
-            parsed_data = parse_scraper_result(scrap_result)
-
-            # Use transcript if available, otherwise send the YouTube URL
-            if parsed_data.get("transcript"):
-                validated_content = parsed_data["transcript"]
-                print("📝 Using scraped transcript for analysis")
-            else:
-                # No transcript available - send YouTube URL to Gemini
-                validated_content = request.content
-                print("🎯 No transcript available - sending YouTube URL to Gemini")
-
-                # Force Gemini models when no transcript is available
-                if not request.analysis_model.startswith("google/"):
-                    print("🔄 Switching to Gemini for analysis (no transcript available)")
-                    request.analysis_model = "google/gemini-2.5-pro"
-                if not request.quality_model.startswith("google/"):
-                    print("🔄 Switching to Gemini for quality check (no transcript available)")
-                    request.quality_model = "google/gemini-2.5-flash"
-
+            validated_content = request.content
         else:
             # For transcript type, content is required
             if not request.content or request.content.strip() == "":
                 raise HTTPException(status_code=400, detail="Content is required when content_type is 'transcript'")
             validated_content = request.content
 
-        # Create GraphInput with new parameters
-        graph_input = GraphInput(
-            transcript_or_url=validated_content,
+        # Use the graph directly to get full output with quality
+        graph = create_graph()
+
+        # Prepare initial state - for URLs, extract transcript first
+        if request.content_type == "url":
+            scrap_result = await run_async_task(scrap_youtube, validated_content)
+            parsed_data = parse_scraper_result(scrap_result)
+            transcript = parsed_data.get("transcript") or validated_content
+        else:
+            transcript = validated_content
+
+        initial_state = SummarizerState(
+            transcript=transcript,
             target_language=request.target_language,
-            analysis_model=request.analysis_model,
-            quality_model=request.quality_model,
         )
 
-        # Use the LangGraph workflow
-        graph = create_compiled_graph()
-        result = await run_async_task(graph.invoke, graph_input)
-
-        # Convert to GraphOutput for type safety
-        graph_output: GraphOutput = GraphOutput.model_validate(result)
+        # Invoke the graph
+        result_dict = await run_async_task(graph.invoke, initial_state.model_dump())
+        output = SummarizerOutput.model_validate(result_dict)
 
         return SummarizeResponse(
             status="success",
             message="Analysis completed successfully",
-            analysis=graph_output.analysis,
-            quality=graph_output.quality,
+            analysis=output.analysis,
+            quality=output.quality,
             processing_time=get_processing_time(start_time),
-            iteration_count=graph_output.iteration_count,
-            target_language=request.target_language,
-            analysis_model=request.analysis_model,
-            quality_model=request.quality_model,
+            iteration_count=output.iteration_count,
+            target_language=request.target_language or "en",
+            analysis_model="x-ai/grok-4.1-fast",  # Default from summarizer.py
+            quality_model="x-ai/grok-4.1-fast",  # Default from summarizer.py
         )
     except Exception as e:
         log_and_print(f"❌ Analysis failed: {str(e)}")
@@ -538,17 +525,20 @@ async def stream_summarize(request: SummarizeRequest):
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
             await asyncio.sleep(0.01)  # Small delay for client processing
 
-            # Create GraphInput with new parameters for streaming
-            from youtube_summarizer.summarizer import GraphInput, create_compiled_graph
+            # Use stream_summarize_video for streaming
+            from youtube_summarizer.summarizer import SummarizerState
 
-            graph_input = GraphInput(
-                transcript_or_url=validated_content,
-                target_language=request.target_language,
-                analysis_model=request.analysis_model,
-                quality_model=request.quality_model,
-            )
+            # Prepare content for streaming
+            if request.content_type == "url":
+                # Extract transcript if needed
+                scrap_result = await run_async_task(scrap_youtube, validated_content)
+                parsed_data = parse_scraper_result(scrap_result)
+                stream_content = parsed_data.get("transcript") or validated_content
+            else:
+                stream_content = validated_content
 
-            graph = create_compiled_graph()
+            # Use stream_summarize_video
+            graph = None  # Not needed, using stream_summarize_video directly
 
             chunk_count = 0
 
@@ -572,10 +562,11 @@ async def stream_summarize(request: SummarizeRequest):
 
             final_state = None
 
-            for chunk in graph.stream(graph_input, stream_mode="values"):
+            # Stream using stream_summarize_video
+            for state_chunk in stream_summarize_video(stream_content, request.target_language):
                 try:
                     # Convert chunk to dict efficiently
-                    chunk_dict = chunk.model_dump() if hasattr(chunk, "model_dump") else chunk.copy() if isinstance(chunk, dict) else {}
+                    chunk_dict = state_chunk.model_dump() if hasattr(state_chunk, "model_dump") else {}
 
                     # Store final state reference (avoid copying large objects)
                     final_state = chunk_dict
@@ -610,7 +601,12 @@ async def stream_summarize(request: SummarizeRequest):
             if final_state and isinstance(final_state, dict):
                 for key in ["analysis", "quality", "iteration_count", "is_complete"]:
                     if key in final_state and final_state[key] is not None:
-                        completion_data[key] = final_state[key]
+                        if key == "analysis" and hasattr(final_state[key], "model_dump"):
+                            completion_data[key] = final_state[key].model_dump()
+                        elif key == "quality" and hasattr(final_state[key], "model_dump"):
+                            completion_data[key] = final_state[key].model_dump()
+                        else:
+                            completion_data[key] = final_state[key]
 
             # Serialize and send completion message
             serialized_completion = serialize_nested(completion_data)
