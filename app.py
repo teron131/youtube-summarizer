@@ -3,11 +3,9 @@ YouTube Summarizer FastAPI Application
 =====================================
 
 Optimized FastAPI application for YouTube video processing and summarization.
-Uses the youtube_summarizer package functions directly for clean, efficient backend deployment.
 
 ## 🎯 Key Features
 - AI-powered video summarization with LangGraph workflow
-- Meta-descriptive language avoidance for cleaner output
 - Quality assessment with automatic refinement
 - Streaming analysis with real-time progress updates
 - YouTube URL and text transcript support
@@ -15,7 +13,7 @@ Uses the youtube_summarizer package functions directly for clean, efficient back
 ## 🔧 Configuration
 Set environment variables:
 - GEMINI_API_KEY - For AI summarization (required)
-- SCRAPECREATORS_API_KEY - For YouTube scraping (optional fallback)
+- SCRAPECREATORS_API_KEY - For YouTube scraping (optional)
 - OPENROUTER_API_KEY - Alternative AI provider (optional)
 - PORT - Server port (default: 8080)
 - HOST - Server host (default: 0.0.0.0)
@@ -25,46 +23,44 @@ import asyncio
 import json
 import os
 from datetime import datetime
-from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, model_validator
 
+# Import models
+from models.requests import (
+    ConfigurationResponse,
+    ScrapResponse,
+    SummarizeRequest,
+    SummarizeResponse,
+    YouTubeRequest,
+)
+
+# Import route handlers
+from routes.health import (
+    get_configuration_response,
+    get_health_response,
+    get_root_response,
+)
+from routes.helpers import get_processing_time, parse_scraper_result, run_async_task
+from routes.scrap import scrap_video_handler
+from routes.validation import validate_url
 from youtube_summarizer.summarizer import (
-    Analysis,
-    Quality,
     SummarizerOutput,
+    SummarizerState,
     create_graph,
     stream_summarize_video,
-    summarize_video,
 )
-from youtube_summarizer.utils import clean_youtube_url, is_youtube_url, log_and_print
+from youtube_summarizer.utils import is_youtube_url, log_and_print
 from youtube_summarizer.youtube_scrapper import scrap_youtube
 
 load_dotenv()
 
-# ================================
-# CONFIGURATION
-# ================================
-
 API_VERSION = "3.0.0"
 API_TITLE = "YouTube Summarizer API"
 API_DESCRIPTION = "Optimized YouTube video processing and summarization"
-
-# Simplified error messages
-ERROR_MESSAGES = {
-    "invalid_url": "Invalid YouTube URL",
-    "empty_url": "URL is required",
-    "processing_failed": "Processing failed",
-    "api_quota_exceeded": "API quota exceeded",
-    "config_missing": "Required API key missing",
-}
-
-# Timeout settings
-TIMEOUT_LONG = 300.0  # 5 minutes for AI processing
 
 
 # ================================
@@ -78,10 +74,10 @@ app = FastAPI(
     docs_url="/docs",
 )
 
-# Simple CORS for frontend integration
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -95,221 +91,8 @@ async def log_requests(request, call_next):
     start_time = datetime.now()
     response = await call_next(request)
     process_time = (datetime.now() - start_time).total_seconds()
-
     log_and_print(f"📨 {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
     return response
-
-
-# ================================
-# PYDANTIC MODELS
-# ================================
-
-
-class BaseResponse(BaseModel):
-    """Base response model."""
-
-    status: str = Field(description="Response status: success or error")
-    message: str = Field(description="Human-readable message")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-
-class YouTubeRequest(BaseModel):
-    """YouTube URL request."""
-
-    url: str = Field(..., min_length=10, description="YouTube video URL")
-
-
-class ScrapResponse(BaseResponse):
-    """Video scraping response."""
-
-    url: str | None = None
-    title: str | None = None
-    author: str | None = None
-    transcript: str | None = None
-    duration: str | None = None
-    thumbnail: str | None = None
-    view_count: int | None = None
-    like_count: int | None = None
-    upload_date: str | None = None
-    processing_time: str
-
-
-class SummarizeRequest(BaseModel):
-    """Summarization request."""
-
-    content: str | None = Field(default=None, description="Content to analyze (YouTube URL or transcript text)")
-    content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
-
-    # Model selection
-    analysis_model: str = Field(default="google/gemini-2.5-pro", description="Model for analysis generation")
-    quality_model: str = Field(default="google/gemini-2.5-flash", description="Model for quality evaluation")
-
-    # Translation options
-    target_language: str | None = Field(default=None, description="Target language for translation (None for auto-detect)")
-
-    @model_validator(mode="after")
-    def validate_content_based_on_type(self):
-        """Validate content based on content_type."""
-        if self.content_type == "transcript" and (self.content is None or self.content.strip() == ""):
-            raise ValueError("Content is required when content_type is 'transcript'")
-        elif self.content_type == "url" and (self.content is None or self.content.strip() == ""):
-            raise ValueError("Valid URL is required when content_type is 'url'")
-        return self
-
-
-class SummarizeResponse(BaseResponse):
-    """Summarization response."""
-
-    analysis: Analysis
-    quality: Quality | None = None
-    processing_time: str
-    iteration_count: int = Field(default=1)
-
-    # Model metadata
-    analysis_model: str = Field(description="Model used for analysis")
-    quality_model: str = Field(description="Model used for quality evaluation")
-
-    # Translation metadata
-    target_language: str | None = Field(default=None, description="Target language used for translation")
-
-
-class ConfigurationResponse(BaseResponse):
-    """Configuration response with available options."""
-
-    available_models: dict[str, str] = Field(description="Available models for selection")
-    supported_languages: dict[str, str] = Field(description="Supported languages for translation")
-    default_analysis_model: str = Field(description="Default analysis model")
-    default_quality_model: str = Field(description="Default quality model")
-    default_target_language: str = Field(description="Default target language")
-
-
-# ================================
-# UTILITIES
-# ================================
-
-
-def validate_url(url: str) -> str:
-    """Validate and clean YouTube URL with enhanced checks."""
-    if not url or not url.strip():
-        raise HTTPException(status_code=400, detail=ERROR_MESSAGES["empty_url"])
-
-    url = url.strip()
-    if not is_youtube_url(url):
-        raise HTTPException(status_code=400, detail=ERROR_MESSAGES["invalid_url"])
-
-    return clean_youtube_url(url)
-
-
-def validate_content(content: str) -> str:
-    """Validate content for summarization requests."""
-    if not content or not content.strip():
-        raise HTTPException(status_code=400, detail="Content cannot be empty")
-
-    content = content.strip()
-    return content
-
-
-def parse_scraper_result(result) -> dict[str, Any]:
-    """Parse scraper result to dict with error handling for Scrape Creators API format."""
-    try:
-        # Handle both Pydantic objects and raw dict responses
-        if hasattr(result, "model_dump"):
-            # Pydantic object - use model_dump() to get all fields including properties
-            result_dict = result.model_dump()
-        else:
-            # Raw dict
-            result_dict = result if isinstance(result, dict) else {}
-
-        # Map fields from Scrape Creators API format with safe fallbacks
-        like_count = result_dict.get("likeCountInt")
-        upload_date = result_dict.get("publishDateText") or result_dict.get("publishDate")
-
-        # Get transcript with proper fallback chain
-        transcript = ""
-        if hasattr(result, "parsed_transcript"):
-            # If it's a Pydantic object, use the parsed_transcript property
-            transcript = result.parsed_transcript
-        elif result_dict.get("parsed_transcript"):
-            # If it's in the dict (from model_dump), use it
-            transcript = result_dict["parsed_transcript"]
-        elif result_dict.get("transcript_only_text"):
-            # Fallback to transcript_only_text
-            transcript = result_dict["transcript_only_text"]
-        elif hasattr(result, "transcript_only_text"):
-            # Fallback for object attribute
-            transcript = getattr(result, "transcript_only_text", "")
-
-        # Ensure transcript is not empty - provide None if no transcript available
-        if not transcript or not transcript.strip():
-            transcript = None
-
-        # Safely extract all fields with fallbacks to None
-        return {
-            "url": result_dict.get("url") or None,
-            "title": result_dict.get("title") or None,
-            "author": result_dict.get("channel", {}).get("title") if isinstance(result_dict.get("channel"), dict) and result_dict.get("channel", {}).get("title") else None,
-            "transcript": transcript,
-            "duration": result_dict.get("durationFormatted") or None,
-            "thumbnail": result_dict.get("thumbnail") or None,
-            "view_count": result_dict.get("viewCountInt") or None,
-            "like_count": like_count or None,
-            "upload_date": upload_date or None,
-        }
-    except Exception as e:
-        # Fallback parsing for malformed results - never raise errors
-        log_and_print(f"⚠️ Warning: Error parsing scraper result: {str(e)}")
-
-        # Get transcript with fallback for error case
-        transcript = None
-        try:
-            if hasattr(result, "parsed_transcript"):
-                transcript = result.parsed_transcript
-            elif hasattr(result, "transcript_only_text"):
-                transcript = getattr(result, "transcript_only_text", "")
-            # Ensure transcript is not empty
-            if transcript and not transcript.strip():
-                transcript = None
-        except:
-            transcript = None
-
-        # Return minimal valid data structure with all fields optional
-        return {
-            "url": None,
-            "title": None,
-            "author": None,
-            "transcript": transcript,
-            "duration": None,
-            "thumbnail": None,
-            "view_count": None,
-            "like_count": None,
-            "upload_date": None,
-        }
-
-
-async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
-    """Execute blocking function asynchronously with timeout."""
-    try:
-        return await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(None, func, *args), timeout=timeout)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=408, detail=f"Request timed out after {timeout} seconds")
-    except Exception as e:
-        # Re-raise HTTPException as-is, wrap others
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}")
-
-
-def get_processing_time(start_time: datetime) -> str:
-    """Calculate and format processing time."""
-    return f"{(datetime.now() - start_time).total_seconds():.1f}s"
-
-
-def create_error_response(status_code: int, error_type: str, exception: Exception = None) -> HTTPException:
-    """Create standardized error response."""
-    message = ERROR_MESSAGES.get(error_type, "Unknown error")
-    if exception:
-        message += f": {str(exception)[:100]}"
-    raise HTTPException(status_code=status_code, detail=message)
 
 
 # ================================
@@ -320,131 +103,47 @@ def create_error_response(status_code: int, error_type: str, exception: Exceptio
 @app.get("/")
 async def root():
     """API information and health check."""
-    return {
-        "name": API_TITLE,
-        "version": API_VERSION,
-        "description": API_DESCRIPTION,
-        "docs": "/docs",
-        "health": "/health",
-        "endpoints": {
-            "GET /": "API information",
-            "GET /health": "Health check with environment status",
-            "GET /config": "Get available models and languages",
-            "POST /scrap": "Extract video metadata and transcript",
-            "POST /summarize": "Full LangGraph workflow analysis",
-            "POST /stream-summarize": "Streaming analysis with progress",
-        },
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
-# ================================
-# CORE ENDPOINTS
-# ================================
+    return get_root_response()
 
 
 @app.get("/health")
 async def health_check():
-    """Simple health check endpoint."""
-    return {
-        "status": "healthy",
-        "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now().isoformat(),
-        "version": API_VERSION,
-        "environment": {"gemini_configured": bool(os.getenv("GEMINI_API_KEY")), "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY"))},
-    }
+    """Health check endpoint."""
+    return get_health_response()
 
 
 @app.get("/config", response_model=ConfigurationResponse)
 async def get_configuration():
-    """Get available models and languages for frontend configuration."""
-    from youtube_summarizer.summarizer import (
-        ANALYSIS_MODEL,
-        QUALITY_MODEL,
-        TARGET_LANGUAGE,
-    )
-
-    # Simple configuration for API response
-    available_models = {
-        "x-ai/grok-4.1-fast": "Grok 4.1 Fast (Recommended)",
-        "google/gemini-2.5-pro": "Gemini 2.5 Pro",
-        "google/gemini-2.5-flash": "Gemini 2.5 Flash (Fast)",
-        "anthropic/claude-sonnet-4": "Claude Sonnet 4",
-    }
-
-    supported_languages = {
-        "zh": "Chinese",
-        "en": "English",
-        "ja": "Japanese",
-        "ko": "Korean",
-        "de": "German",
-        "ru": "Russian",
-    }
-
-    return ConfigurationResponse(
-        status="success",
-        message="Configuration retrieved successfully",
-        available_models=available_models,
-        supported_languages=supported_languages,
-        default_analysis_model=ANALYSIS_MODEL,
-        default_quality_model=QUALITY_MODEL,
-        default_target_language=TARGET_LANGUAGE,
-    )
+    """Get available models and languages."""
+    return get_configuration_response()
 
 
 @app.post("/scrap", response_model=ScrapResponse)
 async def scrap_video(request: YouTubeRequest):
     """Extract video metadata and transcript."""
-    start_time = datetime.now()
-
-    if not os.getenv("SCRAPECREATORS_API_KEY"):
-        create_error_response(500, "config_missing")
-
-    try:
-        url = validate_url(request.url)
-        result = await run_async_task(scrap_youtube, url)
-        data = parse_scraper_result(result)
-
-        return ScrapResponse(status="success", message="Video scraped successfully", url=data["url"], title=data["title"], author=data["author"], transcript=data["transcript"], duration=data["duration"], thumbnail=data["thumbnail"], view_count=data["view_count"], like_count=data["like_count"], upload_date=data["upload_date"], processing_time=get_processing_time(start_time))
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_and_print(f"❌ Scraping failed: {str(e)}")
-        if "quota" in str(e).lower():
-            create_error_response(429, "api_quota_exceeded", e)
-        elif "400" in str(e) or "Invalid" in str(e):
-            create_error_response(400, "invalid_url", e)
-        else:
-            create_error_response(500, "processing_failed", e)
+    return await scrap_video_handler(request)
 
 
 @app.post("/summarize", response_model=SummarizeResponse)
 async def summarize(request: SummarizeRequest):
     """Generate AI analysis using LangGraph workflow."""
     if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        create_error_response(500, "config_missing")
+        raise HTTPException(status_code=500, detail="Required API key missing")
 
     start_time = datetime.now()
 
     try:
-        from youtube_summarizer.summarizer import SummarizerState
-
-        # Handle content validation based on content_type
+        # Handle content validation
         if request.content_type == "url":
-            # For URL type, use URL directly - summarize_video will handle transcript extraction
             if not request.content or not is_youtube_url(request.content):
-                raise HTTPException(status_code=400, detail="Valid YouTube URL is required when content_type is 'url'")
+                raise HTTPException(status_code=400, detail="Valid YouTube URL required")
             validated_content = request.content
         else:
-            # For transcript type, content is required
-            if not request.content or request.content.strip() == "":
-                raise HTTPException(status_code=400, detail="Content is required when content_type is 'transcript'")
+            if not request.content or not request.content.strip():
+                raise HTTPException(status_code=400, detail="Content required")
             validated_content = request.content
 
-        # Use the graph directly to get full output with quality
-        graph = create_graph()
-
-        # Prepare initial state - for URLs, extract transcript first
+        # Prepare initial state
         if request.content_type == "url":
             scrap_result = await run_async_task(scrap_youtube, validated_content)
             parsed_data = parse_scraper_result(scrap_result)
@@ -458,6 +157,7 @@ async def summarize(request: SummarizeRequest):
         )
 
         # Invoke the graph
+        graph = create_graph()
         result_dict = await run_async_task(graph.invoke, initial_state.model_dump())
         output = SummarizerOutput.model_validate(result_dict)
 
@@ -469,12 +169,14 @@ async def summarize(request: SummarizeRequest):
             processing_time=get_processing_time(start_time),
             iteration_count=output.iteration_count,
             target_language=request.target_language or "en",
-            analysis_model="x-ai/grok-4.1-fast",  # Default from summarizer.py
-            quality_model="x-ai/grok-4.1-fast",  # Default from summarizer.py
+            analysis_model=request.analysis_model,
+            quality_model=request.quality_model,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         log_and_print(f"❌ Analysis failed: {str(e)}")
-        create_error_response(500, "processing_failed", e)
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)[:100]}")
 
 
 @app.post("/stream-summarize")
