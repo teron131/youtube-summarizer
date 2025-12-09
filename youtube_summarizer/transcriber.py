@@ -3,12 +3,13 @@ This module is responsible for handling audio transcription. It includes functio
 """
 
 import io
+import logging
 import os
 
 import fal_client
 from pydub import AudioSegment
 
-from .utils import log_and_print, whisper_result_to_txt
+from .utils import whisper_result_to_txt
 
 
 def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
@@ -17,7 +18,7 @@ def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
     Converts to mono and applies minimal compression to maintain quality.
     """
     raw_size_mb = len(audio_bytes) / 1024 / 1024
-    log_and_print(f"🔄 Optimizing audio ({raw_size_mb:.1f}MB) for transcription...")
+    logging.info(f"🔄 Optimizing audio ({raw_size_mb:.1f}MB) for transcription...")
 
     try:
         audio_io = io.BytesIO(audio_bytes)
@@ -28,37 +29,37 @@ def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
             try:
                 audio_io.seek(0)
                 audio_segment = AudioSegment.from_file(audio_io, format=fmt)
-                log_and_print(f"✅ Loaded audio source as {fmt}")
+                logging.info(f"✅ Loaded audio source as {fmt}")
                 break
             except Exception as e:
-                log_and_print(f"❌ Failed to load as {fmt}: {e}")
+                logging.warning(f"❌ Failed to load as {fmt}: {e}")
                 continue
 
         # Fallback to auto-detection if specific formats fail
         if not audio_segment:
             audio_io.seek(0)
             audio_segment = AudioSegment.from_file(audio_io)
-            log_and_print("✅ Loaded audio source with auto-detection")
+            logging.info("✅ Loaded audio source with auto-detection")
 
         # Get original audio properties
         original_channels = audio_segment.channels
         original_duration = len(audio_segment) / 1000.0  # Convert to seconds
 
-        log_and_print(f"📊 Original audio: {original_channels} channels, {original_duration:.1f}s")
+        logging.info(f"📊 Original audio: {original_channels} channels, {original_duration:.1f}s")
 
         # Validate duration - if too short, likely a parsing error
         expected_duration = raw_size_mb * 60 / 2  # Rough estimate: ~2MB per minute for m4a
         if original_duration < 10 or original_duration < expected_duration * 0.1:
-            log_and_print(f"⚠️ Audio duration seems incorrect ({original_duration:.1f}s vs expected ~{expected_duration:.1f}s)")
-            log_and_print(f"🔄 Skipping optimization due to duration mismatch, using original audio")
+            logging.warning(f"⚠️ Audio duration seems incorrect ({original_duration:.1f}s vs expected ~{expected_duration:.1f}s)")
+            logging.info("🔄 Skipping optimization due to duration mismatch, using original audio")
             return audio_bytes
 
         # Simple optimization: just convert to mono if needed, minimal compression
         if original_channels > 1:
             audio_segment = audio_segment.set_channels(1)
-            log_and_print("🔄 Converted to mono")
+            logging.info("🔄 Converted to mono")
         else:
-            log_and_print("✅ Already mono")
+            logging.info("✅ Already mono")
 
         # Export with standard MP3 quality (128kbps - standard quality)
         output_buffer = io.BytesIO()
@@ -66,19 +67,19 @@ def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:
         compressed_bytes = output_buffer.getvalue()
 
         compressed_size_mb = len(compressed_bytes) / 1024 / 1024
-        log_and_print(f"✅ Export complete. New size: {compressed_size_mb:.1f}MB")
+        logging.info(f"✅ Export complete. New size: {compressed_size_mb:.1f}MB")
 
         # Validate the compressed audio isn't too small
         if compressed_size_mb < 0.1 and raw_size_mb > 1:
-            log_and_print(f"⚠️ Compressed audio is suspiciously small ({compressed_size_mb:.1f}MB)")
-            log_and_print(f"🔄 Using original audio instead")
+            logging.warning(f"⚠️ Compressed audio is suspiciously small ({compressed_size_mb:.1f}MB)")
+            logging.info("🔄 Using original audio instead")
             return audio_bytes
 
         return compressed_bytes
 
     except Exception as e:
-        log_and_print(f"❌ Audio optimization failed: {e}")
-        log_and_print(f"⚠️ Could not process audio. Using original audio file ({raw_size_mb:.1f}MB).")
+        logging.error(f"❌ Audio optimization failed: {e}")
+        logging.info(f"⚠️ Could not process audio. Using original audio file ({raw_size_mb:.1f}MB).")
         return audio_bytes
 
 
@@ -88,28 +89,28 @@ def transcribe_with_fal(audio_bytes: bytes) -> str:
     Handles audio upload, transcription job submission, and result formatting.
     """
     try:
-        log_and_print("🎤 Starting FAL transcription...")
+        logging.info("🎤 Starting FAL transcription...")
         if not os.getenv("FAL_KEY"):
             return "[FAL_KEY not configured]"
 
         # Log audio details for debugging
         audio_size_mb = len(audio_bytes) / 1024 / 1024
-        log_and_print(f"📊 Audio size for transcription: {audio_size_mb:.2f}MB")
+        logging.info(f"📊 Audio size for transcription: {audio_size_mb:.2f}MB")
 
         if audio_size_mb < 0.001:
-            log_and_print("⚠️ Warning: Audio file is extremely small, transcription quality may be poor")
+            logging.warning("⚠️ Warning: Audio file is extremely small, transcription quality may be poor")
 
-        log_and_print("📤 Uploading audio to FAL...")
+        logging.info("📤 Uploading audio to FAL...")
         # FAL is robust; a generic 'audio/mpeg' is sufficient for MP3.
         url = fal_client.upload(data=audio_bytes, content_type="audio/mpeg")
-        log_and_print("✅ Upload successful to FAL")
+        logging.info("✅ Upload successful to FAL")
 
-        log_and_print("🔄 Starting transcription job...")
+        logging.info("🔄 Starting transcription job...")
 
         def on_queue_update(update):
             if isinstance(update, fal_client.InProgress):
                 for log_entry in update.logs:
-                    log_and_print(f"FAL: {log_entry['message']}")
+                    logging.info(f"FAL: {log_entry['message']}")
 
         result = fal_client.subscribe(
             "fal-ai/whisper",
@@ -117,9 +118,8 @@ def transcribe_with_fal(audio_bytes: bytes) -> str:
                 "audio_url": url,
                 "task": "transcribe",
                 "language": None,
-                # Add Whisper parameters for better transcription
-                "model": "base",  # Use base model for faster processing
-                "word_timestamps": False,  # Disable word timestamps for faster processing
+                "model": "base",
+                "word_timestamps": False,
             },
             with_logs=True,
             on_queue_update=on_queue_update,
@@ -128,19 +128,19 @@ def transcribe_with_fal(audio_bytes: bytes) -> str:
         # Log transcription result details
         if hasattr(result, "get"):
             transcript_text = whisper_result_to_txt(result)
-            log_and_print(f"📝 Transcription result: {len(transcript_text)} characters")
+            logging.info(f"📝 Transcription result: {len(transcript_text)} characters")
             if len(transcript_text) < 100:
-                log_and_print("⚠️ Warning: Transcription result is very short, audio quality may be poor")
+                logging.warning("⚠️ Warning: Transcription result is very short, audio quality may be poor")
         else:
             transcript_text = str(result)
-            log_and_print(f"📝 Raw transcription result type: {type(result)}")
+            logging.info(f"📝 Raw transcription result type: {type(result)}")
 
-        log_and_print("✅ Transcription completed")
+        logging.info("✅ Transcription completed")
         return whisper_result_to_txt(result)
 
     except Exception as e:
         error_msg = str(e)
-        log_and_print(f"❌ FAL transcription failed: {error_msg}")
+        logging.error(f"❌ FAL transcription failed: {error_msg}")
         if "403" in error_msg or "forbidden" in error_msg.lower():
             return "[FAL API access denied (403). Check API key permissions.]"
         elif "quota" in error_msg.lower() or "limit" in error_msg.lower():

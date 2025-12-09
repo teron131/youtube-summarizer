@@ -2,12 +2,12 @@
 Video scraping route handlers
 """
 
+import logging
 import os
 from datetime import datetime
 
 from fastapi import HTTPException
 from models.requests import ScrapResponse, YouTubeRequest
-from youtube_summarizer.utils import log_and_print
 from youtube_summarizer.youtube_scrapper import scrap_youtube
 
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
@@ -43,7 +43,7 @@ async def scrap_video_handler(request: YouTubeRequest) -> ScrapResponse:
     except HTTPException:
         raise
     except Exception as e:
-        log_and_print(f"❌ Scraping failed: {str(e)}")
+        logging.error(f"❌ Scraping failed: {str(e)}")
         if "quota" in str(e).lower():
             raise HTTPException(status_code=429, detail="API quota exceeded")
         elif "400" in str(e) or "Invalid" in str(e):
