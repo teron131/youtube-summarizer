@@ -1,0 +1,16 @@
+# YouTube Summarizer Actor Dependencies
+# https://pip.pypa.io/en/latest/reference/requirements-file-format/
+
+# Apify SDK
+apify ~= 3.0
+
+# LangChain & LangGraph
+langchain-core ~= 1.0
+langchain-openai ~= 1.0
+langgraph ~= 1.0
+
+# HTTP requests
+requests ~= 2.32
+
+# Data validation
+pydantic ~= 2.0

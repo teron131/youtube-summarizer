@@ -1,0 +1,19 @@
+{
+    "actorSpecification": 1,
+    "name": "youtube-summarizer-actor",
+    "title": "YouTube Summarizer Actor",
+    "description": "AI-powered YouTube video analysis with transcript extraction and comprehensive summarization using LangGraph",
+    "version": "0.0",
+    "buildTag": "latest",
+    "input": "./input_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json",
+        "keyValueStore": "./key_value_store_schema.json"
+    },
+    "output": "./output_schema.json",
+    "meta": {
+        "templateId": "python-langgraph",
+        "generatedBy": "claude-sonnet-4-5-20250929"
+    },
+    "dockerfile": "../Dockerfile"
+}
