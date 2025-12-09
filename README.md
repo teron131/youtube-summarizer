@@ -413,7 +413,7 @@ builder.add_conditional_edges(
 ### Package Usage
 
 ```python
-from youtube_summarizer.youtube_scrapper import scrap_youtube
+from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import summarize_video, stream_summarize_video
 from youtube_summarizer.utils import is_youtube_url, clean_youtube_url
 

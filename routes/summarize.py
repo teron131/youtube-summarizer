@@ -11,6 +11,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from routes.schema import SummarizeRequest, SummarizeResponse
+from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
     SummarizerState,
@@ -18,7 +19,6 @@ from youtube_summarizer.summarizer import (
     stream_summarize_video,
 )
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
-from youtube_summarizer.youtube_scrapper import scrap_youtube
 
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
 

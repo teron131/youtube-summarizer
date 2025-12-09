@@ -1,7 +1,6 @@
-from youtube_summarizer.youtube_scrapper import (
+from youtube_summarizer.scrapper import (
     Channel,
     TranscriptSegment,
-    WatchNextVideo,
     YouTubeScrapperResult,
 )
 

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 from routes.schema import ScrapResponse, YouTubeRequest
-from youtube_summarizer.youtube_scrapper import scrap_youtube
+from youtube_summarizer.scrapper import scrap_youtube
 
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
 from .validation import validate_url
