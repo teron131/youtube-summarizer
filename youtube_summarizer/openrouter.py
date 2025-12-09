@@ -5,7 +5,7 @@ from typing import Any, Literal, Optional
 
 from dotenv import load_dotenv
 from langchain_core.language_models import BaseChatModel
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 
 load_dotenv()
 

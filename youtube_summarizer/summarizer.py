@@ -10,8 +10,8 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, field_validator
 
 from .openrouter import ChatOpenRouter
+from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
-from .youtube_scrapper import YouTubeScrapperResult, scrap_youtube
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
