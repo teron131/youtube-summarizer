@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
-from models.requests import SummarizeRequest, SummarizeResponse
+from routes.schema import SummarizeRequest, SummarizeResponse
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
     SummarizerState,
