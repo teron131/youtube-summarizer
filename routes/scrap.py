@@ -1,6 +1,4 @@
-"""
-Video scraping route handlers
-"""
+"""Video scraping route handlers"""
 
 import logging
 import os
@@ -16,10 +14,10 @@ from .validation import validate_url
 
 async def scrap_video_handler(request: YouTubeRequest) -> ScrapResponse:
     """Extract video metadata and transcript."""
-    start_time = datetime.now()
-
     if not os.getenv("SCRAPECREATORS_API_KEY"):
         raise HTTPException(status_code=500, detail="Required API key missing")
+
+    start_time = datetime.now()
 
     try:
         url = validate_url(request.url)
@@ -43,10 +41,11 @@ async def scrap_video_handler(request: YouTubeRequest) -> ScrapResponse:
     except HTTPException:
         raise
     except Exception as e:
+        error_msg = str(e).lower()
         logging.error(f"❌ Scraping failed: {str(e)}")
-        if "quota" in str(e).lower():
+
+        if "quota" in error_msg:
             raise HTTPException(status_code=429, detail="API quota exceeded")
-        elif "400" in str(e) or "Invalid" in str(e):
+        if "400" in error_msg or "invalid" in error_msg:
             raise HTTPException(status_code=400, detail=f"Invalid URL: {str(e)[:100]}")
-        else:
-            raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)[:100]}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)[:100]}")

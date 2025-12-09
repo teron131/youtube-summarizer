@@ -6,6 +6,7 @@ from typing import Generator, Literal, Optional
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, field_validator
 
 from .openrouter import ChatOpenRouter
@@ -303,7 +304,7 @@ def should_continue_gemini(state: SummarizerState) -> str:
     return END
 
 
-def create_graph() -> StateGraph:
+def create_graph() -> CompiledStateGraph:
     """Create the summarization workflow graph with conditional routing."""
     builder = StateGraph(
         SummarizerState,

@@ -1,16 +1,17 @@
-"""
-This module contains helper functions for string manipulation, data parsing, and logging, used across the YouTube Summarizer application.
-"""
+"""Helper functions for string manipulation, data parsing, and Chinese text conversion."""
 
-import logging
 import re
 from typing import Any
 
 from opencc import OpenCC
 
-_OPENCC_S2HK = OpenCC("s2hk")
+# Regex patterns
 YOUTUBE_URL_PATTERN = re.compile(r"https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[\w-]+")
 YOUTUBE_ID_PATTERN = re.compile(r"(?:v=|youtu\.be/)([\w-]+)")
+WHITESPACE_PATTERN = re.compile(r"\s+")
+
+# Chinese converter
+_OPENCC_S2HK = OpenCC("s2hk")
 
 
 def serialize_nested(obj: Any, depth: int = 0, max_depth: int = 5) -> Any:
@@ -20,21 +21,11 @@ def serialize_nested(obj: Any, depth: int = 0, max_depth: int = 5) -> Any:
 
     if isinstance(obj, dict):
         return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    if isinstance(obj, list):
         return [serialize_nested(item, depth + 1, max_depth) for item in obj]
-    elif hasattr(obj, "model_dump"):
+    if hasattr(obj, "model_dump"):
         return obj.model_dump()
-    else:
-        return obj
-
-
-def log_and_print(message: str):
-    """Log message. (Deprecated: use logging.info directly)"""
-    logging.info(message)
-
-
-# Module-level compiled patterns for maximum performance
-WHITESPACE_PATTERN = re.compile(r"\s+")
+    return obj
 
 
 def clean_text(text: str) -> str:
@@ -47,15 +38,14 @@ def is_youtube_url(url: str) -> bool:
     return bool(YOUTUBE_URL_PATTERN.match(url))
 
 
-def _extract_video_id(url: str) -> str | None:
-    match = YOUTUBE_ID_PATTERN.search(url)
-    return match.group(1) if match else None
-
-
 def clean_youtube_url(url: str) -> str:
     """Normalize YouTube URLs to https://www.youtube.com/watch?v=<id> when possible."""
-    video_id = _extract_video_id(url)
-    return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
+    match = YOUTUBE_ID_PATTERN.search(url)
+    if not match:
+        return url
+
+    video_id = match.group(1)
+    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 def s2hk(content: str) -> str:
