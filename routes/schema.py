@@ -38,12 +38,12 @@ class SummarizeRequest(BaseModel):
     content: str | None = Field(default=None, description="Content to analyze (YouTube URL or transcript text)")
     content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
 
-    # Model selection
-    analysis_model: str = Field(default="google/gemini-2.5-pro", description="Model for analysis generation")
-    quality_model: str = Field(default="google/gemini-2.5-flash", description="Model for quality evaluation")
+    # Model selection (aligned with summarizer.py defaults)
+    analysis_model: str = Field(default="x-ai/grok-4.1-fast", description="Model for analysis generation")
+    quality_model: str = Field(default="x-ai/grok-4.1-fast", description="Model for quality evaluation")
 
     # Translation options
-    target_language: str | None = Field(default=None, description="Target language for translation (None for auto-detect)")
+    target_language: str | None = Field(default="en", description="Target language for translation (ISO language code)")
 
     @model_validator(mode="after")
     def validate_content_based_on_type(self):

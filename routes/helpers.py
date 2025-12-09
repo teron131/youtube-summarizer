@@ -31,14 +31,14 @@ def get_processing_time(start_time: datetime) -> str:
 
 
 def _get_transcript(result) -> str | None:
-    """Extract transcript from scraper result."""
+    """Extract transcript from scraper result (ScrapeCreators format)."""
     # Try property first (preferred)
     if hasattr(result, "parsed_transcript"):
         transcript = result.parsed_transcript
         if transcript and transcript.strip():
             return transcript
 
-    # Try dict access
+    # Try dict access for backward compatibility
     if hasattr(result, "model_dump"):
         result_dict = result.model_dump()
         transcript = result_dict.get("parsed_transcript") or result_dict.get("transcript_only_text")
@@ -49,7 +49,7 @@ def _get_transcript(result) -> str | None:
 
 
 def parse_scraper_result(result) -> dict[str, Any]:
-    """Parse scraper result to dict with error handling."""
+    """Parse scraper result to dict with error handling (ScrapeCreators format)."""
     # Default fallback structure
     default = {
         "url": None,
@@ -67,8 +67,13 @@ def parse_scraper_result(result) -> dict[str, Any]:
         result_dict = result.model_dump() if hasattr(result, "model_dump") else {}
         channel = result_dict.get("channel", {})
 
+        # Build full URL from video ID if needed
+        url = result_dict.get("url")
+        if not url and result_dict.get("id"):
+            url = f"https://www.youtube.com/watch?v={result_dict.get('id')}"
+
         return {
-            "url": result_dict.get("url"),
+            "url": url,
             "title": result_dict.get("title"),
             "author": channel.get("title") if isinstance(channel, dict) else None,
             "transcript": _get_transcript(result),
@@ -76,7 +81,7 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "thumbnail": result_dict.get("thumbnail"),
             "view_count": result_dict.get("viewCountInt"),
             "like_count": result_dict.get("likeCountInt"),
-            "upload_date": result_dict.get("publishDateText") or result_dict.get("publishDate"),
+            "upload_date": result_dict.get("publishDateText"),
         }
     except Exception as e:
         logging.warning(f"Error parsing scraper result: {str(e)}")
