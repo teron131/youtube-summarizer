@@ -69,3 +69,17 @@ def whisper_result_to_txt(result: dict) -> str:
     chunks = result.get("chunks") or []
     lines = [chunk.get("text", "").strip() for chunk in chunks if chunk.get("text")]
     return s2hk("\n".join(lines))
+
+
+def serialize_nested(obj, depth: int = 0, max_depth: int = 5):
+    """Serialize nested objects with depth limit to avoid recursion errors."""
+    if depth > max_depth:
+        return str(obj)[:100] + "...[deep nesting]"
+
+    if isinstance(obj, dict):
+        return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_nested(item, depth + 1, max_depth) for item in obj]
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    return obj
