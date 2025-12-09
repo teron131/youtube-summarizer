@@ -5,6 +5,7 @@ Request and Response models for the API
 from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
+
 from youtube_summarizer.summarizer import Analysis, Quality
 
 # ================================
