@@ -1,21 +1,14 @@
 """YouTube video transcript summarization using LangChain with LangGraph self-checking workflow."""
 
-import logging
 from typing import Generator, Literal, Optional
 
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field, field_validator
 
 from .openrouter import ChatOpenRouter
 from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
-
-load_dotenv()
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Configuration
@@ -27,9 +20,6 @@ MIN_QUALITY_SCORE = 80
 MAX_ITERATIONS = 2
 TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
 
-# Gemini-specific configuration
-GEMINI_DEFAULT_MODEL = "gemini-2.5-pro"
-GEMINI_QUALITY_MODEL = "gemini-2.5-flash"
 
 # ============================================================================
 # Data Models
@@ -44,13 +34,11 @@ class Chapter(BaseModel):
     key_points: list[str] = Field(description="Important takeaways and insights from this chapter")
 
     @field_validator("header", "summary")
-    @classmethod
     def convert_string_to_hk(cls, value: str) -> str:
         """Convert string fields to Traditional Chinese."""
         return s2hk(value)
 
     @field_validator("key_points")
-    @classmethod
     def convert_list_to_hk(cls, value: list[str]) -> list[str]:
         """Convert list fields to Traditional Chinese."""
         return [s2hk(item) for item in value]
@@ -67,13 +55,11 @@ class Analysis(BaseModel):
     target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
 
     @field_validator("title", "summary")
-    @classmethod
     def convert_string_to_hk(cls, value: str) -> str:
         """Convert string fields to Traditional Chinese."""
         return s2hk(value)
 
     @field_validator("takeaways", "keywords")
-    @classmethod
     def convert_list_to_hk(cls, value: list[str]) -> list[str]:
         """Convert list fields to Traditional Chinese."""
         return [s2hk(item) for item in value]
@@ -148,8 +134,8 @@ class SummarizerOutput(BaseModel):
 # ============================================================================
 
 
-def langchain_analysis_node(state: SummarizerState) -> dict:
-    """Generate analysis from transcript using LangChain."""
+def analysis_node(state: SummarizerState) -> dict:
+    """Generate analysis from transcript."""
     llm = ChatOpenRouter(
         model=ANALYSIS_MODEL,
         temperature=0,
@@ -166,8 +152,6 @@ def langchain_analysis_node(state: SummarizerState) -> dict:
     ]
 
     analysis = llm.invoke(messages)
-    if state.target_language:
-        analysis.target_language = state.target_language
 
     return {
         "analysis": analysis,
@@ -175,35 +159,8 @@ def langchain_analysis_node(state: SummarizerState) -> dict:
     }
 
 
-def gemini_analysis_node(state: SummarizerState) -> dict:
-    """Generate analysis from transcript using Gemini via ChatOpenRouter."""
-    llm = ChatOpenRouter(
-        model=GEMINI_DEFAULT_MODEL,
-        temperature=0,
-        reasoning_effort="medium",
-    ).with_structured_output(Analysis)
-
-    system_prompt = "Analyze the transcript and create a comprehensive analysis with clear structure, key insights, and meaningful keywords. Avoid meta-language phrases."
-    if state.target_language:
-        system_prompt += f" Output the analysis in {state.target_language}."
-
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Transcript:\n{state.transcript}"),
-    ]
-
-    analysis = llm.invoke(messages)
-    if state.target_language:
-        analysis.target_language = state.target_language
-
-    return {
-        "analysis": analysis,
-        "iteration_count": state.iteration_count + 1,
-    }
-
-
-def langchain_quality_node(state: SummarizerState) -> dict:
-    """Assess quality of analysis using LangChain."""
+def quality_node(state: SummarizerState) -> dict:
+    """Assess quality of analysis."""
     llm = ChatOpenRouter(
         model=QUALITY_MODEL,
         temperature=0,
@@ -215,48 +172,16 @@ def langchain_quality_node(state: SummarizerState) -> dict:
         system_prompt += f" Verify that the analysis is in {state.target_language}."
 
     analysis_json = state.analysis.model_dump_json() if state.analysis else "No analysis provided"
-
     messages = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=f"Transcript:\n{state.transcript}\n\nAnalysis:\n{analysis_json}"),
     ]
 
     quality: Quality = llm.invoke(messages)
-    quality_percent = quality.percentage_score
-    print(f"📈 Quality score: {quality_percent}%")
 
     return {
         "quality": quality,
-        "is_complete": quality.is_acceptable or state.iteration_count >= MAX_ITERATIONS,
-    }
-
-
-def gemini_quality_node(state: SummarizerState) -> dict:
-    """Assess quality of analysis using Gemini via ChatOpenRouter."""
-    llm = ChatOpenRouter(
-        model=GEMINI_QUALITY_MODEL,
-        temperature=0,
-        reasoning_effort="low",
-    ).with_structured_output(Quality)
-
-    system_prompt = "Evaluate the analysis against the transcript and provide each aspect a rating (Pass/Refine/Fail) with reasons."
-    if state.target_language:
-        system_prompt += f" Verify that the analysis is in {state.target_language}."
-
-    analysis_json = state.analysis.model_dump_json() if state.analysis else "No analysis provided"
-
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=f"Transcript:\n{state.transcript}\n\nAnalysis:\n{analysis_json}"),
-    ]
-
-    quality: Quality = llm.invoke(messages)
-    quality_percent = quality.percentage_score
-    print(f"📈 Quality score: {quality_percent}%")
-
-    return {
-        "quality": quality,
-        "is_complete": quality.is_acceptable or state.iteration_count >= MAX_ITERATIONS,
+        "is_complete": quality.is_acceptable,
     }
 
 
@@ -265,85 +190,41 @@ def gemini_quality_node(state: SummarizerState) -> dict:
 # ============================================================================
 
 
-def langchain_or_gemini(state: SummarizerState) -> str:
-    """Determine whether to use Gemini SDK or LangChain based on input type."""
-    # Use Gemini for YouTube URLs (after transcript extraction), LangChain for text
-    # Since transcript is already extracted, we check the original input
-    # For now, default to LangChain unless we have a way to track original input type
-    # In practice, you might want to add a flag to state or check transcript characteristics
-    return "langchain_analysis"
-
-
-def should_continue_langchain(state: SummarizerState) -> str:
-    """Determine next step in LangChain workflow."""
+def should_continue(state: SummarizerState) -> str:
+    """Determine next step in workflow."""
     quality_percent = state.quality.percentage_score if state.quality else None
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
 
     if state.is_complete:
-        logger.info(f"✅ Complete: quality {quality_display}")
+        print(f"✅ Complete: quality {quality_display}")
         return END
+
     if state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        logger.info(f"🔄 Refining: quality {quality_display} < {MIN_QUALITY_SCORE}% (iteration {state.iteration_count + 1})")
-        return "langchain_analysis"
-    logger.info(f"⚠️ Stopping: quality {quality_display}, {state.iteration_count} iterations")
+        print(f"🔄 Refining: quality {quality_display} < {MIN_QUALITY_SCORE}% (iteration {state.iteration_count + 1})")
+        return "analysis"
+
+    print(f"⚠️ Stopping: quality {quality_display}, {state.iteration_count} iterations")
     return END
 
 
-def should_continue_gemini(state: SummarizerState) -> str:
-    """Determine next step in Gemini workflow."""
-    quality_percent = state.quality.percentage_score if state.quality else None
-    quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
-
-    if state.is_complete:
-        logger.info(f"✅ Complete: quality {quality_display}")
-        return END
-    if state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        logger.info(f"🔄 Refining: quality {quality_display} < {MIN_QUALITY_SCORE}% (iteration {state.iteration_count + 1})")
-        return "gemini_analysis"
-    logger.info(f"⚠️ Stopping: quality {quality_display}, {state.iteration_count} iterations")
-    return END
-
-
-def create_graph() -> CompiledStateGraph:
+def create_graph() -> StateGraph:
     """Create the summarization workflow graph with conditional routing."""
     builder = StateGraph(
         SummarizerState,
         output_schema=SummarizerOutput,
     )
 
-    builder.add_node("langchain_analysis", langchain_analysis_node)
-    builder.add_node("langchain_quality", langchain_quality_node)
-    builder.add_node("gemini_analysis", gemini_analysis_node)
-    builder.add_node("gemini_quality", gemini_quality_node)
+    builder.add_node("analysis", analysis_node)
+    builder.add_node("quality", quality_node)
 
-    # Add conditional routing from START
-    builder.add_conditional_edges(
-        START,
-        langchain_or_gemini,
-        {
-            "langchain_analysis": "langchain_analysis",
-            "gemini_analysis": "gemini_analysis",
-        },
-    )
+    builder.add_edge(START, "analysis")
+    builder.add_edge("analysis", "quality")
 
-    # Add edges from analysis nodes to quality nodes
-    builder.add_edge("langchain_analysis", "langchain_quality")
-    builder.add_edge("gemini_analysis", "gemini_quality")
-
-    # Add conditional edges from quality nodes
     builder.add_conditional_edges(
-        "langchain_quality",
-        should_continue_langchain,
+        "quality",
+        should_continue,
         {
-            "langchain_analysis": "langchain_analysis",
-            END: END,
-        },
-    )
-    builder.add_conditional_edges(
-        "gemini_quality",
-        should_continue_gemini,
-        {
-            "gemini_analysis": "gemini_analysis",
+            "analysis": "analysis",
             END: END,
         },
     )
@@ -383,21 +264,18 @@ def summarize_video(
 ) -> Analysis:
     """Summarize YouTube video or text transcript with quality self-checking."""
     graph = create_graph()
-
     transcript = _extract_transcript(transcript_or_url)
 
     initial_state = SummarizerState(
         transcript=transcript,
         target_language=target_language or TARGET_LANGUAGE,
     )
-
     result: dict = graph.invoke(initial_state.model_dump())
     output = SummarizerOutput.model_validate(result)
 
     quality_percent = output.quality.percentage_score if output.quality else None
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
-
-    logger.info(f"🎯 Final: quality {quality_display}, {output.iteration_count} iterations")
+    print(f"🎯 Final: quality {quality_display}, {output.iteration_count} iterations")
     return output.analysis
 
 
@@ -407,13 +285,11 @@ def stream_summarize_video(
 ) -> Generator[SummarizerState, None, None]:
     """Stream the summarization process with progress updates."""
     graph = create_graph()
-
     transcript = _extract_transcript(transcript_or_url)
 
     initial_state = SummarizerState(
         transcript=transcript,
         target_language=target_language or TARGET_LANGUAGE,
     )
-
     for chunk in graph.stream(initial_state.model_dump(), stream_mode="values"):
         yield SummarizerState.model_validate(chunk)
