@@ -1,3 +1,5 @@
+"""Logging configuration with stdout streaming for production environments."""
+
 import logging
 import sys
 

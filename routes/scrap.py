@@ -1,3 +1,5 @@
+"""Video scraping endpoint for extracting YouTube metadata and transcripts."""
+
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException

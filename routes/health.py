@@ -1,3 +1,5 @@
+"""Health check and configuration endpoints for API monitoring."""
+
 import os
 from datetime import datetime
 

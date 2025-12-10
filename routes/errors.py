@@ -1,3 +1,5 @@
+"""Error handling utilities for consistent API error responses."""
+
 import logging
 import os
 

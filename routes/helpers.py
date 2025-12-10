@@ -1,3 +1,5 @@
+"""Helper functions for async task execution and response formatting."""
+
 import asyncio
 import logging
 from datetime import datetime

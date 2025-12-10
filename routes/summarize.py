@@ -1,3 +1,5 @@
+"""AI summarization endpoints with streaming and non-streaming modes."""
+
 import asyncio
 import json
 import logging

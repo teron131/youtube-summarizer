@@ -1,3 +1,5 @@
+"""Example video scraping results for testing and demonstration purposes."""
+
 from youtube_summarizer.scrapper import (
     Channel,
     TranscriptSegment,
