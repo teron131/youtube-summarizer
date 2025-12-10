@@ -1,24 +1,11 @@
-"""Centralized error handling utilities"""
-
 import logging
 import os
 
 from fastapi import HTTPException
 
-EMOJI_MAP = {
-    400: "⚠️",
-    429: "🚫",
-    500: "💥",
-}
 
-
-def create_http_error(
-    status_code: int,
-    detail: str,
-    error_type: str | None = None,
-) -> HTTPException:
-    emoji = EMOJI_MAP.get(status_code, "❌")
-    logging.error(f"{emoji} {error_type or 'Error'}: {detail}")
+def create_http_error(status_code: int, detail: str, error_type: str | None = None) -> HTTPException:
+    logging.error(f"{error_type or 'Error'}: {detail}")
     return HTTPException(status_code=status_code, detail=detail)
 
 

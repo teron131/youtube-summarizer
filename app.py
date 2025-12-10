@@ -8,16 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from log_config import setup_logging
-from routes.health import get_configuration_response, get_health_response, get_root_response
-from routes.scrap import scrap_video_handler
-from routes.schema import (
-    ConfigurationResponse,
-    ScrapResponse,
-    SummarizeRequest,
-    SummarizeResponse,
-    YouTubeRequest,
-)
-from routes.summarize import stream_summarize_handler, summarize_handler
+from routes import api_router
 
 setup_logging()
 load_dotenv()
@@ -47,41 +38,11 @@ async def log_requests(request, call_next):
     start_time = datetime.now()
     response = await call_next(request)
     process_time = (datetime.now() - start_time).total_seconds()
-    logging.info(
-        f"📨 {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)"
-    )
+    logging.info(f"📨 {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
     return response
 
 
-@app.get("/")
-async def root():
-    return get_root_response()
-
-
-@app.get("/health")
-async def health_check():
-    return get_health_response()
-
-
-@app.get("/config", response_model=ConfigurationResponse)
-async def get_configuration():
-    return get_configuration_response()
-
-
-@app.post("/scrap", response_model=ScrapResponse)
-async def scrap_video(request: YouTubeRequest):
-    return await scrap_video_handler(request)
-
-
-@app.post("/summarize", response_model=SummarizeResponse)
-async def summarize(request: SummarizeRequest):
-    return await summarize_handler(request)
-
-
-@app.post("/stream-summarize")
-async def stream_summarize(request: SummarizeRequest):
-    return await stream_summarize_handler(request)
-
+app.include_router(api_router)
 
 if __name__ == "__main__":
     import uvicorn

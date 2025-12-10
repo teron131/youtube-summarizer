@@ -1,5 +1,3 @@
-"""Helper functions for API routes"""
-
 import asyncio
 import logging
 from datetime import datetime
@@ -32,55 +30,37 @@ def get_processing_time(start_time: datetime) -> str:
 
 
 def _get_transcript(result) -> str | None:
-    if hasattr(result, "parsed_transcript"):
-        transcript = result.parsed_transcript
-        if transcript and transcript.strip():
-            return transcript
+    # Try attribute access first
+    if hasattr(result, "parsed_transcript") and result.parsed_transcript and result.parsed_transcript.strip():
+        return result.parsed_transcript
 
-    if hasattr(result, "model_dump"):
-        result_dict = result.model_dump()
-        transcript = result_dict.get("parsed_transcript") or result_dict.get(
-            "transcript_only_text"
-        )
-        if transcript and transcript.strip():
-            return transcript
+    # Try dictionary/model dump
+    data = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
+    transcript = data.get("parsed_transcript") or data.get("transcript_only_text")
 
-    return None
+    return transcript if transcript and transcript.strip() else None
 
 
 def parse_scraper_result(result) -> dict[str, Any]:
-    default = {
-        "url": None,
-        "title": None,
-        "author": None,
-        "transcript": None,
-        "duration": None,
-        "thumbnail": None,
-        "view_count": None,
-        "like_count": None,
-        "upload_date": None,
-    }
-
     try:
-        result_dict = result.model_dump() if hasattr(result, "model_dump") else {}
-        channel = result_dict.get("channel", {})
+        data = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
+        channel = data.get("channel", {})
 
-        url = result_dict.get("url")
-        if not url and result_dict.get("id"):
-            url = f"https://www.youtube.com/watch?v={result_dict.get('id')}"
+        url = data.get("url")
+        if not url and data.get("id"):
+            url = f"https://www.youtube.com/watch?v={data.get('id')}"
 
         return {
             "url": url,
-            "title": result_dict.get("title"),
+            "title": data.get("title"),
             "author": channel.get("title") if isinstance(channel, dict) else None,
             "transcript": _get_transcript(result),
-            "duration": result_dict.get("durationFormatted"),
-            "thumbnail": result_dict.get("thumbnail"),
-            "view_count": result_dict.get("viewCountInt"),
-            "like_count": result_dict.get("likeCountInt"),
-            "upload_date": result_dict.get("publishDateText"),
+            "duration": data.get("durationFormatted"),
+            "thumbnail": data.get("thumbnail"),
+            "view_count": data.get("viewCountInt"),
+            "like_count": data.get("likeCountInt"),
+            "upload_date": data.get("publishDateText"),
         }
     except Exception as e:
         logging.warning(f"Error parsing scraper result: {str(e)}")
-        default["transcript"] = _get_transcript(result)
-        return default
+        return {"url": None, "title": None, "author": None, "transcript": _get_transcript(result), "duration": None, "thumbnail": None, "view_count": None, "like_count": None, "upload_date": None}

@@ -1,9 +1,11 @@
-"""Health check and configuration routes"""
-
 import os
 from datetime import datetime
 
+from fastapi import APIRouter
+from routes.schema import ConfigurationResponse
 from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
+
+router = APIRouter()
 
 API_VERSION = "3.0.0"
 API_TITLE = "YouTube Summarizer API"
@@ -25,32 +27,8 @@ SUPPORTED_LANGUAGES = {
 }
 
 
-def get_health_response():
-    return {
-        "status": "healthy",
-        "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now().isoformat(),
-        "version": API_VERSION,
-        "environment": {
-            "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
-            "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY")),
-        },
-    }
-
-
-def get_configuration_response():
-    return {
-        "status": "success",
-        "message": "Configuration retrieved successfully",
-        "available_models": AVAILABLE_MODELS,
-        "supported_languages": SUPPORTED_LANGUAGES,
-        "default_analysis_model": ANALYSIS_MODEL,
-        "default_quality_model": QUALITY_MODEL,
-        "default_target_language": TARGET_LANGUAGE,
-    }
-
-
-def get_root_response():
+@router.get("/")
+async def root():
     return {
         "name": API_TITLE,
         "version": API_VERSION,
@@ -66,4 +44,31 @@ def get_root_response():
             "POST /stream-summarize": "Streaming analysis with progress",
         },
         "timestamp": datetime.now().isoformat(),
+    }
+
+
+@router.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "message": f"{API_TITLE} is running",
+        "timestamp": datetime.now().isoformat(),
+        "version": API_VERSION,
+        "environment": {
+            "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
+            "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY")),
+        },
+    }
+
+
+@router.get("/config", response_model=ConfigurationResponse)
+async def get_configuration():
+    return {
+        "status": "success",
+        "message": "Configuration retrieved successfully",
+        "available_models": AVAILABLE_MODELS,
+        "supported_languages": SUPPORTED_LANGUAGES,
+        "default_analysis_model": ANALYSIS_MODEL,
+        "default_quality_model": QUALITY_MODEL,
+        "default_target_language": TARGET_LANGUAGE,
     }

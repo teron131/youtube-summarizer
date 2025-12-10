@@ -1,22 +1,31 @@
-"""Video scraping route handlers"""
-
 from datetime import datetime
 
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException
 from routes.schema import ScrapResponse, YouTubeRequest
 from youtube_summarizer.scrapper import scrap_youtube
+from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
-from .validation import validate_url
+
+router = APIRouter()
 
 
-async def scrap_video_handler(request: YouTubeRequest) -> ScrapResponse:
+@router.post("/scrap", response_model=ScrapResponse)
+async def scrap_video(request: YouTubeRequest):
     require_env_key("SCRAPECREATORS_API_KEY")
     start_time = datetime.now()
 
     try:
-        url = validate_url(request.url)
+        url = request.url.strip()
+        if not url:
+            raise HTTPException(status_code=400, detail="URL is required")
+
+        if not is_youtube_url(url):
+            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+
+        url = clean_youtube_url(url)
+
         result = await run_async_task(scrap_youtube, url)
         data = parse_scraper_result(result)
 

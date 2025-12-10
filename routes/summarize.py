@@ -1,12 +1,10 @@
-"""Summarization route handlers"""
-
 import asyncio
 import json
 import logging
 import os
 from datetime import datetime
 
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from routes.schema import SummarizeRequest, SummarizeResponse
 from youtube_summarizer.scrapper import scrap_youtube
@@ -21,8 +19,11 @@ from youtube_summarizer.utils import is_youtube_url, serialize_nested
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
 
+router = APIRouter()
 
-async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
+
+@router.post("/summarize", response_model=SummarizeResponse)
+async def summarize(request: SummarizeRequest):
     if not request.content or not request.content.strip():
         raise HTTPException(status_code=400, detail="Content required")
 
@@ -35,12 +36,11 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
     start_time = datetime.now()
 
     try:
+        transcript = request.content
         if request.content_type == "url":
             scrap_result = await run_async_task(scrap_youtube, request.content)
             parsed_data = parse_scraper_result(scrap_result)
             transcript = parsed_data.get("transcript") or request.content
-        else:
-            transcript = request.content
 
         graph = create_graph()
         initial_state = SummarizerState(
@@ -67,31 +67,30 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
         raise handle_exception(e, "Analysis")
 
 
-async def stream_summarize_handler(request: SummarizeRequest) -> StreamingResponse:
+@router.post("/stream-summarize")
+async def stream_summarize(request: SummarizeRequest):
     require_env_key("GEMINI_API_KEY")
 
     async def generate_stream():
         start_time = datetime.now()
-
         try:
             if not request.content or not request.content.strip():
                 raise HTTPException(status_code=400, detail="Content required")
 
+            content = request.content
             if request.content_type == "url":
-                if not is_youtube_url(request.content):
+                if not is_youtube_url(content):
                     raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
-                logging.info(f"🔗 Scraping YouTube video: {request.content}")
-                scrap_result = await run_async_task(scrap_youtube, request.content)
+                logging.info(f"🔗 Scraping YouTube video: {content}")
+                scrap_result = await run_async_task(scrap_youtube, content)
                 parsed_data = parse_scraper_result(scrap_result)
-                content = parsed_data.get("transcript") or request.content
+                content = parsed_data.get("transcript") or content
 
                 if content == request.content:
                     logging.info("🎯 No transcript available - sending YouTube URL to Gemini")
                 else:
                     logging.info("📝 Using scraped transcript for analysis")
-            else:
-                content = request.content
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
             await asyncio.sleep(0.01)
@@ -101,11 +100,7 @@ async def stream_summarize_handler(request: SummarizeRequest) -> StreamingRespon
 
             for state_chunk in stream_summarize_video(content, request.target_language):
                 try:
-                    chunk_dict = (
-                        state_chunk.model_dump()
-                        if hasattr(state_chunk, "model_dump")
-                        else {}
-                    )
+                    chunk_dict = state_chunk.model_dump() if hasattr(state_chunk, "model_dump") else {}
                     final_state = chunk_dict
 
                     serialized_chunk = serialize_nested(chunk_dict)
@@ -132,8 +127,7 @@ async def stream_summarize_handler(request: SummarizeRequest) -> StreamingRespon
 
             if final_state:
                 for key in ["analysis", "quality", "iteration_count", "is_complete"]:
-                    value = final_state.get(key)
-                    if value is not None:
+                    if (value := final_state.get(key)) is not None:
                         completion_data[key] = value
 
             yield f"data: {json.dumps(serialize_nested(completion_data), ensure_ascii=False)}\n\n"
@@ -146,10 +140,7 @@ async def stream_summarize_handler(request: SummarizeRequest) -> StreamingRespon
                 "timestamp": datetime.now().isoformat(),
                 "error_type": type(e).__name__,
             }
-            try:
-                yield f"data: {json.dumps(error_data)}\n\n"
-            except Exception:
-                yield f'data: {{"type": "error", "message": "Streaming failed", "timestamp": "{datetime.now().isoformat()}"}}\n\n'
+            yield f"data: {json.dumps(error_data)}\n\n"
 
     return StreamingResponse(
         generate_stream(),
