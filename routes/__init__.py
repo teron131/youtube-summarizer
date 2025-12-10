@@ -1,3 +1,1 @@
-"""
-API Routes Module
-"""
+"""API Routes Module"""

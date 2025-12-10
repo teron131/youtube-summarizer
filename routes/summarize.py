@@ -1,6 +1,4 @@
-"""
-Summarization route handlers
-"""
+"""Summarization route handlers"""
 
 import asyncio
 import json
@@ -25,7 +23,6 @@ from .helpers import get_processing_time, parse_scraper_result, run_async_task
 
 
 async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
-    """Generate AI analysis using LangGraph workflow."""
     if not request.content or not request.content.strip():
         raise HTTPException(status_code=400, detail="Content required")
 
@@ -38,7 +35,6 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
     start_time = datetime.now()
 
     try:
-        # Get transcript
         if request.content_type == "url":
             scrap_result = await run_async_task(scrap_youtube, request.content)
             parsed_data = parse_scraper_result(scrap_result)
@@ -46,7 +42,6 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
         else:
             transcript = request.content
 
-        # Run analysis
         graph = create_graph()
         initial_state = SummarizerState(
             transcript=transcript,
@@ -73,14 +68,12 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
 
 
 async def stream_summarize_handler(request: SummarizeRequest) -> StreamingResponse:
-    """Stream analysis with real-time progress updates."""
     require_env_key("GEMINI_API_KEY")
 
     async def generate_stream():
         start_time = datetime.now()
 
         try:
-            # Validate and get content
             if not request.content or not request.content.strip():
                 raise HTTPException(status_code=400, detail="Content required")
 
@@ -100,17 +93,19 @@ async def stream_summarize_handler(request: SummarizeRequest) -> StreamingRespon
             else:
                 content = request.content
 
-            # Send initial status
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
             await asyncio.sleep(0.01)
 
-            # Stream analysis
             chunk_count = 0
             final_state = None
 
             for state_chunk in stream_summarize_video(content, request.target_language):
                 try:
-                    chunk_dict = state_chunk.model_dump() if hasattr(state_chunk, "model_dump") else {}
+                    chunk_dict = (
+                        state_chunk.model_dump()
+                        if hasattr(state_chunk, "model_dump")
+                        else {}
+                    )
                     final_state = chunk_dict
 
                     serialized_chunk = serialize_nested(chunk_dict)
@@ -127,7 +122,6 @@ async def stream_summarize_handler(request: SummarizeRequest) -> StreamingRespon
                     logging.warning(f"⚠️ Failed to serialize chunk {chunk_count}: {str(e)}")
                     chunk_count += 1
 
-            # Send completion message
             completion_data = {
                 "type": "complete",
                 "message": "Analysis completed",

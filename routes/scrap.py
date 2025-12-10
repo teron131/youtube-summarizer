@@ -1,19 +1,18 @@
 """Video scraping route handlers"""
 
 from datetime import datetime
+
 from fastapi import HTTPException
 from routes.schema import ScrapResponse, YouTubeRequest
-
 from youtube_summarizer.scrapper import scrap_youtube
+
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
 from .validation import validate_url
 
 
 async def scrap_video_handler(request: YouTubeRequest) -> ScrapResponse:
-    """Extract video metadata and transcript."""
     require_env_key("SCRAPECREATORS_API_KEY")
-
     start_time = datetime.now()
 
     try:
