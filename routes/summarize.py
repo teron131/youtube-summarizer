@@ -20,19 +20,20 @@ from youtube_summarizer.summarizer import (
 )
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
+from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
 
 
 async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
     """Generate AI analysis using LangGraph workflow."""
-    if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        raise HTTPException(status_code=500, detail="Required API key missing")
-
     if not request.content or not request.content.strip():
         raise HTTPException(status_code=400, detail="Content required")
 
     if request.content_type == "url" and not is_youtube_url(request.content):
         raise HTTPException(status_code=400, detail="Valid YouTube URL required")
+
+    if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
+        require_env_key("OPENROUTER_API_KEY")
 
     start_time = datetime.now()
 
@@ -68,14 +69,12 @@ async def summarize_handler(request: SummarizeRequest) -> SummarizeResponse:
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"❌ Analysis failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)[:100]}")
+        raise handle_exception(e, "Analysis")
 
 
 async def stream_summarize_handler(request: SummarizeRequest) -> StreamingResponse:
     """Stream analysis with real-time progress updates."""
-    if not os.getenv("GEMINI_API_KEY"):
-        raise HTTPException(status_code=500, detail="Config missing: GEMINI_API_KEY")
+    require_env_key("GEMINI_API_KEY")
 
     async def generate_stream():
         start_time = datetime.now()

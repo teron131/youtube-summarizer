@@ -71,10 +71,36 @@ def whisper_result_to_txt(result: dict) -> str:
     return s2hk("\n".join(lines))
 
 
+def safe_truncate(text: str, max_length: int = 100) -> str:
+    """Safely truncate text without breaking multi-byte UTF-8 characters.
+
+    Args:
+        text: Text to truncate
+        max_length: Maximum length in characters (not bytes)
+
+    Returns:
+        Truncated text that won't cause encoding errors
+    """
+    if len(text) <= max_length:
+        return text
+
+    # Truncate and ensure we don't break in the middle of a character
+    truncated = text[:max_length]
+
+    # Try to encode/decode to verify it's valid UTF-8
+    try:
+        truncated.encode('utf-8')
+        return truncated
+    except UnicodeEncodeError:
+        # If we hit an encoding error, trim one more character and retry
+        # This handles edge cases where slicing breaks a surrogate pair
+        return text[:max_length - 1] if max_length > 1 else ""
+
+
 def serialize_nested(obj, depth: int = 0, max_depth: int = 5):
     """Serialize nested objects with depth limit to avoid recursion errors."""
     if depth > max_depth:
-        return str(obj)[:100] + "...[deep nesting]"
+        return safe_truncate(str(obj)) + "...[deep nesting]"
 
     if isinstance(obj, dict):
         return {k: serialize_nested(v, depth + 1, max_depth) for k, v in obj.items()}
