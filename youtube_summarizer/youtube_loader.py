@@ -9,10 +9,10 @@ Optimized yt-dlp approach:
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import yt_dlp
 from dotenv import load_dotenv
+import yt_dlp
 
 from .transcriber import optimize_audio_for_transcription, transcribe_with_fal
 
@@ -71,7 +71,7 @@ AUDIO_YDL_OPTS = {
 }
 
 
-def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
+def get_best_thumbnail(thumbnails: list[dict[str, Any]]) -> str | None:
     """Select the best thumbnail from a list, prioritizing resolution."""
     if not thumbnails:
         return None
@@ -80,7 +80,7 @@ def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
     return best_thumbnail.get("url")
 
 
-def _extract_yt_dlp_info(url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_yt_dlp_info(url: str, opts: dict[str, Any]) -> dict[str, Any]:
     """Extract video information using yt-dlp with given options."""
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -89,10 +89,10 @@ def _extract_yt_dlp_info(url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
         raise RuntimeError(f"yt-dlp extraction failed: {e}") from e
 
 
-def _process_subtitle_file(filepath: str) -> Optional[str]:
+def _process_subtitle_file(filepath: str) -> str | None:
     """Process subtitle file and extract clean text."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = []
             for line in f:
                 line = line.strip()
@@ -100,7 +100,7 @@ def _process_subtitle_file(filepath: str) -> Optional[str]:
                     continue
 
                 # Skip timestamp lines, numbers, and VTT headers
-                if any(pattern in line for pattern in SUBTITLE_FILTER_PATTERNS) or line.isdigit() or line.startswith("STYLE") or line.startswith("::cue"):
+                if any(pattern in line for pattern in SUBTITLE_FILTER_PATTERNS) or line.isdigit() or line.startswith(("STYLE", "::cue")):
                     continue
 
                 lines.append(line)
@@ -109,11 +109,11 @@ def _process_subtitle_file(filepath: str) -> Optional[str]:
             return subtitle_text if subtitle_text.strip() else None
 
     except Exception as e:
-        logger.warning(f"Failed to process subtitle file {filepath}: {e}")
+        logger.warning("Failed to process subtitle file %s: %s", filepath, e)
         return None
 
 
-def extract_video_info(url: str) -> Dict[str, Any]:
+def extract_video_info(url: str) -> dict[str, Any]:
     """
     Extract basic video information using yt-dlp.
 
@@ -126,7 +126,7 @@ def extract_video_info(url: str) -> Dict[str, Any]:
     Raises:
         RuntimeError: If video info extraction fails
     """
-    logger.info(f"Extracting video info for: {url}")
+    logger.info("Extracting video info for: %s", url)
 
     try:
         info = _extract_yt_dlp_info(url, {"quiet": True, "no_warnings": True})
@@ -146,7 +146,7 @@ def extract_video_info(url: str) -> Dict[str, Any]:
             "url": url,
         }
 
-        logger.info(f"Video info extracted: {metadata['title']} by {metadata['author']}")
+        logger.info("Video info extracted: %s by %s", metadata["title"], metadata["author"])
         return metadata
 
     except Exception as e:
@@ -161,7 +161,7 @@ def download_audio(url: str) -> bytes:
     import os
     import tempfile
 
-    logger.info(f"Downloading audio for: {url}")
+    logger.info("Downloading audio for: %s", url)
 
     # Simplified and more reliable configuration
     download_opts = {
@@ -197,7 +197,7 @@ def download_audio(url: str) -> bytes:
 
                 # List all files in the temp directory for debugging
                 all_files = os.listdir(".")
-                logger.info(f"Files in temp directory: {all_files}")
+                logger.info("Files in temp directory: %s", all_files)
 
                 # Look for any audio files using glob patterns
                 audio_patterns = ["*.m4a", "*.mp3", "*.webm", "*.opus", "*.aac", "*.wav"]
@@ -207,7 +207,7 @@ def download_audio(url: str) -> bytes:
                     matching_files = glob.glob(pattern)
                     if matching_files:
                         downloaded_file = matching_files[0]  # Take the first match
-                        logger.info(f"Found audio file: {downloaded_file}")
+                        logger.info("Found audio file: %s", downloaded_file)
                         break
 
                 # Fallback: look for files with 'audio' in the name
@@ -215,23 +215,22 @@ def download_audio(url: str) -> bytes:
                     for filename in all_files:
                         if any(ext in filename.lower() for ext in [".m4a", ".mp3", ".webm", ".opus", ".aac", ".wav"]):
                             downloaded_file = filename
-                            logger.info(f"Found audio file (fallback): {downloaded_file}")
+                            logger.info("Found audio file (fallback): %s", downloaded_file)
                             break
 
-                if not downloaded_file:
+                if not downloaded_file and all_files:
                     # Final fallback: take the largest file (likely the audio)
-                    if all_files:
-                        largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
-                        if os.path.getsize(largest_file) > 1024:  # At least 1KB
-                            downloaded_file = largest_file
-                            logger.info(f"Using largest file as audio: {downloaded_file}")
+                    largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
+                    if os.path.getsize(largest_file) > 1024:  # At least 1KB
+                        downloaded_file = largest_file
+                        logger.info("Using largest file as audio: %s", downloaded_file)
 
                 if not downloaded_file:
                     raise RuntimeError(f"No audio file found after download. Files in directory: {all_files}")
 
                 # Read the file into memory
                 file_path = os.path.join(temp_dir, downloaded_file)
-                logger.info(f"Reading audio file: {file_path}")
+                logger.info("Reading audio file: %s", file_path)
 
                 with open(file_path, "rb") as f:
                     audio_data = f.read()
@@ -239,18 +238,18 @@ def download_audio(url: str) -> bytes:
                 if len(audio_data) == 0:
                     raise RuntimeError(f"Downloaded file is empty: {downloaded_file}")
 
-                logger.info(f"Successfully downloaded {len(audio_data)} bytes of audio data")
+                logger.info("Successfully downloaded %s bytes of audio data", len(audio_data))
                 return audio_data
 
             finally:
                 os.chdir(original_cwd)
 
     except Exception as e:
-        logger.error(f"Audio download failed: {e}")
+        logger.error("Audio download failed: %s", e)
         raise RuntimeError(f"Audio download failed: {e}") from e
 
 
-def _extract_captions(info: Dict[str, Any]) -> Optional[str]:
+def _extract_captions(info: dict[str, Any]) -> str | None:
     """Extract and process captions from yt-dlp info."""
     if not info.get("requested_subtitles"):
         return None
@@ -260,17 +259,17 @@ def _extract_captions(info: Dict[str, Any]) -> Optional[str]:
         if not filepath or not os.path.exists(filepath):
             continue
 
-        logger.info(f"Processing caption file for {lang}: {filepath}")
+        logger.info("Processing caption file for %s: %s", lang, filepath)
         subtitle = _process_subtitle_file(filepath)
 
         # Clean up the subtitle file
         try:
             os.remove(filepath)
         except Exception as e:
-            logger.warning(f"Failed to clean up subtitle file {filepath}: {e}")
+            logger.warning("Failed to clean up subtitle file %s: %s", filepath, e)
 
         if subtitle and subtitle.strip():
-            logger.info(f"Successfully loaded caption {lang}, length: {len(subtitle)} characters")
+            logger.info("Successfully loaded caption %s, length: %s characters", lang, len(subtitle))
             return subtitle
 
     return None
@@ -289,7 +288,7 @@ def youtube_loader(url: str) -> str:
     Raises:
         RuntimeError: If video loading fails
     """
-    logger.info(f"Loading YouTube video: {url}")
+    logger.info("Loading YouTube video: %s", url)
 
     try:
         # Step 1: Extract metadata and captions
@@ -306,7 +305,7 @@ def youtube_loader(url: str) -> str:
 
         duration = info.get("duration") or None
 
-        logger.info(f"Video accessible - Title: {title}, Author: {author}, Duration: {duration}s")
+        logger.info("Video accessible - Title: %s, Author: %s, Duration: %ss", title, author, duration)
 
         # Step 2: Try to extract captions
         subtitle = _extract_captions(info)

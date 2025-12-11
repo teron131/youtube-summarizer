@@ -14,11 +14,10 @@ result.likeCountInt: int = 321234
 """
 
 import os
-from typing import List, Optional
 
-import requests
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
+import requests
 
 from .utils import clean_text, clean_youtube_url, is_youtube_url
 
@@ -30,35 +29,35 @@ SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
 class Channel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    title: Optional[str] = None
+    title: str | None = None
 
 
 class TranscriptSegment(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    text: Optional[str] = None
-    startMs: Optional[str] = None
-    endMs: Optional[str] = None
-    startTimeText: Optional[str] = None
+    text: str | None = None
+    startMs: str | None = None
+    endMs: str | None = None
+    startTimeText: str | None = None
 
 
 class YouTubeScrapperResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    id: Optional[str] = None
-    thumbnail: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    likeCountInt: Optional[int] = None
-    viewCountInt: Optional[int] = None
-    publishDateText: Optional[str] = None
-    channel: Optional[Channel] = None
-    durationFormatted: Optional[str] = None
-    transcript: Optional[List[TranscriptSegment]] = None
-    transcript_only_text: Optional[str] = None
+    id: str | None = None
+    thumbnail: str | None = None
+    title: str | None = None
+    description: str | None = None
+    likeCountInt: int | None = None
+    viewCountInt: int | None = None
+    publishDateText: str | None = None
+    channel: Channel | None = None
+    durationFormatted: str | None = None
+    transcript: list[TranscriptSegment] | None = None
+    transcript_only_text: str | None = None
 
     @property
-    def parsed_transcript(self) -> Optional[str]:
+    def parsed_transcript(self) -> str | None:
         """Return cleaned transcript text or None if unavailable."""
         if not self.transcript_only_text or not self.transcript_only_text.strip():
             return None
@@ -91,7 +90,7 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
 
     url = f"https://api.scrapecreators.com/v1/youtube/video?url={youtube_url}&get_transcript=true"
     headers = {"x-api-key": SCRAPECREATORS_API_KEY}
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()
 
     result = response.json()

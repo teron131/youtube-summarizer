@@ -45,7 +45,7 @@ async def root():
             "POST /summarize": "Full LangGraph workflow analysis",
             "POST /stream-summarize": "Streaming analysis with progress",
         },
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(datetime.UTC).isoformat(),
     }
 
 
@@ -54,7 +54,7 @@ async def health_check():
     return {
         "status": "healthy",
         "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(datetime.UTC).isoformat(),
         "version": API_VERSION,
         "environment": {
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),

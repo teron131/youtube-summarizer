@@ -10,7 +10,7 @@ from youtube_summarizer.summarizer import Analysis, Quality
 class BaseResponse(BaseModel):
     status: str = Field(description="Response status: success or error")
     message: str = Field(description="Human-readable message")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(datetime.UTC).isoformat())
 
 
 class YouTubeRequest(BaseModel):

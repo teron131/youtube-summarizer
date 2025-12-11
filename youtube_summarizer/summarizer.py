@@ -1,6 +1,8 @@
 """YouTube video transcript summarization using LangChain with LangGraph self-checking workflow."""
 
-from typing import Generator, Literal, Optional
+from collections.abc import Generator
+import logging
+from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
@@ -9,6 +11,8 @@ from pydantic import BaseModel, Field, field_validator
 from .openrouter import ChatOpenRouter
 from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Configuration
@@ -52,7 +56,7 @@ class Analysis(BaseModel):
     takeaways: list[str] = Field(description="Key insights and actionable takeaways for the audience", min_length=3, max_length=8)
     chapters: list[Chapter] = Field(description="Structured breakdown of content into logical chapters")
     keywords: list[str] = Field(description="The most relevant keywords in the analysis worthy of highlighting", min_length=3, max_length=3)
-    target_language: Optional[str] = Field(default=None, description="The language the content to be translated to")
+    target_language: str | None = Field(default=None, description="The language the content to be translated to")
 
     @field_validator("title", "summary")
     def convert_string_to_hk(cls, value: str) -> str:
@@ -112,10 +116,10 @@ class Quality(BaseModel):
 class SummarizerState(BaseModel):
     """State schema for the summarization graph."""
 
-    transcript: Optional[str] = None
-    analysis: Optional[Analysis] = None
-    quality: Optional[Quality] = None
-    target_language: Optional[str] = None
+    transcript: str | None = None
+    analysis: Analysis | None = None
+    quality: Quality | None = None
+    target_language: str | None = None
     iteration_count: int = 0
     is_complete: bool = False
 
@@ -124,9 +128,9 @@ class SummarizerOutput(BaseModel):
     """Output schema for the summarization graph."""
 
     analysis: Analysis
-    quality: Optional[Quality] = None
+    quality: Quality | None = None
     iteration_count: int
-    transcript: Optional[str] = None
+    transcript: str | None = None
 
 
 # ============================================================================
@@ -196,14 +200,14 @@ def should_continue(state: SummarizerState) -> str:
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
 
     if state.is_complete:
-        print(f"✅ Complete: quality {quality_display}")
+        logger.info("✅ Complete: quality %s", quality_display)
         return END
 
     if state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        print(f"🔄 Refining: quality {quality_display} < {MIN_QUALITY_SCORE}% (iteration {state.iteration_count + 1})")
+        logger.info("🔄 Refining: quality %s < %s%% (iteration %s)", quality_display, MIN_QUALITY_SCORE, state.iteration_count + 1)
         return "analysis"
 
-    print(f"⚠️ Stopping: quality {quality_display}, {state.iteration_count} iterations")
+    logger.info("⚠️ Stopping: quality %s, %s iterations", quality_display, state.iteration_count)
     return END
 
 
@@ -260,7 +264,7 @@ def _extract_transcript(transcript_or_url: str) -> str:
 
 def summarize_video(
     transcript_or_url: str,
-    target_language: Optional[str] = None,
+    target_language: str | None = None,
 ) -> Analysis:
     """Summarize YouTube video or text transcript with quality self-checking."""
     graph = create_graph()
@@ -275,13 +279,13 @@ def summarize_video(
 
     quality_percent = output.quality.percentage_score if output.quality else None
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
-    print(f"🎯 Final: quality {quality_display}, {output.iteration_count} iterations")
+    logger.info("🎯 Final: quality %s, %s iterations", quality_display, output.iteration_count)
     return output.analysis
 
 
 def stream_summarize_video(
     transcript_or_url: str,
-    target_language: Optional[str] = None,
+    target_language: str | None = None,
 ) -> Generator[SummarizerState, None, None]:
     """Stream the summarization process with progress updates."""
     graph = create_graph()

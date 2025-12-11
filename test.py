@@ -64,7 +64,7 @@ def main():
         print("=" * 80)
         print(f"\n⏱️  Total time: {elapsed:.2f}s")
         print(f"\n📝 Title: {analysis.title}")
-        print(f"\n📝 Summary:")
+        print("\n📝 Summary:")
         print(f"{analysis.summary}")
         print(f"\n🎯 Takeaways ({len(analysis.takeaways)}):")
         for i, takeaway in enumerate(analysis.takeaways, 1):

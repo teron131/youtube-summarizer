@@ -1,13 +1,14 @@
 """AI summarization endpoints with streaming and non-streaming modes."""
 
 import asyncio
+from datetime import datetime
 import json
 import logging
 import os
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+
 from routes.schema import SummarizeRequest, SummarizeResponse
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import (
@@ -35,7 +36,7 @@ async def summarize(request: SummarizeRequest):
     if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         require_env_key("OPENROUTER_API_KEY")
 
-    start_time = datetime.now()
+    start_time = datetime.now(datetime.UTC)
 
     try:
         transcript = request.content
@@ -74,7 +75,7 @@ async def stream_summarize(request: SummarizeRequest):
     require_env_key("GEMINI_API_KEY")
 
     async def generate_stream():
-        start_time = datetime.now()
+        start_time = datetime.now(datetime.UTC)
         try:
             if not request.content or not request.content.strip():
                 raise HTTPException(status_code=400, detail="Content required")
@@ -84,7 +85,7 @@ async def stream_summarize(request: SummarizeRequest):
                 if not is_youtube_url(content):
                     raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
-                logging.info(f"🔗 Scraping YouTube video: {content}")
+                logging.info("🔗 Scraping YouTube video: %s", content)
                 scrap_result = await run_async_task(scrap_youtube, content)
                 parsed_data = parse_scraper_result(scrap_result)
                 content = parsed_data.get("transcript") or content
@@ -94,7 +95,8 @@ async def stream_summarize(request: SummarizeRequest):
                 else:
                     logging.info("📝 Using scraped transcript for analysis")
 
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now(datetime.UTC).isoformat()})}\n\n"
             await asyncio.sleep(0.01)
 
             chunk_count = 0
@@ -106,7 +108,7 @@ async def stream_summarize(request: SummarizeRequest):
                     final_state = chunk_dict
 
                     serialized_chunk = serialize_nested(chunk_dict)
-                    serialized_chunk["timestamp"] = datetime.now().isoformat()
+                    serialized_chunk["timestamp"] = datetime.now(datetime.UTC).isoformat()
                     serialized_chunk["chunk_number"] = chunk_count
 
                     yield f"data: {json.dumps(serialized_chunk, ensure_ascii=False)}\n\n"
@@ -116,7 +118,7 @@ async def stream_summarize(request: SummarizeRequest):
                         await asyncio.sleep(0.01)
 
                 except (TypeError, ValueError, json.JSONDecodeError) as e:
-                    logging.warning(f"⚠️ Failed to serialize chunk {chunk_count}: {str(e)}")
+                    logging.warning("⚠️ Failed to serialize chunk %s: %s", chunk_count, e)
                     chunk_count += 1
 
             completion_data = {
@@ -124,7 +126,7 @@ async def stream_summarize(request: SummarizeRequest):
                 "message": "Analysis completed",
                 "processing_time": get_processing_time(start_time),
                 "total_chunks": chunk_count,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(datetime.UTC).isoformat(),
             }
 
             if final_state:
@@ -135,14 +137,17 @@ async def stream_summarize(request: SummarizeRequest):
             yield f"data: {json.dumps(serialize_nested(completion_data), ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            logging.error(f"❌ Streaming failed: {str(e)}")
+            logging.error("❌ Streaming failed: %s", e)
             error_data = {
                 "type": "error",
                 "message": str(e)[:100],
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(datetime.UTC).isoformat(),
                 "error_type": type(e).__name__,
             }
-            yield f"data: {json.dumps(error_data)}\n\n"
+            try:
+                yield f"data: {json.dumps(error_data)}\n\n"
+            except Exception:
+                yield f'data: {{"type": "error", "message": "Streaming failed", "timestamp": "{datetime.now(datetime.UTC).isoformat()}"}}\n\n'
 
     return StreamingResponse(
         generate_stream(),

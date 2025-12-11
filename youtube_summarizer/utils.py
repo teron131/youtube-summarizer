@@ -1,6 +1,7 @@
 """Utility functions for text cleaning, URL validation, and Chinese text conversion."""
 
 import re
+from typing import Any
 
 from opencc import OpenCC
 
@@ -91,7 +92,7 @@ def safe_truncate(text: str, max_length: int = 100) -> str:
 
     # Try to encode/decode to verify it's valid UTF-8
     try:
-        truncated.encode('utf-8')
+        truncated.encode("utf-8")
         return truncated
     except UnicodeEncodeError:
         # If we hit an encoding error, trim one more character and retry
@@ -99,7 +100,7 @@ def safe_truncate(text: str, max_length: int = 100) -> str:
         return text[:max_length - 1] if max_length > 1 else ""
 
 
-def serialize_nested(obj, depth: int = 0, max_depth: int = 5):
+def serialize_nested(obj: Any, depth: int = 0, max_depth: int = 5) -> Any:
     """Serialize nested objects with depth limit to avoid recursion errors."""
     if depth > max_depth:
         return safe_truncate(str(obj)) + "...[deep nesting]"

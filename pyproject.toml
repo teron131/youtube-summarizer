@@ -47,14 +47,73 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["youtube_summarizer"]
 
-[tool.black]
-line-length = 100
-target-version = ['py312']
-
 [tool.ruff]
-line-length = 100
+# High line-length enables manual formatting control via trailing commas:
+# - Add trailing comma → forces multi-line formatting
+# - Omit trailing comma → keeps inline (up to 320 chars)
+line-length = 180
+
+# Match project's minimum Python version
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
+select = [
+    # Ruff defaults (pyflakes + essential pycodestyle)
+    "E4", "E7", "E9", "F",
+    # High-value lints for catching bugs and improving code quality
+    "B", "B9", # flake8-bugbear: common bugs and design problems
+    "I", # isort: import sorting and organization
+    "UP", # pyupgrade: use modern Python syntax
+    "SIM", # flake8-simplify: simplify complex code
+    "C4", # flake8-comprehensions: better list/dict/set comprehensions
+    "ARG", # flake8-unused-arguments: unused function arguments
+    "DTZ", # flake8-datetimez: enforce timezone-aware datetimes
+    "G", # flake8-logging-format: logging best practices
+    "S", # flake8-bandit: security issue detection
+    "RUF", # Ruff-specific rules
+    "PT", # flake8-pytest-style: pytest best practices
+    "PIE", # flake8-pie: unnecessary code patterns
+    "T20", # flake8-print: catch print() statements in production code
+]
+
+ignore = [
+    "B008", # function call in default arg (needed for FastAPI dependencies)
+    "S101", # allow assert statements outside tests
+    "S105", # hardcoded password detection (too many false positives)
+    "S106", # hardcoded password in function args (too many false positives)
+]
+
+# Block auto-fix for changes that need careful review
+unfixable = [
+    "DTZ", # datetime timezone changes can affect business logic
+    "S", # security-related fixes should be manually reviewed
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py files commonly re-export symbols
+"__init__.py" = ["F401", "F403"]
+
+# Test files have different standards
+"tests/**/*" = [
+    "S101", # asserts are standard in tests
+    "ARG", # pytest fixtures often appear unused
+    "T20", # print debugging is fine in tests
+]
+"test_*.py" = ["S101", "ARG", "T20"]
+
+# Notebooks need looser rules
+"*.ipynb" = ["T20", "E402"]
+
+[tool.ruff.lint.isort]
+# Treat package_name as first-party for import sorting
+known-first-party = ["langchain_playground"]
+
+# Combine imports from same module: from x import a, b
+combine-as-imports = true
+
+# Deterministic sorting within import groups
+force-sort-within-sections = true
+
+[tool.ruff.format]
+# Format code examples inside docstrings
+docstring-code-format = true

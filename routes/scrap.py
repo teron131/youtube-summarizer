@@ -16,7 +16,7 @@ router = APIRouter()
 @router.post("/scrap", response_model=ScrapResponse)
 async def scrap_video(request: YouTubeRequest):
     require_env_key("SCRAPECREATORS_API_KEY")
-    start_time = datetime.now()
+    start_time = datetime.now(datetime.UTC)
 
     try:
         url = request.url.strip()
