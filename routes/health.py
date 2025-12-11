@@ -1,9 +1,10 @@
 """Health check and configuration endpoints for API monitoring."""
 
+from datetime import UTC, datetime
 import os
-from datetime import datetime
 
 from fastapi import APIRouter
+
 from routes.schema import ConfigurationResponse
 from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
@@ -45,7 +46,7 @@ async def root():
             "POST /summarize": "Full LangGraph workflow analysis",
             "POST /stream-summarize": "Streaming analysis with progress",
         },
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -54,7 +55,7 @@ async def health_check():
     return {
         "status": "healthy",
         "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "version": API_VERSION,
         "environment": {
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),

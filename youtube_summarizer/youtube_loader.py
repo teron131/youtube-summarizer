@@ -9,10 +9,10 @@ Optimized yt-dlp approach:
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import yt_dlp
 from dotenv import load_dotenv
+import yt_dlp
 
 from .transcriber import optimize_audio_for_transcription, transcribe_with_fal
 
@@ -71,7 +71,7 @@ AUDIO_YDL_OPTS = {
 }
 
 
-def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
+def get_best_thumbnail(thumbnails: list[dict[str, Any]]) -> str | None:
     """Select the best thumbnail from a list, prioritizing resolution."""
     if not thumbnails:
         return None
@@ -80,7 +80,7 @@ def get_best_thumbnail(thumbnails: List[Dict[str, Any]]) -> Optional[str]:
     return best_thumbnail.get("url")
 
 
-def _extract_yt_dlp_info(url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_yt_dlp_info(url: str, opts: dict[str, Any]) -> dict[str, Any]:
     """Extract video information using yt-dlp with given options."""
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -89,10 +89,10 @@ def _extract_yt_dlp_info(url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
         raise RuntimeError(f"yt-dlp extraction failed: {e}") from e
 
 
-def _process_subtitle_file(filepath: str) -> Optional[str]:
+def _process_subtitle_file(filepath: str) -> str | None:
     """Process subtitle file and extract clean text."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = []
             for line in f:
                 line = line.strip()
@@ -100,7 +100,7 @@ def _process_subtitle_file(filepath: str) -> Optional[str]:
                     continue
 
                 # Skip timestamp lines, numbers, and VTT headers
-                if any(pattern in line for pattern in SUBTITLE_FILTER_PATTERNS) or line.isdigit() or line.startswith("STYLE") or line.startswith("::cue"):
+                if any(pattern in line for pattern in SUBTITLE_FILTER_PATTERNS) or line.isdigit() or line.startswith(("STYLE", "::cue")):
                     continue
 
                 lines.append(line)
@@ -113,7 +113,7 @@ def _process_subtitle_file(filepath: str) -> Optional[str]:
         return None
 
 
-def extract_video_info(url: str) -> Dict[str, Any]:
+def extract_video_info(url: str) -> dict[str, Any]:
     """
     Extract basic video information using yt-dlp.
 
@@ -218,13 +218,12 @@ def download_audio(url: str) -> bytes:
                             logger.info(f"Found audio file (fallback): {downloaded_file}")
                             break
 
-                if not downloaded_file:
+                if not downloaded_file and all_files:
                     # Final fallback: take the largest file (likely the audio)
-                    if all_files:
-                        largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
-                        if os.path.getsize(largest_file) > 1024:  # At least 1KB
-                            downloaded_file = largest_file
-                            logger.info(f"Using largest file as audio: {downloaded_file}")
+                    largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
+                    if os.path.getsize(largest_file) > 1024:  # At least 1KB
+                        downloaded_file = largest_file
+                        logger.info(f"Using largest file as audio: {downloaded_file}")
 
                 if not downloaded_file:
                     raise RuntimeError(f"No audio file found after download. Files in directory: {all_files}")
@@ -250,7 +249,7 @@ def download_audio(url: str) -> bytes:
         raise RuntimeError(f"Audio download failed: {e}") from e
 
 
-def _extract_captions(info: Dict[str, Any]) -> Optional[str]:
+def _extract_captions(info: dict[str, Any]) -> str | None:
     """Extract and process captions from yt-dlp info."""
     if not info.get("requested_subtitles"):
         return None

@@ -1,8 +1,8 @@
 """Helper functions for async task execution and response formatting."""
 
 import asyncio
+from datetime import UTC, datetime
 import logging
-from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -16,19 +16,19 @@ async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
             asyncio.get_event_loop().run_in_executor(None, func, *args),
             timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError as err:
         raise HTTPException(
             status_code=408,
             detail=f"Request timed out after {timeout} seconds",
-        )
+        ) from err
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}")
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}") from e
 
 
 def get_processing_time(start_time: datetime) -> str:
-    return f"{(datetime.now() - start_time).total_seconds():.1f}s"
+    return f"{(datetime.now(UTC) - start_time).total_seconds():.1f}s"
 
 
 def _get_transcript(result) -> str | None:
@@ -64,5 +64,15 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "upload_date": data.get("publishDateText"),
         }
     except Exception as e:
-        logging.warning(f"Error parsing scraper result: {str(e)}")
-        return {"url": None, "title": None, "author": None, "transcript": _get_transcript(result), "duration": None, "thumbnail": None, "view_count": None, "like_count": None, "upload_date": None}
+        logging.warning(f"Error parsing scraper result: {e!s}")
+        return {
+            "url": None,
+            "title": None,
+            "author": None,
+            "transcript": _get_transcript(result),
+            "duration": None,
+            "thumbnail": None,
+            "view_count": None,
+            "like_count": None,
+            "upload_date": None,
+        }

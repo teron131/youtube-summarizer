@@ -18,7 +18,6 @@ import time
 from dotenv import load_dotenv
 
 from youtube_summarizer.summarizer import summarize_video
-from youtube_summarizer.utils import is_youtube_url
 
 load_dotenv()
 
@@ -42,12 +41,8 @@ def main():
 
     try:
         # Step 1: Get transcript (or use URL directly)
-        if is_youtube_url(test_url):
-            # Use URL directly - summarize_video will handle transcript extraction
-            content = test_url
-        else:
-            # Assume it's a transcript
-            content = test_url
+        # Use URL directly - summarize_video will handle transcript extraction
+        content = test_url
 
         # Step 2: Analyze with LangGraph workflow
         print("\n" + "=" * 80)
@@ -64,7 +59,7 @@ def main():
         print("=" * 80)
         print(f"\n⏱️  Total time: {elapsed:.2f}s")
         print(f"\n📝 Title: {analysis.title}")
-        print(f"\n📝 Summary:")
+        print("\n📝 Summary:")
         print(f"{analysis.summary}")
         print(f"\n🎯 Takeaways ({len(analysis.takeaways)}):")
         for i, takeaway in enumerate(analysis.takeaways, 1):

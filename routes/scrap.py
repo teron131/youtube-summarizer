@@ -1,8 +1,9 @@
 """Video scraping endpoint for extracting YouTube metadata and transcripts."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
+
 from routes.schema import ScrapResponse, YouTubeRequest
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
@@ -16,7 +17,7 @@ router = APIRouter()
 @router.post("/scrap", response_model=ScrapResponse)
 async def scrap_video(request: YouTubeRequest):
     require_env_key("SCRAPECREATORS_API_KEY")
-    start_time = datetime.now()
+    start_time = datetime.now(UTC)
 
     try:
         url = request.url.strip()
@@ -48,4 +49,4 @@ async def scrap_video(request: YouTubeRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise handle_exception(e, "Scraping")
+        raise handle_exception(e, "Scraping") from e

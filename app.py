@@ -1,12 +1,13 @@
 """YouTube Summarizer FastAPI Application"""
 
+from datetime import UTC, datetime
 import logging
 import os
-from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from log_config import setup_logging
 from routes import api_router
 
@@ -35,9 +36,9 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request, call_next):
-    start_time = datetime.now()
+    start_time = datetime.now(UTC)
     response = await call_next(request)
-    process_time = (datetime.now() - start_time).total_seconds()
+    process_time = (datetime.now(UTC) - start_time).total_seconds()
     logging.info(f"📨 {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
     return response
 
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.environ.get("PORT", 8080))
-    host = os.environ.get("HOST", "0.0.0.0")
+    host = os.environ.get("HOST", "127.0.0.1")
 
     logging.info(f"🚀 Starting {API_TITLE} v{API_VERSION} on {host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=True)
