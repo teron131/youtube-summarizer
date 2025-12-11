@@ -1,8 +1,8 @@
 """Helper functions for async task execution and response formatting."""
 
 import asyncio
+from datetime import UTC, datetime
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -16,17 +16,19 @@ async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
             asyncio.get_event_loop().run_in_executor(None, func, *args),
             timeout=timeout,
         )
-    except TimeoutError:
-        raise HTTPException(status_code=408, detail=f"Request timed out after {timeout} seconds") from None
+    except TimeoutError as err:
+        raise HTTPException(
+            status_code=408,
+            detail=f"Request timed out after {timeout} seconds",
+        ) from err
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}") from None
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)[:100]}") from e
 
 
 def get_processing_time(start_time: datetime) -> str:
-    """Calculate and format processing time."""
-    return f"{(datetime.now(timezone.utc) - start_time).total_seconds():.1f}s"
+    return f"{(datetime.now(UTC) - start_time).total_seconds():.1f}s"
 
 
 def _get_transcript(result) -> str | None:
@@ -42,18 +44,6 @@ def _get_transcript(result) -> str | None:
 
 
 def parse_scraper_result(result) -> dict[str, Any]:
-    default = {
-        "url": None,
-        "title": None,
-        "author": None,
-        "transcript": None,
-        "duration": None,
-        "thumbnail": None,
-        "view_count": None,
-        "like_count": None,
-        "upload_date": None,
-    }
-
     try:
         data = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
         channel = data.get("channel", {})
@@ -74,7 +64,15 @@ def parse_scraper_result(result) -> dict[str, Any]:
             "upload_date": data.get("publishDateText"),
         }
     except Exception as e:
-        logging.warning("Error parsing scraper result: %s", e)
-        # Try to salvage transcript at least
-        default["transcript"] = _get_transcript(result)
-        return default
+        logging.warning(f"Error parsing scraper result: {e!s}")
+        return {
+            "url": None,
+            "title": None,
+            "author": None,
+            "transcript": _get_transcript(result),
+            "duration": None,
+            "thumbnail": None,
+            "view_count": None,
+            "like_count": None,
+            "upload_date": None,
+        }

@@ -109,7 +109,7 @@ def _process_subtitle_file(filepath: str) -> str | None:
             return subtitle_text if subtitle_text.strip() else None
 
     except Exception as e:
-        logger.warning("Failed to process subtitle file %s: %s", filepath, e)
+        logger.warning(f"Failed to process subtitle file {filepath}: {e}")
         return None
 
 
@@ -126,7 +126,7 @@ def extract_video_info(url: str) -> dict[str, Any]:
     Raises:
         RuntimeError: If video info extraction fails
     """
-    logger.info("Extracting video info for: %s", url)
+    logger.info(f"Extracting video info for: {url}")
 
     try:
         info = _extract_yt_dlp_info(url, {"quiet": True, "no_warnings": True})
@@ -146,7 +146,7 @@ def extract_video_info(url: str) -> dict[str, Any]:
             "url": url,
         }
 
-        logger.info("Video info extracted: %s by %s", metadata["title"], metadata["author"])
+        logger.info(f"Video info extracted: {metadata['title']} by {metadata['author']}")
         return metadata
 
     except Exception as e:
@@ -161,7 +161,7 @@ def download_audio(url: str) -> bytes:
     import os
     import tempfile
 
-    logger.info("Downloading audio for: %s", url)
+    logger.info(f"Downloading audio for: {url}")
 
     # Simplified and more reliable configuration
     download_opts = {
@@ -197,7 +197,7 @@ def download_audio(url: str) -> bytes:
 
                 # List all files in the temp directory for debugging
                 all_files = os.listdir(".")
-                logger.info("Files in temp directory: %s", all_files)
+                logger.info(f"Files in temp directory: {all_files}")
 
                 # Look for any audio files using glob patterns
                 audio_patterns = ["*.m4a", "*.mp3", "*.webm", "*.opus", "*.aac", "*.wav"]
@@ -207,7 +207,7 @@ def download_audio(url: str) -> bytes:
                     matching_files = glob.glob(pattern)
                     if matching_files:
                         downloaded_file = matching_files[0]  # Take the first match
-                        logger.info("Found audio file: %s", downloaded_file)
+                        logger.info(f"Found audio file: {downloaded_file}")
                         break
 
                 # Fallback: look for files with 'audio' in the name
@@ -215,7 +215,7 @@ def download_audio(url: str) -> bytes:
                     for filename in all_files:
                         if any(ext in filename.lower() for ext in [".m4a", ".mp3", ".webm", ".opus", ".aac", ".wav"]):
                             downloaded_file = filename
-                            logger.info("Found audio file (fallback): %s", downloaded_file)
+                            logger.info(f"Found audio file (fallback): {downloaded_file}")
                             break
 
                 if not downloaded_file and all_files:
@@ -223,14 +223,14 @@ def download_audio(url: str) -> bytes:
                     largest_file = max(all_files, key=lambda f: os.path.getsize(f) if os.path.isfile(f) else 0)
                     if os.path.getsize(largest_file) > 1024:  # At least 1KB
                         downloaded_file = largest_file
-                        logger.info("Using largest file as audio: %s", downloaded_file)
+                        logger.info(f"Using largest file as audio: {downloaded_file}")
 
                 if not downloaded_file:
                     raise RuntimeError(f"No audio file found after download. Files in directory: {all_files}")
 
                 # Read the file into memory
                 file_path = os.path.join(temp_dir, downloaded_file)
-                logger.info("Reading audio file: %s", file_path)
+                logger.info(f"Reading audio file: {file_path}")
 
                 with open(file_path, "rb") as f:
                     audio_data = f.read()
@@ -238,14 +238,14 @@ def download_audio(url: str) -> bytes:
                 if len(audio_data) == 0:
                     raise RuntimeError(f"Downloaded file is empty: {downloaded_file}")
 
-                logger.info("Successfully downloaded %s bytes of audio data", len(audio_data))
+                logger.info(f"Successfully downloaded {len(audio_data)} bytes of audio data")
                 return audio_data
 
             finally:
                 os.chdir(original_cwd)
 
     except Exception as e:
-        logger.error("Audio download failed: %s", e)
+        logger.error(f"Audio download failed: {e}")
         raise RuntimeError(f"Audio download failed: {e}") from e
 
 
@@ -259,17 +259,17 @@ def _extract_captions(info: dict[str, Any]) -> str | None:
         if not filepath or not os.path.exists(filepath):
             continue
 
-        logger.info("Processing caption file for %s: %s", lang, filepath)
+        logger.info(f"Processing caption file for {lang}: {filepath}")
         subtitle = _process_subtitle_file(filepath)
 
         # Clean up the subtitle file
         try:
             os.remove(filepath)
         except Exception as e:
-            logger.warning("Failed to clean up subtitle file %s: %s", filepath, e)
+            logger.warning(f"Failed to clean up subtitle file {filepath}: {e}")
 
         if subtitle and subtitle.strip():
-            logger.info("Successfully loaded caption %s, length: %s characters", lang, len(subtitle))
+            logger.info(f"Successfully loaded caption {lang}, length: {len(subtitle)} characters")
             return subtitle
 
     return None
@@ -288,7 +288,7 @@ def youtube_loader(url: str) -> str:
     Raises:
         RuntimeError: If video loading fails
     """
-    logger.info("Loading YouTube video: %s", url)
+    logger.info(f"Loading YouTube video: {url}")
 
     try:
         # Step 1: Extract metadata and captions
@@ -305,7 +305,7 @@ def youtube_loader(url: str) -> str:
 
         duration = info.get("duration") or None
 
-        logger.info("Video accessible - Title: %s, Author: %s, Duration: %ss", title, author, duration)
+        logger.info(f"Video accessible - Title: {title}, Author: {author}, Duration: {duration}s")
 
         # Step 2: Try to extract captions
         subtitle = _extract_captions(info)

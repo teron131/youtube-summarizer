@@ -1,15 +1,16 @@
 """Request and Response models for the API"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, model_validator
+
 from youtube_summarizer.summarizer import Analysis, Quality
 
 
 class BaseResponse(BaseModel):
     status: str = Field(description="Response status: success or error")
     message: str = Field(description="Human-readable message")
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class YouTubeRequest(BaseModel):

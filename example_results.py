@@ -20,59 +20,244 @@ result_with_chapters = YouTubeScrapperResult(
     durationFormatted="00:06:32",
     transcript=[
         TranscriptSegment(text="[Music]", startMs="5303", endMs="5840", startTimeText="0:05"),
-        TranscriptSegment(text="Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0", startMs="5840", endMs="13200", startTimeText="0:05"),
-        TranscriptSegment(text="ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0", startMs="13200", endMs="19279", startTimeText="0:13"),
-        TranscriptSegment(text="accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0", startMs="19280", endMs="26400", startTimeText="0:19"),
-        TranscriptSegment(text="data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0", startMs="26400", endMs="34079", startTimeText="0:26"),
-        TranscriptSegment(text="AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0", startMs="34080", endMs="40640", startTimeText="0:34"),
-        TranscriptSegment(text="to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0", startMs="40640", endMs="46400", startTimeText="0:40"),
-        TranscriptSegment(text="power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0", startMs="46400", endMs="54320", startTimeText="0:46"),
-        TranscriptSegment(text="delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0", startMs="54320", endMs="62640", startTimeText="0:54"),
-        TranscriptSegment(text="Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0", startMs="62640", endMs="69920", startTimeText="1:02"),
+        TranscriptSegment(
+            text="Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0", startMs="5840", endMs="13200", startTimeText="0:05"
+        ),
+        TranscriptSegment(
+            text="ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0", startMs="13200", endMs="19279", startTimeText="0:13"
+        ),
+        TranscriptSegment(
+            text="accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0", startMs="19280", endMs="26400", startTimeText="0:19"
+        ),
+        TranscriptSegment(
+            text="data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0",
+            startMs="26400",
+            endMs="34079",
+            startTimeText="0:26",
+        ),
+        TranscriptSegment(
+            text="AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0", startMs="34080", endMs="40640", startTimeText="0:34"
+        ),
+        TranscriptSegment(
+            text="to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0", startMs="40640", endMs="46400", startTimeText="0:40"
+        ),
+        TranscriptSegment(
+            text="power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0",
+            startMs="46400",
+            endMs="54320",
+            startTimeText="0:46",
+        ),
+        TranscriptSegment(
+            text="delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0",
+            startMs="54320",
+            endMs="62640",
+            startTimeText="0:54",
+        ),
+        TranscriptSegment(
+            text="Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0",
+            startMs="62640",
+            endMs="69920",
+            startTimeText="1:02",
+        ),
         TranscriptSegment(text="a reference carrier board, an active\xa0\nheat sink with a fan, and a power supply.\xa0\xa0", startMs="69920", endMs="77119", startTimeText="1:09"),
-        TranscriptSegment(text="If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0", startMs="77120", endMs="82880", startTimeText="1:17"),
-        TranscriptSegment(text="and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0", startMs="82880", endMs="89119", startTimeText="1:22"),
-        TranscriptSegment(text="placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0", startMs="89120", endMs="94560", startTimeText="1:29"),
-        TranscriptSegment(text="super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0", startMs="94560", endMs="100320", startTimeText="1:34"),
-        TranscriptSegment(text="we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0", startMs="100320", endMs="110320", startTimeText="1:40"),
-        TranscriptSegment(text="a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0", startMs="110320", endMs="117600", startTimeText="1:50"),
-        TranscriptSegment(text="kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0", startMs="117600", endMs="125600", startTimeText="1:57"),
-        TranscriptSegment(text="pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0", startMs="125600", endMs="131440", startTimeText="2:05"),
-        TranscriptSegment(text="buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0", startMs="131440", endMs="139200", startTimeText="2:11"),
+        TranscriptSegment(
+            text="If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0", startMs="77120", endMs="82880", startTimeText="1:17"
+        ),
+        TranscriptSegment(
+            text="and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0", startMs="82880", endMs="89119", startTimeText="1:22"
+        ),
+        TranscriptSegment(
+            text="placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0", startMs="89120", endMs="94560", startTimeText="1:29"
+        ),
+        TranscriptSegment(
+            text="super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0",
+            startMs="94560",
+            endMs="100320",
+            startTimeText="1:34",
+        ),
+        TranscriptSegment(
+            text="we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0", startMs="100320", endMs="110320", startTimeText="1:40"
+        ),
+        TranscriptSegment(
+            text="a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0",
+            startMs="110320",
+            endMs="117600",
+            startTimeText="1:50",
+        ),
+        TranscriptSegment(
+            text="kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0",
+            startMs="117600",
+            endMs="125600",
+            startTimeText="1:57",
+        ),
+        TranscriptSegment(
+            text="pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0",
+            startMs="125600",
+            endMs="131440",
+            startTimeText="2:05",
+        ),
+        TranscriptSegment(
+            text="buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0", startMs="131440", endMs="139200", startTimeText="2:11"
+        ),
         TranscriptSegment(text="small booklet that includes a link\xa0\nto step-by-step instructions. First,\xa0\xa0", startMs="139200", endMs="143920", startTimeText="2:19"),
-        TranscriptSegment(text="download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0", startMs="143920", endMs="150240", startTimeText="2:23"),
-        TranscriptSegment(text="to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0", startMs="150240", endMs="157040", startTimeText="2:30"),
-        TranscriptSegment(text="just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0", startMs="157040", endMs="163680", startTimeText="2:37"),
-        TranscriptSegment(text="you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0", startMs="163680", endMs="168640", startTimeText="2:43"),
-        TranscriptSegment(text="You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0", startMs="168640", endMs="177200", startTimeText="2:48"),
-        TranscriptSegment(text="experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0", startMs="177200", endMs="184480", startTimeText="2:57"),
-        TranscriptSegment(text="Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0", startMs="184480", endMs="191360", startTimeText="3:04"),
-        TranscriptSegment(text="sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0", startMs="191360", endMs="199040", startTimeText="3:11"),
-        TranscriptSegment(text="AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0", startMs="199040", endMs="206560", startTimeText="3:19"),
-        TranscriptSegment(text="and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0", startMs="206560", endMs="214480", startTimeText="3:26"),
-        TranscriptSegment(text="foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0", startMs="214480", endMs="225440", startTimeText="3:34"),
-        TranscriptSegment(text="You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0", startMs="225440", endMs="231120", startTimeText="3:45"),
-        TranscriptSegment(text="existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0", startMs="231120", endMs="238879", startTimeText="3:51"),
-        TranscriptSegment(text="journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0", startMs="238880", endMs="246080", startTimeText="3:58"),
-        TranscriptSegment(text="We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0", startMs="246080", endMs="252560", startTimeText="4:06"),
+        TranscriptSegment(
+            text="download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0",
+            startMs="143920",
+            endMs="150240",
+            startTimeText="2:23",
+        ),
+        TranscriptSegment(
+            text="to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0",
+            startMs="150240",
+            endMs="157040",
+            startTimeText="2:30",
+        ),
+        TranscriptSegment(
+            text="just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0",
+            startMs="157040",
+            endMs="163680",
+            startTimeText="2:37",
+        ),
+        TranscriptSegment(
+            text="you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0", startMs="163680", endMs="168640", startTimeText="2:43"
+        ),
+        TranscriptSegment(
+            text="You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0", startMs="168640", endMs="177200", startTimeText="2:48"
+        ),
+        TranscriptSegment(
+            text="experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0",
+            startMs="177200",
+            endMs="184480",
+            startTimeText="2:57",
+        ),
+        TranscriptSegment(
+            text="Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0", startMs="184480", endMs="191360", startTimeText="3:04"
+        ),
+        TranscriptSegment(
+            text="sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0",
+            startMs="191360",
+            endMs="199040",
+            startTimeText="3:11",
+        ),
+        TranscriptSegment(
+            text="AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0", startMs="199040", endMs="206560", startTimeText="3:19"
+        ),
+        TranscriptSegment(
+            text="and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0",
+            startMs="206560",
+            endMs="214480",
+            startTimeText="3:26",
+        ),
+        TranscriptSegment(
+            text="foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0",
+            startMs="214480",
+            endMs="225440",
+            startTimeText="3:34",
+        ),
+        TranscriptSegment(
+            text="You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0",
+            startMs="225440",
+            endMs="231120",
+            startTimeText="3:45",
+        ),
+        TranscriptSegment(
+            text="existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0",
+            startMs="231120",
+            endMs="238879",
+            startTimeText="3:51",
+        ),
+        TranscriptSegment(
+            text="journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0",
+            startMs="238880",
+            endMs="246080",
+            startTimeText="3:58",
+        ),
+        TranscriptSegment(
+            text="We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0", startMs="246080", endMs="252560", startTimeText="4:06"
+        ),
         TranscriptSegment(text="6000 and inferencing on Jetson Thor.\nThe AI blueprint for Video Search and\xa0\xa0", startMs="252560", endMs="259120", startTimeText="4:12"),
-        TranscriptSegment(text="Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0", startMs="259120", endMs="266960", startTimeText="4:19"),
-        TranscriptSegment(text="AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0", startMs="266960", endMs="273199", startTimeText="4:26"),
-        TranscriptSegment(text="and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0", startMs="273200", endMs="281280", startTimeText="4:33"),
-        TranscriptSegment(text="many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0", startMs="281280", endMs="288080", startTimeText="4:41"),
-        TranscriptSegment(text="and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0", startMs="288080", endMs="296080", startTimeText="4:48"),
-        TranscriptSegment(text="Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0", startMs="296080", endMs="303919", startTimeText="4:56"),
-        TranscriptSegment(text="The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0", startMs="303920", endMs="311520", startTimeText="5:03"),
-        TranscriptSegment(text="giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0", startMs="311520", endMs="319120", startTimeText="5:11"),
-        TranscriptSegment(text="high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0", startMs="319120", endMs="326000", startTimeText="5:19"),
-        TranscriptSegment(text="and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0", startMs="326000", endMs="333520", startTimeText="5:26"),
-        TranscriptSegment(text="Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0", startMs="333520", endMs="340080", startTimeText="5:33"),
-        TranscriptSegment(text="100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0", startMs="340080", endMs="349360", startTimeText="5:40"),
-        TranscriptSegment(text="There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0", startMs="349360", endMs="356960", startTimeText="5:49"),
-        TranscriptSegment(text="requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0", startMs="356960", endMs="369199", startTimeText="5:56"),
+        TranscriptSegment(
+            text="Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0",
+            startMs="259120",
+            endMs="266960",
+            startTimeText="4:19",
+        ),
+        TranscriptSegment(
+            text="AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0", startMs="266960", endMs="273199", startTimeText="4:26"
+        ),
+        TranscriptSegment(
+            text="and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0", startMs="273200", endMs="281280", startTimeText="4:33"
+        ),
+        TranscriptSegment(
+            text="many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0",
+            startMs="281280",
+            endMs="288080",
+            startTimeText="4:41",
+        ),
+        TranscriptSegment(
+            text="and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0",
+            startMs="288080",
+            endMs="296080",
+            startTimeText="4:48",
+        ),
+        TranscriptSegment(
+            text="Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0", startMs="296080", endMs="303919", startTimeText="4:56"
+        ),
+        TranscriptSegment(
+            text="The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0",
+            startMs="303920",
+            endMs="311520",
+            startTimeText="5:03",
+        ),
+        TranscriptSegment(
+            text="giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0",
+            startMs="311520",
+            endMs="319120",
+            startTimeText="5:11",
+        ),
+        TranscriptSegment(
+            text="high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0",
+            startMs="319120",
+            endMs="326000",
+            startTimeText="5:19",
+        ),
+        TranscriptSegment(
+            text="and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0",
+            startMs="326000",
+            endMs="333520",
+            startTimeText="5:26",
+        ),
+        TranscriptSegment(
+            text="Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0",
+            startMs="333520",
+            endMs="340080",
+            startTimeText="5:33",
+        ),
+        TranscriptSegment(
+            text="100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0",
+            startMs="340080",
+            endMs="349360",
+            startTimeText="5:40",
+        ),
+        TranscriptSegment(
+            text="There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0",
+            startMs="349360",
+            endMs="356960",
+            startTimeText="5:49",
+        ),
+        TranscriptSegment(
+            text="requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0", startMs="356960", endMs="369199", startTimeText="5:56"
+        ),
         TranscriptSegment(text="That's a quick overview of the\xa0\nJetson AGX Thor Developer Kit,\xa0\xa0", startMs="369200", endMs="373280", startTimeText="6:09"),
-        TranscriptSegment(text="the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0", startMs="373280", endMs="379360", startTimeText="6:13"),
-        TranscriptSegment(text="developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.", startMs="379360", endMs="388400", startTimeText="6:19"),
+        TranscriptSegment(
+            text="the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0",
+            startMs="373280",
+            endMs="379360",
+            startTimeText="6:13",
+        ),
+        TranscriptSegment(
+            text="developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.", startMs="379360", endMs="388400", startTimeText="6:19"
+        ),
     ],
     transcript_only_text="[Music] Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0 ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0 accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0 data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0 AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0 to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0 power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0 delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0 Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0 a reference carrier board, an active\xa0\nheat sink with a fan, and a power supply.\xa0\xa0 If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0 and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0 placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0 super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0 we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0 a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0 kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0 pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0 buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0 small booklet that includes a link\xa0\nto step-by-step instructions. First,\xa0\xa0 download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0 to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0 just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0 you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0 You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0 experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0 Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0 sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0 AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0 and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0 foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0 You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0 existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0 journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0 We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0 6000 and inferencing on Jetson Thor.\nThe AI blueprint for Video Search and\xa0\xa0 Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0 AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0 and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0 many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0 and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0 Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0 The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0 giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0 high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0 and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0 Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0 100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0 There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0 requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0 That's a quick overview of the\xa0\nJetson AGX Thor Developer Kit,\xa0\xa0 the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0 developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.",
 )
@@ -89,59 +274,244 @@ result_without_chapters = YouTubeScrapperResult(
     durationFormatted="00:06:32",
     transcript=[
         TranscriptSegment(text="[Music]", startMs="5303", endMs="5840", startTimeText="0:05"),
-        TranscriptSegment(text="Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0", startMs="5840", endMs="13200", startTimeText="0:05"),
-        TranscriptSegment(text="ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0", startMs="13200", endMs="19279", startTimeText="0:13"),
-        TranscriptSegment(text="accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0", startMs="19280", endMs="26400", startTimeText="0:19"),
-        TranscriptSegment(text="data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0", startMs="26400", endMs="34079", startTimeText="0:26"),
-        TranscriptSegment(text="AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0", startMs="34080", endMs="40640", startTimeText="0:34"),
-        TranscriptSegment(text="to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0", startMs="40640", endMs="46400", startTimeText="0:40"),
-        TranscriptSegment(text="power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0", startMs="46400", endMs="54320", startTimeText="0:46"),
-        TranscriptSegment(text="delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0", startMs="54320", endMs="62640", startTimeText="0:54"),
-        TranscriptSegment(text="Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0", startMs="62640", endMs="69920", startTimeText="1:02"),
+        TranscriptSegment(
+            text="Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0", startMs="5840", endMs="13200", startTimeText="0:05"
+        ),
+        TranscriptSegment(
+            text="ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0", startMs="13200", endMs="19279", startTimeText="0:13"
+        ),
+        TranscriptSegment(
+            text="accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0", startMs="19280", endMs="26400", startTimeText="0:19"
+        ),
+        TranscriptSegment(
+            text="data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0",
+            startMs="26400",
+            endMs="34079",
+            startTimeText="0:26",
+        ),
+        TranscriptSegment(
+            text="AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0", startMs="34080", endMs="40640", startTimeText="0:34"
+        ),
+        TranscriptSegment(
+            text="to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0", startMs="40640", endMs="46400", startTimeText="0:40"
+        ),
+        TranscriptSegment(
+            text="power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0",
+            startMs="46400",
+            endMs="54320",
+            startTimeText="0:46",
+        ),
+        TranscriptSegment(
+            text="delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0",
+            startMs="54320",
+            endMs="62640",
+            startTimeText="0:54",
+        ),
+        TranscriptSegment(
+            text="Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0",
+            startMs="62640",
+            endMs="69920",
+            startTimeText="1:02",
+        ),
         TranscriptSegment(text="a reference carrier board, an active\xa0\nheat sink with a fan, and a power supply.\xa0\xa0", startMs="69920", endMs="77119", startTimeText="1:09"),
-        TranscriptSegment(text="If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0", startMs="77120", endMs="82880", startTimeText="1:17"),
-        TranscriptSegment(text="and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0", startMs="82880", endMs="89119", startTimeText="1:22"),
-        TranscriptSegment(text="placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0", startMs="89120", endMs="94560", startTimeText="1:29"),
-        TranscriptSegment(text="super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0", startMs="94560", endMs="100320", startTimeText="1:34"),
-        TranscriptSegment(text="we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0", startMs="100320", endMs="110320", startTimeText="1:40"),
-        TranscriptSegment(text="a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0", startMs="110320", endMs="117600", startTimeText="1:50"),
-        TranscriptSegment(text="kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0", startMs="117600", endMs="125600", startTimeText="1:57"),
-        TranscriptSegment(text="pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0", startMs="125600", endMs="131440", startTimeText="2:05"),
-        TranscriptSegment(text="buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0", startMs="131440", endMs="139200", startTimeText="2:11"),
+        TranscriptSegment(
+            text="If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0", startMs="77120", endMs="82880", startTimeText="1:17"
+        ),
+        TranscriptSegment(
+            text="and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0", startMs="82880", endMs="89119", startTimeText="1:22"
+        ),
+        TranscriptSegment(
+            text="placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0", startMs="89120", endMs="94560", startTimeText="1:29"
+        ),
+        TranscriptSegment(
+            text="super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0",
+            startMs="94560",
+            endMs="100320",
+            startTimeText="1:34",
+        ),
+        TranscriptSegment(
+            text="we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0", startMs="100320", endMs="110320", startTimeText="1:40"
+        ),
+        TranscriptSegment(
+            text="a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0",
+            startMs="110320",
+            endMs="117600",
+            startTimeText="1:50",
+        ),
+        TranscriptSegment(
+            text="kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0",
+            startMs="117600",
+            endMs="125600",
+            startTimeText="1:57",
+        ),
+        TranscriptSegment(
+            text="pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0",
+            startMs="125600",
+            endMs="131440",
+            startTimeText="2:05",
+        ),
+        TranscriptSegment(
+            text="buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0", startMs="131440", endMs="139200", startTimeText="2:11"
+        ),
         TranscriptSegment(text="small booklet that includes a link\xa0\nto step-by-step instructions. First,\xa0\xa0", startMs="139200", endMs="143920", startTimeText="2:19"),
-        TranscriptSegment(text="download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0", startMs="143920", endMs="150240", startTimeText="2:23"),
-        TranscriptSegment(text="to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0", startMs="150240", endMs="157040", startTimeText="2:30"),
-        TranscriptSegment(text="just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0", startMs="157040", endMs="163680", startTimeText="2:37"),
-        TranscriptSegment(text="you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0", startMs="163680", endMs="168640", startTimeText="2:43"),
-        TranscriptSegment(text="You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0", startMs="168640", endMs="177200", startTimeText="2:48"),
-        TranscriptSegment(text="experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0", startMs="177200", endMs="184480", startTimeText="2:57"),
-        TranscriptSegment(text="Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0", startMs="184480", endMs="191360", startTimeText="3:04"),
-        TranscriptSegment(text="sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0", startMs="191360", endMs="199040", startTimeText="3:11"),
-        TranscriptSegment(text="AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0", startMs="199040", endMs="206560", startTimeText="3:19"),
-        TranscriptSegment(text="and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0", startMs="206560", endMs="214480", startTimeText="3:26"),
-        TranscriptSegment(text="foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0", startMs="214480", endMs="225440", startTimeText="3:34"),
-        TranscriptSegment(text="You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0", startMs="225440", endMs="231120", startTimeText="3:45"),
-        TranscriptSegment(text="existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0", startMs="231120", endMs="238879", startTimeText="3:51"),
-        TranscriptSegment(text="journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0", startMs="238880", endMs="246080", startTimeText="3:58"),
-        TranscriptSegment(text="We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0", startMs="246080", endMs="252560", startTimeText="4:06"),
+        TranscriptSegment(
+            text="download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0",
+            startMs="143920",
+            endMs="150240",
+            startTimeText="2:23",
+        ),
+        TranscriptSegment(
+            text="to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0",
+            startMs="150240",
+            endMs="157040",
+            startTimeText="2:30",
+        ),
+        TranscriptSegment(
+            text="just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0",
+            startMs="157040",
+            endMs="163680",
+            startTimeText="2:37",
+        ),
+        TranscriptSegment(
+            text="you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0", startMs="163680", endMs="168640", startTimeText="2:43"
+        ),
+        TranscriptSegment(
+            text="You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0", startMs="168640", endMs="177200", startTimeText="2:48"
+        ),
+        TranscriptSegment(
+            text="experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0",
+            startMs="177200",
+            endMs="184480",
+            startTimeText="2:57",
+        ),
+        TranscriptSegment(
+            text="Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0", startMs="184480", endMs="191360", startTimeText="3:04"
+        ),
+        TranscriptSegment(
+            text="sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0",
+            startMs="191360",
+            endMs="199040",
+            startTimeText="3:11",
+        ),
+        TranscriptSegment(
+            text="AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0", startMs="199040", endMs="206560", startTimeText="3:19"
+        ),
+        TranscriptSegment(
+            text="and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0",
+            startMs="206560",
+            endMs="214480",
+            startTimeText="3:26",
+        ),
+        TranscriptSegment(
+            text="foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0",
+            startMs="214480",
+            endMs="225440",
+            startTimeText="3:34",
+        ),
+        TranscriptSegment(
+            text="You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0",
+            startMs="225440",
+            endMs="231120",
+            startTimeText="3:45",
+        ),
+        TranscriptSegment(
+            text="existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0",
+            startMs="231120",
+            endMs="238879",
+            startTimeText="3:51",
+        ),
+        TranscriptSegment(
+            text="journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0",
+            startMs="238880",
+            endMs="246080",
+            startTimeText="3:58",
+        ),
+        TranscriptSegment(
+            text="We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0", startMs="246080", endMs="252560", startTimeText="4:06"
+        ),
         TranscriptSegment(text="6000 and inferencing on Jetson Thor.\nThe AI blueprint for Video Search and\xa0\xa0", startMs="252560", endMs="259120", startTimeText="4:12"),
-        TranscriptSegment(text="Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0", startMs="259120", endMs="266960", startTimeText="4:19"),
-        TranscriptSegment(text="AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0", startMs="266960", endMs="273199", startTimeText="4:26"),
-        TranscriptSegment(text="and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0", startMs="273200", endMs="281280", startTimeText="4:33"),
-        TranscriptSegment(text="many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0", startMs="281280", endMs="288080", startTimeText="4:41"),
-        TranscriptSegment(text="and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0", startMs="288080", endMs="296080", startTimeText="4:48"),
-        TranscriptSegment(text="Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0", startMs="296080", endMs="303919", startTimeText="4:56"),
-        TranscriptSegment(text="The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0", startMs="303920", endMs="311520", startTimeText="5:03"),
-        TranscriptSegment(text="giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0", startMs="311520", endMs="319120", startTimeText="5:11"),
-        TranscriptSegment(text="high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0", startMs="319120", endMs="326000", startTimeText="5:19"),
-        TranscriptSegment(text="and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0", startMs="326000", endMs="333520", startTimeText="5:26"),
-        TranscriptSegment(text="Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0", startMs="333520", endMs="340080", startTimeText="5:33"),
-        TranscriptSegment(text="100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0", startMs="340080", endMs="349360", startTimeText="5:40"),
-        TranscriptSegment(text="There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0", startMs="349360", endMs="356960", startTimeText="5:49"),
-        TranscriptSegment(text="requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0", startMs="356960", endMs="369199", startTimeText="5:56"),
+        TranscriptSegment(
+            text="Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0",
+            startMs="259120",
+            endMs="266960",
+            startTimeText="4:19",
+        ),
+        TranscriptSegment(
+            text="AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0", startMs="266960", endMs="273199", startTimeText="4:26"
+        ),
+        TranscriptSegment(
+            text="and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0", startMs="273200", endMs="281280", startTimeText="4:33"
+        ),
+        TranscriptSegment(
+            text="many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0",
+            startMs="281280",
+            endMs="288080",
+            startTimeText="4:41",
+        ),
+        TranscriptSegment(
+            text="and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0",
+            startMs="288080",
+            endMs="296080",
+            startTimeText="4:48",
+        ),
+        TranscriptSegment(
+            text="Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0", startMs="296080", endMs="303919", startTimeText="4:56"
+        ),
+        TranscriptSegment(
+            text="The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0",
+            startMs="303920",
+            endMs="311520",
+            startTimeText="5:03",
+        ),
+        TranscriptSegment(
+            text="giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0",
+            startMs="311520",
+            endMs="319120",
+            startTimeText="5:11",
+        ),
+        TranscriptSegment(
+            text="high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0",
+            startMs="319120",
+            endMs="326000",
+            startTimeText="5:19",
+        ),
+        TranscriptSegment(
+            text="and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0",
+            startMs="326000",
+            endMs="333520",
+            startTimeText="5:26",
+        ),
+        TranscriptSegment(
+            text="Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0",
+            startMs="333520",
+            endMs="340080",
+            startTimeText="5:33",
+        ),
+        TranscriptSegment(
+            text="100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0",
+            startMs="340080",
+            endMs="349360",
+            startTimeText="5:40",
+        ),
+        TranscriptSegment(
+            text="There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0",
+            startMs="349360",
+            endMs="356960",
+            startTimeText="5:49",
+        ),
+        TranscriptSegment(
+            text="requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0", startMs="356960", endMs="369199", startTimeText="5:56"
+        ),
         TranscriptSegment(text="That's a quick overview of the\xa0\nJetson AGX Thor Developer Kit,\xa0\xa0", startMs="369200", endMs="373280", startTimeText="6:09"),
-        TranscriptSegment(text="the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0", startMs="373280", endMs="379360", startTimeText="6:13"),
-        TranscriptSegment(text="developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.", startMs="379360", endMs="388400", startTimeText="6:19"),
+        TranscriptSegment(
+            text="the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0",
+            startMs="373280",
+            endMs="379360",
+            startTimeText="6:13",
+        ),
+        TranscriptSegment(
+            text="developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.", startMs="379360", endMs="388400", startTimeText="6:19"
+        ),
     ],
     transcript_only_text="[Music] Hi, I'm Leela with NVIDIA, and this is the Jetson\xa0\nAGX Thor Developer Kit. Jetson Thor is the\xa0\xa0 ultimate platform for humanoid robotics. It's\xa0\npart of NVIDIA's three-computer solution for\xa0\xa0 accelerating physical AI: NVIDIA DGX for\xa0\ntraining, NVIDIA Omniverse for synthetic\xa0\xa0 data generation and physical AI simulation, and\xa0\nNVIDIA Jetson Thor for runtime robotics. Jetson\xa0\xa0 AGX Thor is the ideal runtime computer for any\xa0\nkind of physical AI application, from humanoids\xa0\xa0 to Edge AI agents. It gives you unmatched\xa0\nperformance and scalability in a compact,\xa0\xa0 power-efficient form factor. Plus, it's powered by\xa0\nthe advanced Blackwell GPU and 128 GB of memory,\xa0\xa0 delivering up to 2070 FP4 TFLOPS of AI compute to\xa0\neffortlessly run the latest generative AI models.\xa0 Let's take a closer look at the Jetson AGX Thor\xa0\nDeveloper Kit. It includes a Jetson T5000 module,\xa0\xa0 a reference carrier board, an active\xa0\nheat sink with a fan, and a power supply.\xa0\xa0 If you want to set up with a monitor, you'll\xa0\nneed to provide a computer display, keyboard,\xa0\xa0 and mouse to get started. To make your setup\xa0\nprocess as smooth as possible, we've conveniently\xa0\xa0 placed all the I/O ports on one side of the\xa0\nboard. This thoughtful design choice makes it\xa0\xa0 super easy to connect your sensors and manage your\xa0\nwiring when building your robot. Starting here,\xa0\xa0 we see two USB-A ports, an Ethernet port, a\xa0\nDisplayPort, an HDMI port, two USB-C ports,\xa0\xa0 a QSFP slot, and a Micro-Fit port for extending\xa0\nthe board's power if needed. Under the developer\xa0\xa0 kit, we have an M.2 key M slot with a populated\xa0\n1TB NVMe storage and an M.2 key E slot with a\xa0\xa0 pre-installed wireless networking card. On the\xa0\nother side of the developer kit, there are three\xa0\xa0 buttons for power, force recovery, and reset.\nIt's easy to get started. In the box is a\xa0\xa0 small booklet that includes a link\xa0\nto step-by-step instructions. First,\xa0\xa0 download the latest NVIDIA JetPack 7 ISO image\xa0\nfrom the JetPack SDK download page and flash it\xa0\xa0 to a USB drive to install on your developer kit.\xa0\nAfter attaching your monitor, keyboard, and mouse,\xa0\xa0 just connect the power supply and your developer\xa0\nkit will power on automatically. On first boot,\xa0\xa0 you'll be prompted to choose a username,\xa0\npassword, and other basic information.\xa0\xa0 You can also set up your Wi-Fi at this time.\nJetson Thor delivers a seamless cloud-to-edge\xa0\xa0 experience by running the NVIDIA AI software stack\xa0\nfor physical AI applications. This includes NVIDIA\xa0\xa0 Isaac for robotics, NVIDIA Metropolis for video\xa0\nanalytics AI agents, and NVIDIA Holoscan for\xa0\xa0 sensor processing. With up to 7.5x the performance\xa0\nof Jetson AGX Orin, Jetson Thor can run all modern\xa0\xa0 AI models from vision-language-action models\xa0\nlike NVIDIA Isaac GR00T N1 to all popular LLMs\xa0\xa0 and VLMs. NVIDIA Isaac GR00Tis redefining the\xa0\nfuture of robotics with four key pillars: robotic\xa0\xa0 foundational models, synthetic data pipelines, a\xa0\nsimulation environment, and a runtime computer.\xa0\xa0 You can also accelerate your software development\xa0\nby tethering the developer kit directly to any\xa0\xa0 existing robot. Here, NVIDIA Isaac GR00T N1 is\xa0\nrunning on Thor. To show a developer's end-to-end\xa0\xa0 journey, we've fine-tuned GR00T N1 for picking up\xa0\na nut and pouring it in Isaac Sim and Isaac Lab.\xa0\xa0 We've also implemented a hardware-in-the-loop\xa0\nscenario running NVIDIA Omniverse on RTX Pro\xa0\xa0 6000 and inferencing on Jetson Thor.\nThe AI blueprint for Video Search and\xa0\xa0 Summarization (VSS) from NVIDIA Metropolis gives\xa0\nyou the tools to build and deploy video analytics\xa0\xa0 AI agents that can perform contextualized\xa0\nreal-time alerts, video summarization,\xa0\xa0 and Q&A by analyzing live camera streams. VSS\xa0\nis powering visual agent workforces spanning\xa0\xa0 many use cases, including visual inspection and\xa0\nworker safety in manufacturing, fan engagement\xa0\xa0 and player analytics in live sports, and improved\xa0\nemergency response times for roadway incidents.\xa0\xa0 Here you can see VSS running locally on Jetson\xa0\nThor, making Agentic AI possible for the edge.\xa0 The NVIDIA Holoscan platform is built to simplify\xa0\nand scale edge AI on enterprise-grade hardware,\xa0\xa0 giving you a high-performance edge solution for\xa0\nreal-time AI. With Holoscan Sensor Bridge handling\xa0\xa0 high-throughput I/O from sensors, you can stream\xa0\nsensor data directly into low-latency pipelines\xa0\xa0 and run inference on NVIDIA Thor with minimum CPU\xa0\nusage. Let's take a closer look at a 5-megapixel\xa0\xa0 Holoscan Sensor Bridge Ethernet camera connected\xa0\nto a Jetson Thor running a video language model\xa0\xa0 100% locally. The Holoscan Sensor Bridge camera\xa0\nstreams the 4K stereo cameras directly to the GPU.\xa0\xa0 There, the video frames are sent to a VLM running\xa0\non the edge. This VLM is capable of receiving user\xa0\xa0 requests and creating a step-by-step plan that\xa0\ncan be executed by a downstream robotic policy.\xa0 That's a quick overview of the\xa0\nJetson AGX Thor Developer Kit,\xa0\xa0 the ultimate platform for accelerating physical AI\xa0\nand humanoid robotics. Join the over two million\xa0\xa0 developers who are driving the next generation of\xa0\nrobotics and beyond. Get your developer kit today.",
 )

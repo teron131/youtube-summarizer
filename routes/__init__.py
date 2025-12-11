@@ -1,6 +1,7 @@
 """API router aggregation for all application endpoints."""
 
 from fastapi import APIRouter
+
 from routes.health import router as health_router
 from routes.scrap import router as scrap_router
 from routes.summarize import router as summarize_router

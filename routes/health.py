@@ -1,6 +1,6 @@
 """Health check and configuration endpoints for API monitoring."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 import os
 
 from fastapi import APIRouter
@@ -46,7 +46,7 @@ async def root():
             "POST /summarize": "Full LangGraph workflow analysis",
             "POST /stream-summarize": "Streaming analysis with progress",
         },
-        "timestamp": datetime.now(datetime.UTC).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -55,7 +55,7 @@ async def health_check():
     return {
         "status": "healthy",
         "message": f"{API_TITLE} is running",
-        "timestamp": datetime.now(datetime.UTC).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "version": API_VERSION,
         "environment": {
             "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),

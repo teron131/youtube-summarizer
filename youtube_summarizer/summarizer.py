@@ -1,7 +1,6 @@
 """YouTube video transcript summarization using LangChain with LangGraph self-checking workflow."""
 
 from collections.abc import Generator
-import logging
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -11,8 +10,6 @@ from pydantic import BaseModel, Field, field_validator
 from .openrouter import ChatOpenRouter
 from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
-
-logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Configuration
@@ -200,14 +197,14 @@ def should_continue(state: SummarizerState) -> str:
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
 
     if state.is_complete:
-        logger.info("✅ Complete: quality %s", quality_display)
+        print(f"✅ Complete: quality {quality_display}")
         return END
 
     if state.quality and not state.quality.is_acceptable and state.iteration_count < MAX_ITERATIONS:
-        logger.info("🔄 Refining: quality %s < %s%% (iteration %s)", quality_display, MIN_QUALITY_SCORE, state.iteration_count + 1)
+        print(f"🔄 Refining: quality {quality_display} < {MIN_QUALITY_SCORE}% (iteration {state.iteration_count + 1})")
         return "analysis"
 
-    logger.info("⚠️ Stopping: quality %s, %s iterations", quality_display, state.iteration_count)
+    print(f"⚠️ Stopping: quality {quality_display}, {state.iteration_count} iterations")
     return END
 
 
@@ -279,7 +276,7 @@ def summarize_video(
 
     quality_percent = output.quality.percentage_score if output.quality else None
     quality_display = f"{quality_percent}%" if quality_percent is not None else "N/A"
-    logger.info("🎯 Final: quality %s, %s iterations", quality_display, output.iteration_count)
+    print(f"🎯 Final: quality {quality_display}, {output.iteration_count} iterations")
     return output.analysis
 
 
