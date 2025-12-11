@@ -1,8 +1,8 @@
 """Helper functions for async task execution and response formatting."""
 
 import asyncio
-from datetime import datetime
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -26,7 +26,7 @@ async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
 
 def get_processing_time(start_time: datetime) -> str:
     """Calculate and format processing time."""
-    return f"{(datetime.now(datetime.UTC) - start_time).total_seconds():.1f}s"
+    return f"{(datetime.now(timezone.utc) - start_time).total_seconds():.1f}s"
 
 
 def _get_transcript(result) -> str | None:
