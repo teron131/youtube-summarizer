@@ -97,7 +97,7 @@ def safe_truncate(text: str, max_length: int = 100) -> str:
     except UnicodeEncodeError:
         # If we hit an encoding error, trim one more character and retry
         # This handles edge cases where slicing breaks a surrogate pair
-        return text[:max_length - 1] if max_length > 1 else ""
+        return text[: max_length - 1] if max_length > 1 else ""
 
 
 def serialize_nested(obj: Any, depth: int = 0, max_depth: int = 5) -> Any:

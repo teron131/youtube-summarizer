@@ -1,9 +1,10 @@
 """Health check and configuration endpoints for API monitoring."""
 
-import os
 from datetime import datetime
+import os
 
 from fastapi import APIRouter
+
 from routes.schema import ConfigurationResponse
 from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
