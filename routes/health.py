@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 import os
 
 from fastapi import APIRouter
+from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
 from routes.schema import ConfigurationResponse
-from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
 router = APIRouter()
 
