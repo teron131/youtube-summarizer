@@ -8,8 +8,6 @@ import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-
-from routes.schema import SummarizeRequest, SummarizeResponse
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
@@ -21,6 +19,7 @@ from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
+from .schema import SummarizeRequest, SummarizeResponse
 
 router = APIRouter()
 

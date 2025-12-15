@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, model_validator
-
 from youtube_summarizer.summarizer import Analysis, Quality
 
 
