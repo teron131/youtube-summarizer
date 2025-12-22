@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, model_validator
-
 from youtube_summarizer.summarizer import Analysis, Quality
 
 
@@ -35,6 +34,7 @@ class SummarizeRequest(BaseModel):
         default="en",
         description="Target language for translation (ISO language code)",
     )
+    fast_mode: bool = Field(default=False, description="Use fast summarization without quality checks")
 
     @model_validator(mode="after")
     def validate_content_based_on_type(self):

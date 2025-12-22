@@ -3,13 +3,12 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
-
-from routes.schema import ScrapResponse, YouTubeRequest
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
+from .schema import ScrapResponse, YouTubeRequest
 
 router = APIRouter()
 

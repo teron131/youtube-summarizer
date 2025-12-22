@@ -8,8 +8,6 @@ import os
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-
-from routes.schema import SummarizeRequest, SummarizeResponse
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
@@ -17,10 +15,12 @@ from youtube_summarizer.summarizer import (
     create_graph,
     stream_summarize_video,
 )
+from youtube_summarizer.summarizer_lite import summarize_video, stream_summarize_video as lite_stream_summarize_video
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
 from .errors import handle_exception, require_env_key
 from .helpers import get_processing_time, parse_scraper_result, run_async_task
+from .schema import SummarizeRequest, SummarizeResponse
 
 router = APIRouter()
 
@@ -44,6 +44,21 @@ async def summarize(request: SummarizeRequest):
             scrap_result = await run_async_task(scrap_youtube, request.content)
             parsed_data = parse_scraper_result(scrap_result)
             transcript = parsed_data.get("transcript") or request.content
+
+        if request.fast_mode:
+            analysis = summarize_video(transcript, request.target_language)
+            processing_time = get_processing_time(start_time)
+            return SummarizeResponse(
+                status="success",
+                message="Fast analysis completed successfully",
+                analysis=analysis,
+                quality=None,
+                processing_time=processing_time,
+                iteration_count=1,
+                target_language=request.target_language or "en",
+                analysis_model=request.analysis_model,
+                quality_model=None,
+            )
 
         graph = create_graph()
         initial_state = SummarizerState(
@@ -72,7 +87,8 @@ async def summarize(request: SummarizeRequest):
 
 @router.post("/stream-summarize")
 async def stream_summarize(request: SummarizeRequest):
-    require_env_key("GEMINI_API_KEY")
+    if not request.fast_mode:
+        require_env_key("GEMINI_API_KEY")
 
     async def generate_stream():
         start_time = datetime.now(UTC)
@@ -132,6 +148,9 @@ async def stream_summarize(request: SummarizeRequest):
                 for key in ["analysis", "quality", "iteration_count", "is_complete"]:
                     if (value := final_state.get(key)) is not None:
                         completion_data[key] = value
+                if request.fast_mode:
+                    completion_data["quality"] = None
+                    completion_data["iteration_count"] = 1
 
             yield f"data: {json.dumps(serialize_nested(completion_data), ensure_ascii=False)}\n\n"
 
