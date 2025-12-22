@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, field_validator
 
+from .fast_copy import TagRange, filter_content, tag_content, untag_content
 from .openrouter import ChatOpenRouter
 from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
@@ -17,6 +18,7 @@ from .utils import is_youtube_url, s2hk
 
 ANALYSIS_MODEL = "x-ai/grok-4.1-fast"
 QUALITY_MODEL = "x-ai/grok-4.1-fast"
+FAST_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
 MIN_QUALITY_SCORE = 80
 MAX_ITERATIONS = 2
 TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
@@ -78,7 +80,9 @@ class Quality(BaseModel):
 
     completeness: Rate = Field(description="Rate for completeness: The entire transcript has been considered")
     structure: Rate = Field(description="Rate for structure: The result is in desired structures")
-    no_garbage: Rate = Field(description="Rate for no_garbage: The promotional and meaningless content are removed")
+    no_garbage: Rate = Field(
+        description="Rate for no_garbage: The promotional and meaningless content such as cliche intros, outros, filler, sponsorships, and other irrelevant segments are effectively removed"
+    )
     meta_language_avoidance: Rate = Field(description="Rate for meta-language avoidance: No phrases like 'This chapter introduces', 'This section covers', etc.")
     useful_keywords: Rate = Field(description="Rate for keywords: The keywords are useful for highlighting the analysis")
     correct_language: Rate = Field(description="Rate for language: Match the original language of the transcript or user requested")
@@ -110,6 +114,12 @@ class Quality(BaseModel):
         return self.percentage_score >= MIN_QUALITY_SCORE
 
 
+class GarbageIdentification(BaseModel):
+    """List of identified garbage sections in a transcript."""
+
+    garbage_ranges: list[TagRange] = Field(description="List of line ranges identified as promotional or irrelevant content")
+
+
 class SummarizerState(BaseModel):
     """State schema for the summarization graph."""
 
@@ -133,6 +143,36 @@ class SummarizerOutput(BaseModel):
 # ============================================================================
 # Graph Nodes
 # ============================================================================
+
+
+def garbage_filter_node(state: SummarizerState) -> dict:
+    """Identify and remove garbage from the transcript."""
+    # Tag the transcript for identification
+    tagged_transcript = tag_content(state.transcript)
+
+    llm = ChatOpenRouter(
+        model=FAST_MODEL,
+        temperature=0,
+        reasoning_effort="low",
+    ).with_structured_output(GarbageIdentification)
+
+    system_prompt = "Identify and remove garbage sections such as promotional and meaningless content such as cliche intros, outros, filler, sponsorships, and other irrelevant segments from the transcript. The transcript has line tags like [L1], [L2], etc. Return the ranges of tags that should be removed to clean the transcript."
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=tagged_transcript),
+    ]
+
+    garbage: GarbageIdentification = llm.invoke(messages)
+
+    if garbage.garbage_ranges:
+        filtered_transcript = filter_content(tagged_transcript, garbage.garbage_ranges)
+        # Untag for the next stage (analysis)
+        cleaned_transcript = untag_content(filtered_transcript)
+        print(f"🧹 Removed {len(garbage.garbage_ranges)} garbage sections.")
+        return {"transcript": cleaned_transcript}
+
+    return {}
 
 
 def analysis_node(state: SummarizerState) -> dict:
@@ -215,10 +255,12 @@ def create_graph() -> StateGraph:
         output_schema=SummarizerOutput,
     )
 
+    builder.add_node("garbage_filter", garbage_filter_node)
     builder.add_node("analysis", analysis_node)
     builder.add_node("quality", quality_node)
 
-    builder.add_edge(START, "analysis")
+    builder.add_edge(START, "garbage_filter")
+    builder.add_edge("garbage_filter", "analysis")
     builder.add_edge("analysis", "quality")
 
     builder.add_conditional_edges(

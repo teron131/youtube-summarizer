@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 import os
 
 from fastapi import APIRouter
-from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
 from routes.schema import ConfigurationResponse
+from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
 
 router = APIRouter()
 
@@ -42,7 +42,7 @@ async def root():
             "GET /": "API information",
             "GET /health": "Health check with environment status",
             "GET /config": "Get available models and languages",
-            "POST /scrap": "Extract video metadata and transcript",
+            "POST /scrape": "Extract video metadata and transcript",
             "POST /summarize": "Full LangGraph workflow analysis",
             "POST /stream-summarize": "Streaming analysis with progress",
         },

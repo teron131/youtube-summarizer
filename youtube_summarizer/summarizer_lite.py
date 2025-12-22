@@ -4,15 +4,23 @@ This is a lightweight single-file alternative to the full LangGraph workflow in 
 It uses LangChain's ReAct agent instead of the multi-node self-checking pipeline.
 """
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain.agents.middleware import wrap_tool_call
 from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import tool
-from langchain_core.messages import HumanMessage
+from langchain.tools.tool_node import ToolCallRequest
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, field_validator
 
+from .fast_copy import (
+    TagRange,
+    filter_content,
+    tag_content,
+    untag_content,
+)
 from .openrouter import ChatOpenRouter
 from .scrapper import YouTubeScrapperResult, scrap_youtube
 from .utils import is_youtube_url, s2hk
@@ -24,6 +32,7 @@ load_dotenv()
 # ============================================================================
 
 ANALYSIS_MODEL = "x-ai/grok-4.1-fast"
+FAST_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
 TARGET_LANGUAGE = "en"  # ISO language code (en, es, fr, de, etc.)
 
 
@@ -102,6 +111,51 @@ class Analysis(BaseModel):
         return [s2hk(item) for item in value]
 
 
+class GarbageIdentification(BaseModel):
+    """List of identified garbage sections in a content block."""
+
+    garbage_ranges: list[TagRange] = Field(description="List of line ranges identified as promotional or irrelevant content")
+
+
+@wrap_tool_call
+def garbage_filter_middleware(
+    request: ToolCallRequest,
+    handler: Callable[[ToolCallRequest], ToolMessage],
+) -> ToolMessage:
+    """Middleware to filter garbage from tool results (like transcripts)."""
+    result = handler(request)
+
+    # Only filter if it's the scrap_youtube_tool and the call succeeded
+    if request.tool_call["name"] == "scrap_youtube_tool" and result.status != "error":
+        transcript = result.content
+        if isinstance(transcript, str) and transcript.strip():
+            # Apply the tagging/filtering mechanism
+            tagged_transcript = tag_content(transcript)
+
+            llm = ChatOpenRouter(
+                model=FAST_MODEL,
+                temperature=0,
+            ).with_structured_output(GarbageIdentification)
+
+            system_prompt = "Identify and remove garbage sections such as promotional and meaningless content such as cliche intros, outros, filler, sponsorships, and other irrelevant segments from the transcript. The transcript has line tags like [L1], [L2], etc. Return the ranges of tags that should be removed to clean the transcript."
+
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=tagged_transcript),
+            ]
+
+            garbage: GarbageIdentification = llm.invoke(messages)
+
+            if garbage.garbage_ranges:
+                filtered_transcript = filter_content(tagged_transcript, garbage.garbage_ranges)
+                cleaned_transcript = untag_content(filtered_transcript)
+                print(f"🧹 Middleware removed {len(garbage.garbage_ranges)} garbage sections from tool result.")
+                # Update the result content
+                result.content = cleaned_transcript
+
+    return result
+
+
 # ============================================================================
 # Agent Creation
 # ============================================================================
@@ -130,6 +184,7 @@ def create_summarizer_agent(target_language: str | None = None):
         model=llm,
         tools=[scrap_youtube_tool],
         system_prompt=system_prompt,
+        middleware=[garbage_filter_middleware],
         response_format=ToolStrategy(Analysis),
     )
 

@@ -166,7 +166,7 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8080
 
 ### 🌟 Master Endpoint
 
-#### POST `/scrap` - Video Scraping and Transcript Extraction
+#### POST `/scrape` - Video Scraping and Transcript Extraction
 **Extract video metadata and transcript using Scrape Creators scraper**
 
 **Request:**

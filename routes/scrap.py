@@ -14,7 +14,7 @@ from .helpers import get_processing_time, parse_scraper_result, run_async_task
 router = APIRouter()
 
 
-@router.post("/scrap", response_model=ScrapResponse)
+@router.post("/scrape", response_model=ScrapResponse)
 async def scrap_video(request: YouTubeRequest):
     require_env_key("SCRAPECREATORS_API_KEY")
     start_time = datetime.now(UTC)
