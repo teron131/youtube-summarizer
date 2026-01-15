@@ -8,8 +8,6 @@ license = {text = "MIT"}
 
 dependencies = [
     "aiohttp>=3.12.15",
-    "apify>=3.1.0",
-    "deepagents>=0.2.4",
     "fal-client>=0.7.0",
     "fastapi>=0.116.1",
     "google-genai>=1.32.0",
