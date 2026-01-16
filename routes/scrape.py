@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
+
 from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
