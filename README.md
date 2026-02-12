@@ -21,17 +21,26 @@ A comprehensive Python backend API for YouTube video analysis. It solves the dif
 
 To ensure maximum reliability, the system evaluates multiple transcription methods based on robustness and speed.
 
-| Method | Type | Robustness | Speed | Notes |
-|--------|------|------------|-------|-------|
-| **Premium API (Scrape Creators)** | **Direct** | ⭐⭐⭐⭐⭐ | ⚡ Fast | **Primary**. Extracts official/auto-captions directly. |
-| **yt-dlp + Fal.ai / Local Whisper** | **Fallback** | ⭐⭐⭐ | 🐢 Slower | **Reliable Fallback**. Audio-based; prone to IP blocks/bot detection. |
-| **Gemini Native Access** | **Direct** | ⭐⭐ | ⚡ Fast | **Not Used**. Unreliable transcript retrieval during development. |
+| Method                                       | Type         | Robustness                               | Speed     | Notes                                                                                             |
+| -------------------------------------------- | ------------ | ---------------------------------------- | --------- | ------------------------------------------------------------------------------------------------- |
+| **Premium API (Scrape Creators / Supadata)** | **Direct**   | ⭐⭐⭐⭐⭐                               | ⚡ Fast   | **Primary**. Extracts official/auto-captions directly.                                            |
+| **yt-dlp + Fal.ai / Local Whisper**          | **Fallback** | ⭐⭐⭐                                   | 🐢 Slower | **Reliable Fallback**. Audio-based; prone to IP blocks/bot detection.                             |
+| **Gemini Native Access**                     | **Direct**   | ⭐⭐ - ⭐⭐⭐⭐⭐ depending on use cases | ⚡ Fast   | Great for multimodal summarization ("watching" video), but less robust for transcript extraction. |
 
 > **Note on Fallback Methods:** While the `yt-dlp` and `Whisper` path provides a "fully local" capability, it is harder to host (requires **FFmpeg** and **GPU compute**) and is highly susceptible to **YouTube IP rate limits and bot detection**. Premium APIs are recommended for production-grade scraping.
+>
+> **Note on Gemini:** Gemini is very strong at visual understanding and can behave as if it is actually "watching" the video, which is excellent for summarization.
+> Practical limitations we have seen in API workflows:
+>
+> - Long videos (around 1 hour) are more likely to fail or become unstable.
+> - If the required structured output is too complicated, requests can time out.
+> - Some videos with no auto-generated captions can be accessed in NotebookLM UI but not via Gemini API.
+> - Gemini summarization is not a reliable path for timestamp-level transcription with decent quality.
 
 ## 🏗️ Technical Architecture
 
 ### 📊 Overall System Workflow
+
 The system uses a 3-tier architecture to ensure analysis quality and system resilience.
 
 ```mermaid
@@ -45,7 +54,7 @@ graph TD
     G --> H[Transcribe Audio<br/>🎤 Fal.ai API]
     H --> F
     F --> I[Return Complete Results]
-    
+
     style C fill:#1E88E5,color:#fff
     style G fill:#F9A825,color:#000
     style H fill:#F9A825,color:#000
@@ -53,6 +62,7 @@ graph TD
 ```
 
 ### 🔄 LangGraph AI Workflow Detail
+
 The heart of our system is an iterative refinement loop that ensures analysis meets a 90% quality threshold.
 
 ```mermaid
@@ -68,7 +78,7 @@ graph TD
     L_COND -->|Yes| END
     G_COND -->|No| GEMINI
     L_COND -->|No| LANGCHAIN
-    
+
     style GEMINI fill:#8E24AA,color:#fff
     style LANGCHAIN fill:#8E24AA,color:#fff
     style G_QUAL fill:#D84315,color:#fff
@@ -78,11 +88,13 @@ graph TD
 ## 🚀 Setup & Development
 
 ### Prerequisites
+
 - Python 3.11+
 - FFmpeg (required for audio fallback)
-- API Keys: `SCRAPECREATORS_API_KEY`, `GEMINI_API_KEY`, `FAL_KEY`, `OPENROUTER_API_KEY` (optional)
+- API Keys: `SCRAPECREATORS_API_KEY` and/or `SUPADATA_API_KEY`, `GEMINI_API_KEY`, `FAL_KEY`, `OPENROUTER_API_KEY` (optional)
 
 ### 1. Installation
+
 ```bash
 # Recommended: Use UV
 uv sync
@@ -93,9 +105,13 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configuration
+
 Create a `.env` file (see `.env_example`):
+
 ```env
 SCRAPECREATORS_API_KEY=...
+SUPADATA_API_KEY=... # Optional transcript provider
+TRANSCRIPT_PROVIDER_PREFERENCE=scrapecreators # scrapecreators | supadata
 GEMINI_API_KEY=...
 FAL_KEY=...
 OPENROUTER_API_KEY=... # Optional
@@ -103,6 +119,7 @@ PORT=8080
 ```
 
 ### 3. Execution
+
 ```bash
 # Development
 python app.py
@@ -113,11 +130,11 @@ python app.py
 
 ## 🎯 API Reference
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/scrape` | `POST` | Extract video metadata and transcript using Scrape Creators. |
-| `/summarize` | `POST` | Generate AI summary using LangGraph (blocking). |
-| `/stream-summarize`| `POST` | Real-time streaming updates of the AI workflow (SSE). |
-| `/health` | `GET` | System status and API configuration check. |
+| Endpoint            | Method | Description                                                  |
+| ------------------- | ------ | ------------------------------------------------------------ |
+| `/scrape`           | `POST` | Extract video metadata and transcript using Scrape Creators. |
+| `/summarize`        | `POST` | Generate AI summary using LangGraph (blocking).              |
+| `/stream-summarize` | `POST` | Real-time streaming updates of the AI workflow (SSE).        |
+| `/health`           | `GET`  | System status and API configuration check.                   |
 
-*Interactive docs available at `/api/docs` or `/api/redoc`.*
+_Interactive docs available at `/api/docs` or `/api/redoc`._

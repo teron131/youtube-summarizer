@@ -9,7 +9,6 @@ import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from youtube_summarizer.scrapper import scrap_youtube
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
     SummarizerState,
@@ -17,10 +16,11 @@ from youtube_summarizer.summarizer import (
     stream_summarize_video,
 )
 from youtube_summarizer.summarizer_lite import summarize_video
+from youtube_summarizer.transcript_provider import extract_transcript_text, has_transcript_provider_key
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
 from .errors import handle_exception, require_env_key
-from .helpers import get_processing_time, parse_scraper_result, run_async_task
+from .helpers import get_processing_time, run_async_task
 from .schema import SummarizeRequest, SummarizeResponse
 
 router = APIRouter()
@@ -34,6 +34,9 @@ async def summarize(request: SummarizeRequest):
     if request.content_type == "url" and not is_youtube_url(request.content):
         raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
+    if request.content_type == "url" and not has_transcript_provider_key():
+        require_env_key("SCRAPECREATORS_API_KEY")
+
     if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
         require_env_key("OPENROUTER_API_KEY")
 
@@ -42,9 +45,7 @@ async def summarize(request: SummarizeRequest):
     try:
         transcript = request.content
         if request.content_type == "url":
-            scrap_result = await run_async_task(scrap_youtube, request.content)
-            parsed_data = parse_scraper_result(scrap_result)
-            transcript = parsed_data.get("transcript") or request.content
+            transcript = await run_async_task(extract_transcript_text, request.content)
 
         if request.fast_mode:
             analysis = summarize_video(transcript, request.target_language)
@@ -90,6 +91,8 @@ async def summarize(request: SummarizeRequest):
 async def stream_summarize(request: SummarizeRequest):
     if not request.fast_mode:
         require_env_key("GEMINI_API_KEY")
+    if request.content_type == "url" and not has_transcript_provider_key():
+        require_env_key("SCRAPECREATORS_API_KEY")
 
     async def generate_stream():
         start_time = datetime.now(UTC)
@@ -103,14 +106,8 @@ async def stream_summarize(request: SummarizeRequest):
                     raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
                 logging.info(f"🔗 Scraping YouTube video: {content}")
-                scrap_result = await run_async_task(scrap_youtube, content)
-                parsed_data = parse_scraper_result(scrap_result)
-                content = parsed_data.get("transcript") or content
-
-                if content == request.content:
-                    logging.info("🎯 No transcript available - sending YouTube URL to Gemini")
-                else:
-                    logging.info("📝 Using scraped transcript for analysis")
+                content = await run_async_task(extract_transcript_text, content)
+                logging.info("📝 Using provider transcript for analysis")
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
             await asyncio.sleep(0.01)

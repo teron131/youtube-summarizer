@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from .fast_copy import TagRange, filter_content, tag_content, untag_content
 from .openrouter import ChatOpenRouter
-from .scrapper import YouTubeScrapperResult, scrap_youtube
+from .transcript_provider import extract_transcript_text
 from .utils import is_youtube_url, s2hk
 
 # ============================================================================
@@ -283,12 +283,7 @@ def create_graph() -> StateGraph:
 def _extract_transcript(transcript_or_url: str) -> str:
     """Extract transcript from URL or return text directly."""
     if is_youtube_url(transcript_or_url):
-        result: YouTubeScrapperResult = scrap_youtube(transcript_or_url)
-        if not result.has_transcript:
-            raise ValueError("Video has no transcript")
-        if not result.parsed_transcript:
-            raise ValueError("Transcript is empty")
-        return result.parsed_transcript
+        return extract_transcript_text(transcript_or_url)
 
     if not transcript_or_url or not transcript_or_url.strip():
         raise ValueError("Transcript cannot be empty")
