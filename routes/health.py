@@ -46,8 +46,8 @@ async def root():
             "GET /health": "Health check with environment status",
             "GET /config": "Get available models and languages",
             "POST /scrape": "Extract video metadata and transcript",
-            "POST /summarize": "Full LangGraph workflow analysis",
-            "POST /stream-summarize": "Streaming analysis with progress",
+            "POST /summarize": "Full LangGraph workflow summary",
+            "POST /stream-summarize": "Streaming summary with progress",
         },
         "timestamp": datetime.now(UTC).isoformat(),
     }

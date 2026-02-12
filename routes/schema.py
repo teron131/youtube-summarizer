@@ -38,14 +38,14 @@ class SummarizeRequest(BaseModel):
     fast_mode: bool = Field(default=False, description="Use fast summarization without quality checks")
 
     @model_validator(mode="after")
-    def validate_content_based_on_type(self):
+    def validate_content(self):
         if not self.content or not self.content.strip():
             content_label = "Content" if self.content_type == "transcript" else "Valid URL"
             raise ValueError(f"{content_label} is required when content_type is '{self.content_type}'")
         return self
 
 
-class ScrapResponse(BaseResponse):
+class ScrapeResponse(BaseResponse):
     url: str | None = None
     title: str | None = None
     author: str | None = None
@@ -56,6 +56,10 @@ class ScrapResponse(BaseResponse):
     like_count: int | None = None
     upload_date: str | None = None
     processing_time: str
+
+
+# Backward-compatible alias.
+ScrapResponse = ScrapeResponse
 
 
 class SummarizeResponse(BaseResponse):

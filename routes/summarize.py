@@ -25,27 +25,50 @@ from .schema import SummarizeRequest, SummarizeResponse
 
 router = APIRouter()
 
+TRANSCRIPT_CONFIG_ERROR = "Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY"
+LLM_CONFIG_ERROR = "Config missing: OPENROUTER_API_KEY or GEMINI_API_KEY"
 
-@router.post("/summarize", response_model=SummarizeResponse)
-async def summarize(request: SummarizeRequest):
+
+def _require_transcript_config() -> None:
+    if has_transcript_provider_key() or os.getenv("FAL_KEY"):
+        return
+    raise HTTPException(status_code=500, detail=TRANSCRIPT_CONFIG_ERROR)
+
+
+def _require_llm_config() -> None:
+    if os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY"):
+        return
+    raise HTTPException(status_code=500, detail=LLM_CONFIG_ERROR)
+
+
+def _validate_summary_request(request: SummarizeRequest) -> None:
     if not request.content or not request.content.strip():
         raise HTTPException(status_code=400, detail="Content required")
 
-    if request.content_type == "url" and not is_youtube_url(request.content):
-        raise HTTPException(status_code=400, detail="Valid YouTube URL required")
+    if request.content_type == "url":
+        if not is_youtube_url(request.content):
+            raise HTTPException(status_code=400, detail="Valid YouTube URL required")
+        _require_transcript_config()
 
-    if request.content_type == "url" and not has_transcript_provider_key() and not os.getenv("FAL_KEY"):
-        raise HTTPException(status_code=500, detail="Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY")
 
-    if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        raise HTTPException(status_code=500, detail="Config missing: OPENROUTER_API_KEY or GEMINI_API_KEY")
+async def _resolve_transcript(request: SummarizeRequest) -> str:
+    if request.content_type == "url":
+        logging.info("🔗 Scraping YouTube video: %s", request.content)
+        transcript = await run_async_task(extract_transcript_text, request.content)
+        logging.info("📝 Using provider transcript for summary")
+        return transcript
+    return request.content
+
+
+@router.post("/summarize", response_model=SummarizeResponse)
+async def summarize(request: SummarizeRequest):
+    _validate_summary_request(request)
+    _require_llm_config()
 
     start_time = datetime.now(UTC)
 
     try:
-        transcript = request.content
-        if request.content_type == "url":
-            transcript = await run_async_task(extract_transcript_text, request.content)
+        transcript = await _resolve_transcript(request)
 
         if request.fast_mode:
             summary = summarize_video(transcript, request.target_language)
@@ -84,30 +107,20 @@ async def summarize(request: SummarizeRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise handle_exception(e, "Analysis") from e
+        raise handle_exception(e, "Summary") from e
 
 
 @router.post("/stream-summarize")
 async def stream_summarize(request: SummarizeRequest):
-    if request.content_type == "url" and not has_transcript_provider_key() and not os.getenv("FAL_KEY"):
-        raise HTTPException(status_code=500, detail="Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY")
+    _validate_summary_request(request)
+    _require_llm_config()
 
     async def generate_stream():
         start_time = datetime.now(UTC)
         try:
-            if not request.content or not request.content.strip():
-                raise HTTPException(status_code=400, detail="Content required")
+            content = await _resolve_transcript(request)
 
-            content = request.content
-            if request.content_type == "url":
-                if not is_youtube_url(content):
-                    raise HTTPException(status_code=400, detail="Valid YouTube URL required")
-
-                logging.info("🔗 Scraping YouTube video: %s", content)
-                content = await run_async_task(extract_transcript_text, content)
-                logging.info("📝 Using provider transcript for analysis")
-
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting analysis...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting summary...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
             await asyncio.sleep(0.01)
 
             chunk_count = 0
