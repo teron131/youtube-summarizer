@@ -1,17 +1,4 @@
-"""This module uses the Scrape Creators YouTube Video API to scrape a YouTube video and return the transcript and other metadata.
-
-Docs: https://docs.scrapecreators.com/v1/youtube/video
-The API result is wrapped by YouTubeScrapperResult object.
-
-Important video metadata:
-result.title: str = 'The Trillion Dollar Equation'
-result.thumbnail: str = 'https://img.youtube.com/vi/A5w-dEgIU1M/maxresdefault.jpg'
-result.channel.title: str = 'NVIDIA Developer'
-result.durationFormatted: str = '00:06:32'
-result.publishDateText: str = 'Feb 27, 2024'
-result.viewCountInt: int = 13462116
-result.likeCountInt: int = 321234
-"""
+"""Scrape Creators transcript-only provider."""
 
 import os
 
@@ -19,16 +6,20 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 import requests
 
-from .utils import clean_text, clean_youtube_url, is_youtube_url
+from ..utils import clean_text, clean_youtube_url, is_youtube_url
 
 load_dotenv()
 
 SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
+SCRAPECREATORS_TRANSCRIPT_URL = "https://api.scrapecreators.com/v1/youtube/video/transcript"
 
 
 class Channel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
+    id: str | None = None
+    url: str | None = None
+    handle: str | None = None
     title: str | None = None
 
 
@@ -44,15 +35,7 @@ class TranscriptSegment(BaseModel):
 class YouTubeScrapperResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    id: str | None = None
-    thumbnail: str | None = None
-    title: str | None = None
-    description: str | None = None
-    likeCountInt: int | None = None
-    viewCountInt: int | None = None
-    publishDateText: str | None = None
-    channel: Channel | None = None
-    durationFormatted: str | None = None
+    url: str | None = None
     transcript: list[TranscriptSegment] | None = None
     transcript_only_text: str | None = None
 
@@ -66,19 +49,20 @@ class YouTubeScrapperResult(BaseModel):
     @property
     def has_transcript(self) -> bool:
         """Check if video has a transcript available."""
-        return bool(self.transcript and self.transcript_only_text and self.transcript_only_text.strip())
+        return bool(self.parsed_transcript)
 
 
 def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
-    """Scrape a YouTube video and return the transcript and other metadata.
+    """Fetch transcript from Scrape Creators transcript endpoint.
 
-    Uses the Scrape Creators YouTube API: https://api.scrapecreators.com/v1/youtube/video
+    Uses the transcript-only endpoint:
+    https://api.scrapecreators.com/v1/youtube/video/transcript
 
     Args:
         youtube_url: The YouTube video URL to scrape
 
     Returns:
-        YouTubeScrapperResult: Parsed video data including transcript and metadata
+        YouTubeScrapperResult: Parsed transcript response
     """
     if not is_youtube_url(youtube_url):
         raise ValueError("Invalid YouTube URL")
@@ -88,7 +72,7 @@ def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
 
     youtube_url = clean_youtube_url(youtube_url)
 
-    url = f"https://api.scrapecreators.com/v1/youtube/video?url={youtube_url}&get_transcript=true"
+    url = f"{SCRAPECREATORS_TRANSCRIPT_URL}?url={youtube_url}"
     headers = {"x-api-key": SCRAPECREATORS_API_KEY}
     response = requests.get(url, headers=headers, timeout=60)
     response.raise_for_status()

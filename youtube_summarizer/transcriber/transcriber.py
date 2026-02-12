@@ -9,7 +9,7 @@ import os
 import fal_client
 from pydub import AudioSegment
 
-from .utils import whisper_result_to_txt
+from ..utils import whisper_result_to_txt
 
 
 def optimize_audio_for_transcription(audio_bytes: bytes) -> bytes:

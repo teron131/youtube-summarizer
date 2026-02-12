@@ -9,6 +9,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from youtube_summarizer.scrapper import extract_transcript_text, has_transcript_provider_key
 from youtube_summarizer.summarizer import (
     SummarizerOutput,
     SummarizerState,
@@ -16,7 +17,6 @@ from youtube_summarizer.summarizer import (
     stream_summarize_video,
 )
 from youtube_summarizer.summarizer_lite import summarize_video
-from youtube_summarizer.transcript_provider import extract_transcript_text, has_transcript_provider_key
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
 from .errors import handle_exception, require_env_key

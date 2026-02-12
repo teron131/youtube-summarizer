@@ -1,11 +1,11 @@
-"""Transcript provider orchestration for YouTube URLs."""
+"""Unified transcript provider API for scrapper package."""
 
 import logging
 import os
 
-from .scrapper import YouTubeScrapperResult, scrap_youtube
+from ..utils import is_youtube_url
+from .scrape_creators import Channel, TranscriptSegment, YouTubeScrapperResult, scrap_youtube
 from .supadata import fetch_supadata_transcript, get_supadata_api_key
-from .utils import is_youtube_url
 
 logger = logging.getLogger(__name__)
 
@@ -57,3 +57,13 @@ def extract_transcript_text(youtube_url: str) -> str:
             attempts.append(f"{provider}:error")
 
     raise ValueError(f"Video has no transcript. Attempts: {', '.join(attempts)}")
+
+
+__all__ = [
+    "Channel",
+    "TranscriptSegment",
+    "YouTubeScrapperResult",
+    "extract_transcript_text",
+    "has_transcript_provider_key",
+    "scrap_youtube",
+]

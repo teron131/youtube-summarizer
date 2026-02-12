@@ -22,7 +22,7 @@ from .fast_copy import (
     untag_content,
 )
 from .openrouter import ChatOpenRouter
-from .transcript_provider import extract_transcript_text
+from .scrapper import extract_transcript_text
 from .utils import is_youtube_url, s2hk
 
 load_dotenv()

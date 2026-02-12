@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import requests
 
-from .utils import clean_text, clean_youtube_url, is_youtube_url
+from ..utils import clean_text, clean_youtube_url, is_youtube_url
 
 load_dotenv()
 

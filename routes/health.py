@@ -6,8 +6,8 @@ import os
 from fastapi import APIRouter
 
 from routes.schema import ConfigurationResponse
+from youtube_summarizer.scrapper.supadata import get_supadata_api_key
 from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
-from youtube_summarizer.supadata import get_supadata_api_key
 
 router = APIRouter()
 

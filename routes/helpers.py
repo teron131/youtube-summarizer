@@ -2,8 +2,6 @@
 
 import asyncio
 from datetime import UTC, datetime
-import logging
-from typing import Any
 
 from fastapi import HTTPException
 
@@ -29,50 +27,3 @@ async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
 
 def get_processing_time(start_time: datetime) -> str:
     return f"{(datetime.now(UTC) - start_time).total_seconds():.1f}s"
-
-
-def _get_transcript(result) -> str | None:
-    # Try attribute access first
-    if hasattr(result, "parsed_transcript") and result.parsed_transcript and result.parsed_transcript.strip():
-        return result.parsed_transcript
-
-    # Try dictionary/model dump
-    data = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
-    transcript = data.get("parsed_transcript") or data.get("transcript_only_text")
-
-    return transcript if transcript and transcript.strip() else None
-
-
-def parse_scraper_result(result) -> dict[str, Any]:
-    try:
-        data = result.model_dump() if hasattr(result, "model_dump") else (result if isinstance(result, dict) else {})
-        channel = data.get("channel", {})
-
-        url = data.get("url")
-        if not url and data.get("id"):
-            url = f"https://www.youtube.com/watch?v={data.get('id')}"
-
-        return {
-            "url": url,
-            "title": data.get("title"),
-            "author": channel.get("title") if isinstance(channel, dict) else None,
-            "transcript": _get_transcript(result),
-            "duration": data.get("durationFormatted"),
-            "thumbnail": data.get("thumbnail"),
-            "view_count": data.get("viewCountInt"),
-            "like_count": data.get("likeCountInt"),
-            "upload_date": data.get("publishDateText"),
-        }
-    except Exception as e:
-        logging.warning(f"Error parsing scraper result: {e!s}")
-        return {
-            "url": None,
-            "title": None,
-            "author": None,
-            "transcript": _get_transcript(result),
-            "duration": None,
-            "thumbnail": None,
-            "view_count": None,
-            "like_count": None,
-            "upload_date": None,
-        }
