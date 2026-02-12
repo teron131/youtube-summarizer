@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from youtube_summarizer.schemas import Quality, Summary
 
@@ -18,18 +18,8 @@ class YouTubeRequest(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
-    content: str | None = Field(
-        default=None,
+    content: str = Field(
         description="Content to analyze (YouTube URL or transcript text)",
-    )
-    content_type: str = Field(default="url", pattern=r"^(url|transcript)$")
-    analysis_model: str = Field(
-        default="x-ai/grok-4.1-fast",
-        description="Model for analysis generation",
-    )
-    quality_model: str = Field(
-        default="x-ai/grok-4.1-fast",
-        description="Model for quality evaluation",
     )
     target_language: str | None = Field(
         default="en",
@@ -37,24 +27,10 @@ class SummarizeRequest(BaseModel):
     )
     fast_mode: bool = Field(default=False, description="Use fast summarization without quality checks")
 
-    @model_validator(mode="after")
-    def validate_content(self):
-        if not self.content or not self.content.strip():
-            content_label = "Content" if self.content_type == "transcript" else "Valid URL"
-            raise ValueError(f"{content_label} is required when content_type is '{self.content_type}'")
-        return self
-
 
 class ScrapeResponse(BaseResponse):
     url: str | None = None
-    title: str | None = None
-    author: str | None = None
     transcript: str | None = None
-    duration: str | None = None
-    thumbnail: str | None = None
-    view_count: int | None = None
-    like_count: int | None = None
-    upload_date: str | None = None
     processing_time: str
 
 
@@ -67,8 +43,6 @@ class SummarizeResponse(BaseResponse):
     quality: Quality | None = None
     processing_time: str
     iteration_count: int = Field(default=1)
-    analysis_model: str = Field(description="Model used for analysis")
-    quality_model: str = Field(description="Model used for quality evaluation")
     target_language: str | None = Field(
         default=None,
         description="Target language used for translation",
@@ -80,6 +54,6 @@ class ConfigurationResponse(BaseResponse):
     supported_languages: dict[str, str] = Field(
         description="Supported languages for translation",
     )
-    default_analysis_model: str = Field(description="Default analysis model")
+    default_summary_model: str = Field(description="Default summary model")
     default_quality_model: str = Field(description="Default quality model")
     default_target_language: str = Field(description="Default target language")

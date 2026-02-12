@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from routes.schema import ConfigurationResponse
 from youtube_summarizer.scrapper.supadata import get_supadata_api_key
-from youtube_summarizer.summarizer import ANALYSIS_MODEL, QUALITY_MODEL, TARGET_LANGUAGE
+from youtube_summarizer.summarizer import QUALITY_MODEL, SUMMARY_MODEL, TARGET_LANGUAGE
 
 router = APIRouter()
 
@@ -75,7 +75,7 @@ async def get_configuration():
         "message": "Configuration retrieved successfully",
         "available_models": AVAILABLE_MODELS,
         "supported_languages": SUPPORTED_LANGUAGES,
-        "default_analysis_model": ANALYSIS_MODEL,
+        "default_summary_model": SUMMARY_MODEL,
         "default_quality_model": QUALITY_MODEL,
         "default_target_language": TARGET_LANGUAGE,
     }

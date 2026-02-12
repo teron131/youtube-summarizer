@@ -42,22 +42,22 @@ def _require_llm_config() -> None:
 
 
 def _validate_summary_request(request: SummarizeRequest) -> None:
-    if not request.content or not request.content.strip():
+    content = request.content.strip()
+    if not content:
         raise HTTPException(status_code=400, detail="Content required")
 
-    if request.content_type == "url":
-        if not is_youtube_url(request.content):
-            raise HTTPException(status_code=400, detail="Valid YouTube URL required")
+    if is_youtube_url(content):
         _require_transcript_config()
 
 
 async def _resolve_transcript(request: SummarizeRequest) -> str:
-    if request.content_type == "url":
-        logging.info("🔗 Scraping YouTube video: %s", request.content)
-        transcript = await run_async_task(extract_transcript_text, request.content)
+    content = request.content.strip()
+    if is_youtube_url(content):
+        logging.info("🔗 Scraping YouTube video: %s", content)
+        transcript = await run_async_task(extract_transcript_text, content)
         logging.info("📝 Using provider transcript for summary")
         return transcript
-    return request.content
+    return content
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -81,8 +81,6 @@ async def summarize(request: SummarizeRequest):
                 processing_time=processing_time,
                 iteration_count=1,
                 target_language=request.target_language or "en",
-                analysis_model=request.analysis_model,
-                quality_model=None,
             )
 
         graph = create_graph()
@@ -101,8 +99,6 @@ async def summarize(request: SummarizeRequest):
             processing_time=get_processing_time(start_time),
             iteration_count=output.iteration_count,
             target_language=request.target_language or "en",
-            analysis_model=request.analysis_model,
-            quality_model=request.quality_model,
         )
     except HTTPException:
         raise
@@ -157,9 +153,6 @@ async def stream_summarize(request: SummarizeRequest):
                 for key in ["summary", "quality", "iteration_count", "is_complete"]:
                     if (value := final_state.get(key)) is not None:
                         completion_data[key] = value
-                if request.fast_mode:
-                    completion_data["quality"] = None
-                    completion_data["iteration_count"] = 1
 
             yield f"data: {json.dumps(serialize_nested(completion_data), ensure_ascii=False)}\n\n"
 

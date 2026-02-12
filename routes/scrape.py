@@ -30,19 +30,13 @@ async def scrape_video(request: YouTubeRequest):
             raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
         url = clean_youtube_url(url)
-
         transcript = await run_async_task(extract_transcript_text, url)
-
-        data = {
-            "url": url,
-            "transcript": transcript,
-        }
 
         return ScrapeResponse(
             status="success",
             message="Video scraped successfully",
-            url=data.get("url"),
-            transcript=data.get("transcript"),
+            url=url,
+            transcript=transcript,
             processing_time=get_processing_time(start_time),
         )
     except HTTPException:
