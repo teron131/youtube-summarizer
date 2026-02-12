@@ -1,6 +1,11 @@
-"""
-API package for the langchain-playground project.
-Contains various FastAPI applications for different services.
-"""
+"""Top-level package exports for the YouTube summarizer."""
 
-__version__ = "1.0.0"
+from .schemas import Quality, Summary
+from .summarizer import stream_summarize_video, summarize_video
+
+__all__ = [
+    "Quality",
+    "Summary",
+    "stream_summarize_video",
+    "summarize_video",
+]

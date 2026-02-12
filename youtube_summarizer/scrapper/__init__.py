@@ -7,6 +7,7 @@ from .scrapper import (
     extract_transcript_text,
     has_transcript_provider_key,
     scrap_youtube,
+    scrape_youtube,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "extract_transcript_text",
     "has_transcript_provider_key",
     "scrap_youtube",
+    "scrape_youtube",
 ]

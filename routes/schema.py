@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-from youtube_summarizer.summarizer import Analysis, Quality
+from youtube_summarizer.schemas import Quality, Summary
 
 
 class BaseResponse(BaseModel):
@@ -59,7 +59,7 @@ class ScrapResponse(BaseResponse):
 
 
 class SummarizeResponse(BaseResponse):
-    analysis: Analysis
+    summary: Summary
     quality: Quality | None = None
     processing_time: str
     iteration_count: int = Field(default=1)

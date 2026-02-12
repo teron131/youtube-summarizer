@@ -19,7 +19,7 @@ from youtube_summarizer.summarizer import (
 from youtube_summarizer.summarizer_lite import summarize_video
 from youtube_summarizer.utils import is_youtube_url, serialize_nested
 
-from .errors import handle_exception, require_env_key
+from .errors import handle_exception
 from .helpers import get_processing_time, run_async_task
 from .schema import SummarizeRequest, SummarizeResponse
 
@@ -34,11 +34,11 @@ async def summarize(request: SummarizeRequest):
     if request.content_type == "url" and not is_youtube_url(request.content):
         raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
-    if request.content_type == "url" and not has_transcript_provider_key():
-        require_env_key("SCRAPECREATORS_API_KEY")
+    if request.content_type == "url" and not has_transcript_provider_key() and not os.getenv("FAL_KEY"):
+        raise HTTPException(status_code=500, detail="Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY")
 
     if not os.getenv("OPENROUTER_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-        require_env_key("OPENROUTER_API_KEY")
+        raise HTTPException(status_code=500, detail="Config missing: OPENROUTER_API_KEY or GEMINI_API_KEY")
 
     start_time = datetime.now(UTC)
 
@@ -48,12 +48,12 @@ async def summarize(request: SummarizeRequest):
             transcript = await run_async_task(extract_transcript_text, request.content)
 
         if request.fast_mode:
-            analysis = summarize_video(transcript, request.target_language)
+            summary = summarize_video(transcript, request.target_language)
             processing_time = get_processing_time(start_time)
             return SummarizeResponse(
                 status="success",
-                message="Fast analysis completed successfully",
-                analysis=analysis,
+                message="Fast summary completed successfully",
+                summary=summary,
                 quality=None,
                 processing_time=processing_time,
                 iteration_count=1,
@@ -72,8 +72,8 @@ async def summarize(request: SummarizeRequest):
 
         return SummarizeResponse(
             status="success",
-            message="Analysis completed successfully",
-            analysis=output.analysis,
+            message="Summary completed successfully",
+            summary=output.summary,
             quality=output.quality,
             processing_time=get_processing_time(start_time),
             iteration_count=output.iteration_count,
@@ -89,10 +89,8 @@ async def summarize(request: SummarizeRequest):
 
 @router.post("/stream-summarize")
 async def stream_summarize(request: SummarizeRequest):
-    if not request.fast_mode:
-        require_env_key("GEMINI_API_KEY")
-    if request.content_type == "url" and not has_transcript_provider_key():
-        require_env_key("SCRAPECREATORS_API_KEY")
+    if request.content_type == "url" and not has_transcript_provider_key() and not os.getenv("FAL_KEY"):
+        raise HTTPException(status_code=500, detail="Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY")
 
     async def generate_stream():
         start_time = datetime.now(UTC)
@@ -105,7 +103,7 @@ async def stream_summarize(request: SummarizeRequest):
                 if not is_youtube_url(content):
                     raise HTTPException(status_code=400, detail="Valid YouTube URL required")
 
-                logging.info(f"🔗 Scraping YouTube video: {content}")
+                logging.info("🔗 Scraping YouTube video: %s", content)
                 content = await run_async_task(extract_transcript_text, content)
                 logging.info("📝 Using provider transcript for analysis")
 
@@ -131,19 +129,19 @@ async def stream_summarize(request: SummarizeRequest):
                         await asyncio.sleep(0.01)
 
                 except (TypeError, ValueError, json.JSONDecodeError) as e:
-                    logging.warning(f"⚠️ Failed to serialize chunk {chunk_count}: {e!s}")
+                    logging.warning("⚠️ Failed to serialize chunk %s: %s", chunk_count, e)
                     chunk_count += 1
 
             completion_data = {
                 "type": "complete",
-                "message": "Analysis completed",
+                "message": "Summary completed",
                 "processing_time": get_processing_time(start_time),
                 "total_chunks": chunk_count,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
 
             if final_state:
-                for key in ["analysis", "quality", "iteration_count", "is_complete"]:
+                for key in ["summary", "quality", "iteration_count", "is_complete"]:
                     if (value := final_state.get(key)) is not None:
                         completion_data[key] = value
                 if request.fast_mode:
@@ -153,7 +151,7 @@ async def stream_summarize(request: SummarizeRequest):
             yield f"data: {json.dumps(serialize_nested(completion_data), ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            logging.error(f"❌ Streaming failed: {e!s}")
+            logging.error("❌ Streaming failed: %s", e)
             error_data = {
                 "type": "error",
                 "message": str(e)[:100],

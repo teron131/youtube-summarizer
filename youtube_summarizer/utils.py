@@ -62,6 +62,19 @@ def is_youtube_url(url: str) -> bool:
     return any(re.search(pattern, url) for pattern in youtube_patterns)
 
 
+def extract_video_id(url: str) -> str | None:
+    """Extract video ID from YouTube URL."""
+    match = re.search(r"v=([a-zA-Z0-9_-]+)", url)
+    if match:
+        return match.group(1)
+
+    match = re.search(r"youtu\\.be/([a-zA-Z0-9_-]+)", url)
+    if match:
+        return match.group(1)
+
+    return None
+
+
 def s2hk(content: str) -> str:
     """Convert Simplified Chinese to Traditional Chinese."""
     return OpenCC("s2hk").convert(content)

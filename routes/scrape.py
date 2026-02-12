@@ -1,13 +1,14 @@
 """Video scraping endpoint for extracting YouTube metadata and transcripts."""
 
 from datetime import UTC, datetime
+import os
 
 from fastapi import APIRouter, HTTPException
 
 from youtube_summarizer.scrapper import extract_transcript_text, has_transcript_provider_key
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
-from .errors import handle_exception, require_env_key
+from .errors import handle_exception
 from .helpers import get_processing_time, run_async_task
 from .schema import ScrapResponse, YouTubeRequest
 
@@ -16,8 +17,8 @@ router = APIRouter()
 
 @router.post("/scrape", response_model=ScrapResponse)
 async def scrap_video(request: YouTubeRequest):
-    if not has_transcript_provider_key():
-        require_env_key("SCRAPECREATORS_API_KEY")
+    if not has_transcript_provider_key() and not os.getenv("FAL_KEY"):
+        raise HTTPException(status_code=500, detail="Config missing: SCRAPECREATORS_API_KEY or SUPADATA_API_KEY or FAL_KEY")
     start_time = datetime.now(UTC)
 
     try:
