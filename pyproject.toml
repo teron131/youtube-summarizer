@@ -16,7 +16,6 @@ dependencies = [
     "langchain-google-genai>=3.0.1",
     "langchain-openai>=1.0.2",
     "langgraph>=1.0.2",
-    "llm-harness",
     "opencc>=1.1.9",
     "pydantic>=2.12.2",
     "pydub>=0.25.1",
@@ -116,11 +115,3 @@ force-sort-within-sections = true
 [tool.ruff.format]
 # Format code examples inside docstrings
 docstring-code-format = true
-
-[tool.uv.workspace]
-members = [
-    "llm-harness",
-]
-
-[tool.uv.sources]
-llm-harness = { workspace = true }
