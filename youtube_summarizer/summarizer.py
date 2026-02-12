@@ -7,8 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field, field_validator
 
-from .fast_copy import TagRange, filter_content, tag_content, untag_content
-from .openrouter import ChatOpenRouter
+from .llm_harness import ChatOpenRouter, TagRange, filter_content, tag_content, untag_content
 from .scrapper import extract_transcript_text
 from .utils import is_youtube_url, s2hk
 
