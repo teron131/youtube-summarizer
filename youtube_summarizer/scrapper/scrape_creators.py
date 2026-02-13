@@ -3,8 +3,8 @@
 import os
 
 from dotenv import load_dotenv
+import httpx
 from pydantic import BaseModel, ConfigDict
-import requests
 
 from ..utils import clean_text, clean_youtube_url, is_youtube_url
 
@@ -52,7 +52,7 @@ class YouTubeScrapperResult(BaseModel):
         return bool(self.parsed_transcript)
 
 
-def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
+async def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """Fetch transcript from Scrape Creators transcript endpoint.
 
     Uses the transcript-only endpoint:
@@ -74,7 +74,8 @@ def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
 
     url = f"{SCRAPECREATORS_TRANSCRIPT_URL}?url={youtube_url}"
     headers = {"x-api-key": SCRAPECREATORS_API_KEY}
-    response = requests.get(url, headers=headers, timeout=60)
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(url, headers=headers)
     response.raise_for_status()
 
     result = response.json()

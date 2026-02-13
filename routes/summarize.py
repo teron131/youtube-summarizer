@@ -12,12 +12,12 @@ from fastapi.responses import StreamingResponse
 
 from youtube_summarizer.schemas import Summary
 from youtube_summarizer.scrapper import extract_transcript_text
-from youtube_summarizer.summarizer_gemini import summarize_video as summarize_video_gemini
-from youtube_summarizer.summarizer_openrouter import summarize_video as summarize_video_openrouter
+from youtube_summarizer.summarizer_gemini import summarize_video_async as summarize_video_gemini
+from youtube_summarizer.summarizer_openrouter import summarize_video_async as summarize_video_openrouter
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
 from .errors import handle_exception
-from .helpers import get_processing_time, run_async_task
+from .helpers import get_processing_time
 from .schema import SummarizeRequest, SummarizeResponse
 
 router = APIRouter()
@@ -71,22 +71,19 @@ async def _summarize_with_provider(
     target_language: str | None,
 ) -> tuple[Summary, dict[str, int | float] | None]:
     if provider == "gemini":
-        summary, metadata = await run_async_task(
-            lambda: summarize_video_gemini(
-                url,
-                target_language=target_language or "en",
-            )
+        summary, metadata = await summarize_video_gemini(
+            url,
+            target_language=target_language or "en",
         )
         if summary is None:
             raise ValueError("Gemini summarization returned no content")
         return summary, metadata
 
     logging.info("🔗 Scraping YouTube video for OpenRouter: %s", url)
-    transcript = await run_async_task(extract_transcript_text, url)
+    transcript = await extract_transcript_text(url)
     logging.info("📝 Using provider transcript for OpenRouter summary")
 
-    summary = await run_async_task(
-        summarize_video_openrouter,
+    summary = await summarize_video_openrouter(
         transcript,
         target_language,
     )

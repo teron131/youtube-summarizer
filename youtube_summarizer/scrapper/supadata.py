@@ -4,7 +4,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-import requests
+import httpx
 
 from ..utils import clean_text, clean_youtube_url, is_youtube_url
 
@@ -20,7 +20,7 @@ def get_supadata_api_key() -> str | None:
     return os.getenv("SUPADATA_API_KEY")
 
 
-def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
+async def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
     """Fetch transcript text from Supadata.
 
     Args:
@@ -50,9 +50,14 @@ def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
     }
 
     try:
-        response = requests.get(SUPADATA_API_URL, params=params, headers=headers, timeout=60)
-        if not response.ok:
-            logger.warning("Supadata API error: %s %s", response.status_code, response.reason)
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(
+                SUPADATA_API_URL,
+                params=params,
+                headers=headers,
+            )
+        if not response.is_success:
+            logger.warning("Supadata API error: %s %s", response.status_code, response.reason_phrase)
             return None
 
         data = response.json()
@@ -67,6 +72,6 @@ def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
 
         full_text = " ".join(item.get("text", "").strip() for item in content if isinstance(item, dict))
         return clean_text(full_text) if full_text.strip() else None
-    except requests.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.warning("Supadata request failed: %s", exc)
         return None

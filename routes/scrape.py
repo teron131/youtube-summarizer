@@ -8,7 +8,7 @@ from youtube_summarizer.scrapper import extract_transcript_text, has_transcript_
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
 from .errors import handle_exception
-from .helpers import get_processing_time, run_async_task
+from .helpers import get_processing_time
 from .schema import ScrapeResponse, YouTubeRequest
 
 router = APIRouter()
@@ -29,7 +29,7 @@ async def scrape_video(request: YouTubeRequest):
             raise HTTPException(status_code=400, detail="Invalid YouTube URL")
 
         url = clean_youtube_url(url)
-        transcript = await run_async_task(extract_transcript_text, url)
+        transcript = await extract_transcript_text(url)
 
         return ScrapeResponse(
             status="success",

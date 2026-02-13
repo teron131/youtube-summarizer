@@ -6,8 +6,8 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
+import httpx
 from pydantic import BaseModel, ConfigDict
-import requests
 
 from ..utils import clean_text, clean_youtube_url, extract_video_id, is_youtube_url
 
@@ -86,22 +86,24 @@ def has_transcript_provider_key() -> bool:
     return bool(_get_api_key("SCRAPECREATORS_API_KEY") or _get_api_key("SUPADATA_API_KEY"))
 
 
-def _fetch_scrape_creators(video_url: str) -> YouTubeScrapperResult | None:
+async def _fetch_scrape_creators(
+    client: httpx.AsyncClient,
+    video_url: str,
+) -> YouTubeScrapperResult | None:
     api_key = _get_api_key("SCRAPECREATORS_API_KEY")
     if not api_key:
         return None
 
     try:
-        response = requests.get(
+        response = await client.get(
             SCRAPECREATORS_ENDPOINT,
             headers={"x-api-key": api_key},
             params={"url": video_url},
-            timeout=DEFAULT_TIMEOUT_S,
         )
-    except requests.RequestException:
+    except httpx.HTTPError:
         return None
 
-    if response.status_code in {401, 403} or not response.ok:
+    if response.status_code in {401, 403} or not response.is_success:
         return None
 
     try:
@@ -111,22 +113,24 @@ def _fetch_scrape_creators(video_url: str) -> YouTubeScrapperResult | None:
         return None
 
 
-def _fetch_supadata(video_url: str) -> YouTubeScrapperResult | None:
+async def _fetch_supadata(
+    client: httpx.AsyncClient,
+    video_url: str,
+) -> YouTubeScrapperResult | None:
     api_key = _get_api_key("SUPADATA_API_KEY")
     if not api_key:
         return None
 
     try:
-        response = requests.get(
+        response = await client.get(
             SUPADATA_ENDPOINT,
             headers={"x-api-key": api_key},
             params={"url": video_url, "lang": "en", "text": "true", "mode": "auto"},
-            timeout=DEFAULT_TIMEOUT_S,
         )
-    except requests.RequestException:
+    except httpx.HTTPError:
         return None
 
-    if response.status_code in {401, 403} or response.status_code == 202 or not response.ok:
+    if response.status_code in {401, 403} or response.status_code == 202 or not response.is_success:
         return None
 
     try:
@@ -164,19 +168,20 @@ def _fetch_supadata(video_url: str) -> YouTubeScrapperResult | None:
     )
 
 
-def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
+async def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     if not is_youtube_url(youtube_url):
         raise ValueError("Invalid YouTube URL")
 
     youtube_url = clean_youtube_url(youtube_url)
 
-    result = _fetch_scrape_creators(youtube_url)
-    if result and result.has_transcript:
-        return result
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_S) as client:
+        result = await _fetch_scrape_creators(client, youtube_url)
+        if result and result.has_transcript:
+            return result
 
-    result = _fetch_supadata(youtube_url)
-    if result and result.has_transcript:
-        return result
+        result = await _fetch_supadata(client, youtube_url)
+        if result and result.has_transcript:
+            return result
 
     if not has_transcript_provider_key():
         raise ValueError("No API keys found for Scrape Creators or Supadata")
@@ -184,8 +189,8 @@ def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     raise ValueError("Failed to fetch transcript from available providers")
 
 
-def get_transcript(youtube_url: str) -> str:
-    result = scrape_youtube(youtube_url)
+async def get_transcript(youtube_url: str) -> str:
+    result = await scrape_youtube(youtube_url)
     if not result.has_transcript:
         raise ValueError("Video has no transcript")
 
@@ -195,5 +200,5 @@ def get_transcript(youtube_url: str) -> str:
     return transcript
 
 
-def extract_transcript_text(youtube_url: str) -> str:
-    return get_transcript(youtube_url)
+async def extract_transcript_text(youtube_url: str) -> str:
+    return await get_transcript(youtube_url)

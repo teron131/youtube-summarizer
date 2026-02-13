@@ -34,3 +34,24 @@ def summarize_video(
         HumanMessage(content=f"Transcript:\n{clean_transcript}"),
     ]
     return llm.invoke(messages)
+
+
+async def summarize_video_async(
+    transcript: str,
+    target_language: str | None = None,
+) -> Summary:
+    clean_transcript = transcript.strip()
+    if not clean_transcript:
+        raise ValueError("Transcript cannot be empty")
+
+    llm = ChatOpenRouter(
+        model=OPENROUTER_SUMMARY_MODEL,
+        temperature=0,
+        reasoning_effort=OPENROUTER_REASONING_EFFORT,
+    ).with_structured_output(Summary)
+
+    messages = [
+        SystemMessage(content=get_langchain_summary_prompt(target_language=target_language)),
+        HumanMessage(content=f"Transcript:\n{clean_transcript}"),
+    ]
+    return await llm.ainvoke(messages)
