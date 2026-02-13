@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 import requests
 
-from ..transcriber.youtube_loader import youtube_loader as transcriber_youtube_loader
 from ..utils import clean_text, clean_youtube_url, extract_video_id, is_youtube_url
 
 load_dotenv()
@@ -185,14 +184,6 @@ def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     raise ValueError("Failed to fetch transcript from available providers")
 
 
-def _extract_fallback_subtitle(content: str) -> str | None:
-    marker = "Subtitle:\n"
-    if marker not in content:
-        return None
-    subtitle = content.split(marker, 1)[1].strip()
-    return clean_text(subtitle) if subtitle else None
-
-
 def get_transcript(youtube_url: str) -> str:
     result = scrape_youtube(youtube_url)
     if not result.has_transcript:
@@ -205,11 +196,4 @@ def get_transcript(youtube_url: str) -> str:
 
 
 def extract_transcript_text(youtube_url: str) -> str:
-    try:
-        return get_transcript(youtube_url)
-    except Exception:
-        fallback_content = transcriber_youtube_loader(youtube_url)
-        subtitle = _extract_fallback_subtitle(fallback_content)
-        if subtitle:
-            return subtitle
-        raise
+    return get_transcript(youtube_url)
