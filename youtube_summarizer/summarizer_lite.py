@@ -1,6 +1,7 @@
 """YouTube video transcript summarization using LangChain ReAct agent with structured output."""
 
 from collections.abc import Callable
+import os
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -18,8 +19,8 @@ from .utils import is_youtube_url
 
 load_dotenv()
 
-DEFAULT_MODEL = "x-ai/grok-4.1-fast"
-FAST_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
+OPENROUTER_SUMMARY_MODEL = os.getenv("OPENROUTER_SUMMARY_MODEL", "x-ai/grok-4.1-fast")
+OPENROUTER_FILTER_MODEL = os.getenv("OPENROUTER_FILTER_MODEL", "google/gemini-2.5-flash-lite-preview-09-2025")
 
 
 @tool
@@ -40,7 +41,7 @@ def garbage_filter_middleware(
         if isinstance(transcript, str) and transcript.strip():
             tagged_transcript = tag_content(transcript)
             llm = ChatOpenRouter(
-                model=FAST_MODEL,
+                model=OPENROUTER_FILTER_MODEL,
                 temperature=0,
             ).with_structured_output(GarbageIdentification)
             messages = [
@@ -58,7 +59,7 @@ def garbage_filter_middleware(
 
 def create_summarizer_agent(target_language: str | None = None):
     llm = ChatOpenRouter(
-        model=DEFAULT_MODEL,
+        model=OPENROUTER_SUMMARY_MODEL,
         temperature=0,
         reasoning_effort="medium",
     )

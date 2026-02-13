@@ -1,6 +1,7 @@
 """Request and Response models for the API"""
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,14 +19,18 @@ class YouTubeRequest(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
-    content: str = Field(
-        description="Content to analyze (YouTube URL or transcript text)",
+    url: str = Field(
+        min_length=10,
+        description="YouTube video URL to summarize",
+    )
+    provider: Literal["auto", "openrouter", "gemini"] = Field(
+        default="auto",
+        description="LLM provider route. 'auto' resolves using configured keys.",
     )
     target_language: str | None = Field(
         default="en",
         description="Target language for translation (ISO language code)",
     )
-    fast_mode: bool = Field(default=False, description="Use fast summarization without quality checks")
 
 
 class ScrapeResponse(BaseResponse):
@@ -51,9 +56,11 @@ class SummarizeResponse(BaseResponse):
 
 class ConfigurationResponse(BaseResponse):
     available_models: dict[str, str] = Field(description="Available models for selection")
+    available_providers: list[str] = Field(description="Available provider routes")
     supported_languages: dict[str, str] = Field(
         description="Supported languages for translation",
     )
+    default_provider: str = Field(description="Default provider route")
     default_summary_model: str = Field(description="Default summary model")
     default_quality_model: str = Field(description="Default quality model")
     default_target_language: str = Field(description="Default target language")

@@ -58,6 +58,8 @@ graph TD
 - Transcript payloads are normalized to text segments/blocks; timestamp-level transcript detail is out of scope.
 - Runtime behavior is now simplified to provider selection (Gemini/OpenRouter) instead of summary mode selection.
 - Router behavior is explicit: it resolves `auto` first, then falls back to whichever provider key is available.
+- `/summarize` and `/stream-summarize` accept `provider: auto | gemini | openrouter` (default `auto`).
+- `/summarize` and `/stream-summarize` accept YouTube `url` only; transcript text remains an internal processing step.
 
 ## 🚀 Setup & Development
 
@@ -87,8 +89,14 @@ SUPADATA_API_KEY=... # Optional transcript provider
 TRANSCRIPT_PROVIDER_PREFERENCE=scrapecreators # scrapecreators | supadata
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=... # Optional
+GEMINI_SUMMARY_MODEL=gemini-3-flash-preview
+OPENROUTER_SUMMARY_MODEL=x-ai/grok-4.1-fast
+OPENROUTER_FILTER_MODEL=google/gemini-2.5-flash-lite-preview-09-2025
+TARGET_LANGUAGE=en
 PORT=8080
 ```
+
+Model selection is environment-controlled. API callers choose only `provider` (`auto|gemini|openrouter`) and cannot pass model IDs.
 
 ### 3. Execution
 
@@ -105,7 +113,7 @@ python app.py
 | Endpoint            | Method | Description                                                        |
 | ------------------- | ------ | ------------------------------------------------------------------ |
 | `/scrape`           | `POST` | Extract video metadata and normalized transcript text via provider |
-| `/summarize`        | `POST` | Generate AI summary (provider-routed path)                         |
+| `/summarize`        | `POST` | Generate AI summary (`provider` route with `auto` fallback)        |
 | `/stream-summarize` | `POST` | Real-time streaming updates of summarization progress              |
 | `/health`           | `GET`  | System status and API configuration check                          |
 

@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Literal
 
 from google import genai
 from google.genai import types
@@ -12,7 +11,8 @@ from .schemas import Summary
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3-flash-preview"
+GEMINI_SUMMARY_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-3-flash-preview")
+GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "medium")
 
 USD_PER_M_TOKENS_BY_MODEL = {
     "gemini-3-flash-preview": {"input": 0.5, "output": 3},
@@ -36,8 +36,6 @@ def _calculate_cost(
 def analyze_video_url(
     video_url: str,
     *,
-    model: str = DEFAULT_MODEL,
-    thinking_level: Literal["minimal", "low", "medium", "high"] = "medium",
     target_language: str = "auto",
     api_key: str | None = None,
     timeout: int = 600,
@@ -50,13 +48,13 @@ def analyze_video_url(
 
     try:
         response = client.models.generate_content(
-            model=model,
+            model=GEMINI_SUMMARY_MODEL,
             contents=[
                 types.Part(file_data=types.FileData(file_uri=video_url)),
                 types.Part(text=get_gemini_summary_prompt(target_language=target_language)),
             ],
             config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
+                thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
                 response_mime_type="application/json",
                 response_schema=Summary,
             ),
@@ -70,7 +68,7 @@ def analyze_video_url(
 
         usage = getattr(response, "usage_metadata", None)
         if usage and hasattr(usage, "prompt_token_count") and hasattr(usage, "total_token_count"):
-            cost = _calculate_cost(model, usage.prompt_token_count, usage.total_token_count)
+            cost = _calculate_cost(GEMINI_SUMMARY_MODEL, usage.prompt_token_count, usage.total_token_count)
             logger.info(
                 "Gemini usage input=%s total=%s est_cost_usd=%.6f",
                 usage.prompt_token_count,
@@ -88,15 +86,11 @@ def analyze_video_url(
 def summarize_video(
     video_url: str,
     *,
-    model: str = DEFAULT_MODEL,
-    thinking_level: Literal["minimal", "low", "medium", "high"] = "medium",
     target_language: str = "auto",
     api_key: str | None = None,
 ) -> Summary | None:
     return analyze_video_url(
         video_url,
-        model=model,
-        thinking_level=thinking_level,
         target_language=target_language,
         api_key=api_key,
     )

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 
 def create_http_error(status_code: int, detail: str, error_type: str | None = None) -> HTTPException:
-    logging.error(f"{error_type or 'Error'}: {detail}")
+    logging.error("%s: %s", error_type or "Error", detail)
     return HTTPException(status_code=status_code, detail=detail)
 
 
