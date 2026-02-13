@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from youtube_summarizer.schemas import Summary
 from youtube_summarizer.scrapper import extract_transcript_text
 from youtube_summarizer.summarizer_gemini import summarize_video as summarize_video_gemini
-from youtube_summarizer.summarizer_lite import summarize_video as summarize_video_openrouter
+from youtube_summarizer.summarizer_openrouter import summarize_video as summarize_video_openrouter
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
 
 from .errors import handle_exception
@@ -124,7 +124,6 @@ async def summarize(request: SummarizeRequest):
             status="success",
             message=f"Summary completed successfully via {provider}",
             summary=summary,
-            quality=None,
             metadata=_build_metadata(metadata, get_processing_time(start_time)),
             iteration_count=1,
             target_language=request.target_language or "en",
@@ -160,7 +159,6 @@ async def stream_summarize(request: SummarizeRequest):
                 "timestamp": datetime.now(UTC).isoformat(),
                 "provider": provider,
                 "summary": summary.model_dump(),
-                "quality": None,
                 "metadata": _build_metadata(metadata, get_processing_time(start_time)),
                 "iteration_count": 1,
                 "target_language": request.target_language or "en",

@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from youtube_summarizer.schemas import Quality, Summary
+from youtube_summarizer.schemas import Summary
 
 
 class BaseResponse(BaseModel):
@@ -41,7 +41,6 @@ class ScrapeResponse(BaseResponse):
 
 class SummarizeResponse(BaseResponse):
     summary: Summary
-    quality: Quality | None = None
     metadata: dict[str, str | int | float] | None = None
     iteration_count: int = Field(default=1)
     target_language: str | None = Field(
@@ -58,5 +57,4 @@ class ConfigurationResponse(BaseResponse):
     )
     default_provider: str = Field(description="Default provider route")
     default_summary_model: str = Field(description="Default summary model")
-    default_quality_model: str = Field(description="Default quality model")
     default_target_language: str = Field(description="Default target language")

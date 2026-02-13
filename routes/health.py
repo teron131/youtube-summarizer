@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from routes.schema import ConfigurationResponse
 from youtube_summarizer.scrapper.supadata import get_supadata_api_key
 from youtube_summarizer.summarizer_gemini import GEMINI_SUMMARY_MODEL
-from youtube_summarizer.summarizer_lite import OPENROUTER_FILTER_MODEL, OPENROUTER_SUMMARY_MODEL
+from youtube_summarizer.summarizer_openrouter import OPENROUTER_SUMMARY_MODEL
 
 router = APIRouter()
 
@@ -18,7 +18,6 @@ API_TITLE = "YouTube Summarizer API"
 AVAILABLE_MODELS = {
     "gemini_summary_model": GEMINI_SUMMARY_MODEL,
     "openrouter_summary_model": OPENROUTER_SUMMARY_MODEL,
-    "openrouter_filter_model": OPENROUTER_FILTER_MODEL,
 }
 AVAILABLE_PROVIDERS = ["auto", "gemini", "openrouter"]
 DEFAULT_PROVIDER = "auto"
@@ -80,6 +79,5 @@ async def get_configuration():
         "supported_languages": SUPPORTED_LANGUAGES,
         "default_provider": DEFAULT_PROVIDER,
         "default_summary_model": OPENROUTER_SUMMARY_MODEL,
-        "default_quality_model": OPENROUTER_FILTER_MODEL,
         "default_target_language": DEFAULT_TARGET_LANGUAGE,
     }
