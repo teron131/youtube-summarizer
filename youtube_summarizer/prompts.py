@@ -24,12 +24,13 @@ def get_gemini_summary_prompt(
     lang_descriptions = {
         "auto": "Use the same language as the video, or English if the language is unclear",
         "en": "English (US)",
-        "zh-TW": "Traditional Chinese (繁體中文)",
+        "zh": "Traditional Chinese (繁體中文)",
     }
 
     # Determine language instruction
-    lang_desc = lang_descriptions.get(target_language, target_language)
-    instruction = lang_desc if target_language == "auto" else f"Write ALL output in {lang_desc}. Do not use English or any other language."
+    normalized_language = target_language if target_language in {"auto", "en", "zh"} else "auto"
+    lang_desc = lang_descriptions[normalized_language]
+    instruction = lang_desc if normalized_language == "auto" else f"Write ALL output in {lang_desc}. Do not use English or any other language."
 
     language_instruction = f"- OUTPUT LANGUAGE (REQUIRED): {instruction}"
 
@@ -77,6 +78,11 @@ def get_langchain_summary_prompt(
     ]
 
     if target_language:
-        prompt_parts.append(f"\nOUTPUT LANGUAGE (REQUIRED): {target_language}")
+        language_instruction = {
+            "auto": "Use the same language as the transcript, or English if unclear",
+            "en": "English (US)",
+            "zh": "Traditional Chinese (繁體中文). Convert all Chinese text to Traditional Chinese.",
+        }.get(target_language, "Use the same language as the transcript, or English if unclear")
+        prompt_parts.append(f"\nOUTPUT LANGUAGE (REQUIRED): {language_instruction}")
 
     return "\n".join(prompt_parts)

@@ -20,12 +20,9 @@ DEFAULT_PROVIDER = SETTINGS.default_provider
 DEFAULT_TARGET_LANGUAGE = SETTINGS.default_target_language
 
 SUPPORTED_LANGUAGES = {
-    "zh": "Chinese",
+    "auto": "Auto detect (fallback to English if unclear)",
     "en": "English",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "de": "German",
-    "ru": "Russian",
+    "zh": "Traditional Chinese (繁體中文)",
 }
 
 

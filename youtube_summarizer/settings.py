@@ -1,6 +1,7 @@
 """Application configuration loaded from environment variables."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,7 +20,7 @@ class AppSettings(BaseSettings):
     api_version: str = "3.0.0"
 
     default_provider: str = "auto"
-    default_target_language: str = "en"
+    default_target_language: Literal["auto", "en", "zh"] = "auto"
 
     scrape_timeout_seconds: int = 60
     llm_timeout_seconds: int = 120
@@ -102,11 +103,15 @@ def _clean_optional(value: str | None) -> str | None:
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     settings = AppSettings()
-
-    settings.openrouter_api_key = _clean_optional(settings.openrouter_api_key)
-    settings.gemini_api_key = _clean_optional(settings.gemini_api_key)
-    settings.google_api_key = _clean_optional(settings.google_api_key)
-    settings.scrapecreators_api_key = _clean_optional(settings.scrapecreators_api_key)
-    settings.supadata_api_key = _clean_optional(settings.supadata_api_key)
+    optional_key_fields = (
+        "openrouter_api_key",
+        "gemini_api_key",
+        "google_api_key",
+        "scrapecreators_api_key",
+        "supadata_api_key",
+    )
+    for field_name in optional_key_fields:
+        current_value = getattr(settings, field_name)
+        setattr(settings, field_name, _clean_optional(current_value))
 
     return settings

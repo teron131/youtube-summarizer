@@ -97,6 +97,7 @@ PORT=8080
 ```
 
 Model selection is environment-controlled. API callers choose only `provider` (`auto|gemini|openrouter`) and cannot pass model IDs.
+Language control is also constrained: API callers can use `target_language` as `auto`, `en`, or `zh` only. `zh` output is always Traditional Chinese (繁體中文).
 
 ### 3. Execution
 

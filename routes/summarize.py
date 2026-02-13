@@ -67,15 +67,20 @@ def _resolve_provider(requested_provider: ProviderType, url: str) -> Literal["op
     raise HTTPException(status_code=500, detail=LLM_CONFIG_ERROR)
 
 
+def _resolve_target_language(target_language: Literal["auto", "en", "zh"] | None) -> Literal["auto", "en", "zh"]:
+    return target_language or get_settings().default_target_language
+
+
 async def _summarize_with_provider(
     url: str,
     provider: Literal["openrouter", "gemini"],
-    target_language: str | None,
+    target_language: Literal["auto", "en", "zh"] | None,
 ) -> tuple[Summary, dict[str, int | float] | None]:
+    resolved_target_language = _resolve_target_language(target_language)
     if provider == "gemini":
         summary, metadata = await summarize_video_gemini(
             url,
-            target_language=target_language or get_settings().default_target_language,
+            target_language=resolved_target_language,
         )
         if summary is None:
             raise ValueError("Gemini summarization returned no content")
@@ -87,7 +92,7 @@ async def _summarize_with_provider(
 
     summary = await summarize_video_openrouter(
         transcript,
-        target_language,
+        resolved_target_language,
     )
     return summary, None
 
@@ -112,11 +117,12 @@ async def summarize(request: SummarizeRequest):
     start_time = datetime.now(UTC)
 
     try:
+        target_language = _resolve_target_language(request.target_language)
         provider = _resolve_provider(request.provider, url)
         summary, metadata = await _summarize_with_provider(
             url=url,
             provider=provider,
-            target_language=request.target_language,
+            target_language=target_language,
         )
 
         return SummarizeResponse(
@@ -125,7 +131,7 @@ async def summarize(request: SummarizeRequest):
             summary=summary,
             metadata=_build_metadata(metadata, get_processing_time(start_time)),
             iteration_count=1,
-            target_language=request.target_language or get_settings().default_target_language,
+            target_language=target_language,
         )
     except HTTPException:
         raise
@@ -141,6 +147,7 @@ async def stream_summarize(request: SummarizeRequest):
     async def generate_stream():
         start_time = datetime.now(UTC)
         try:
+            target_language = _resolve_target_language(request.target_language)
             provider = _resolve_provider(request.provider, url)
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting summary...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
@@ -149,7 +156,7 @@ async def stream_summarize(request: SummarizeRequest):
             summary, metadata = await _summarize_with_provider(
                 url=url,
                 provider=provider,
-                target_language=request.target_language,
+                target_language=target_language,
             )
             completion_data = {
                 "type": "complete",
@@ -160,7 +167,7 @@ async def stream_summarize(request: SummarizeRequest):
                 "summary": summary.model_dump(),
                 "metadata": _build_metadata(metadata, get_processing_time(start_time)),
                 "iteration_count": 1,
-                "target_language": request.target_language or get_settings().default_target_language,
+                "target_language": target_language,
             }
             yield f"data: {json.dumps(completion_data, ensure_ascii=False)}\n\n"
 

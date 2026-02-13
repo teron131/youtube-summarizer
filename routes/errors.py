@@ -4,8 +4,6 @@ import logging
 
 from fastapi import HTTPException
 
-from youtube_summarizer.settings import get_settings
-
 
 def create_http_error(status_code: int, detail: str, error_type: str | None = None) -> HTTPException:
     logging.error("%s: %s", error_type or "Error", detail)
@@ -22,9 +20,3 @@ def handle_exception(e: Exception, context: str = "Processing") -> HTTPException
         return create_http_error(400, f"Invalid input: {str(e)[:100]}", "invalid_input")
 
     return create_http_error(500, f"{context} failed: {str(e)[:100]}", "processing_failed")
-
-
-def require_env_key(key_name: str) -> None:
-    value = get_settings().model_dump().get(key_name.lower())
-    if not value:
-        raise create_http_error(500, f"Config missing: {key_name}", "missing_config")
