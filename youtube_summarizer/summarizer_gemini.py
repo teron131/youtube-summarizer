@@ -38,13 +38,12 @@ def analyze_video_url(
     *,
     target_language: str = "auto",
     api_key: str | None = None,
-    timeout: int = 600,
 ) -> tuple[Summary | None, dict[str, int | float] | None]:
     api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("API key not found. Set GOOGLE_API_KEY or GEMINI_API_KEY")
 
-    client = genai.Client(api_key=api_key, http_options={"timeout": timeout})
+    client = genai.Client(api_key=api_key)
 
     try:
         response = client.models.generate_content(
