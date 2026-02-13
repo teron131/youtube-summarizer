@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from youtube_summarizer.schemas import Summary
 from youtube_summarizer.scrapper import extract_transcript_text
 from youtube_summarizer.summarizer_gemini import summarize_video as summarize_video_gemini
 from youtube_summarizer.summarizer_lite import summarize_video as summarize_video_openrouter
@@ -68,9 +69,9 @@ async def _summarize_with_provider(
     url: str,
     provider: Literal["openrouter", "gemini"],
     target_language: str | None,
-):
+) -> tuple[Summary, dict[str, int | float] | None]:
     if provider == "gemini":
-        summary = await run_async_task(
+        summary, metadata = await run_async_task(
             lambda: summarize_video_gemini(
                 url,
                 target_language=target_language or "en",
@@ -78,17 +79,30 @@ async def _summarize_with_provider(
         )
         if summary is None:
             raise ValueError("Gemini summarization returned no content")
-        return summary
+        return summary, metadata
 
     logging.info("🔗 Scraping YouTube video for OpenRouter: %s", url)
     transcript = await run_async_task(extract_transcript_text, url)
     logging.info("📝 Using provider transcript for OpenRouter summary")
 
-    return await run_async_task(
+    summary = await run_async_task(
         summarize_video_openrouter,
         transcript,
         target_language,
     )
+    return summary, None
+
+
+def _build_metadata(
+    usage_metadata: dict[str, int | float] | None,
+    processing_time: str,
+) -> dict[str, str | int | float]:
+    metadata: dict[str, str | int | float] = {
+        "processing_time": processing_time,
+    }
+    if usage_metadata:
+        metadata.update(usage_metadata)
+    return metadata
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -100,7 +114,7 @@ async def summarize(request: SummarizeRequest):
 
     try:
         provider = _resolve_provider(request.provider, url)
-        summary = await _summarize_with_provider(
+        summary, metadata = await _summarize_with_provider(
             url=url,
             provider=provider,
             target_language=request.target_language,
@@ -111,7 +125,7 @@ async def summarize(request: SummarizeRequest):
             message=f"Summary completed successfully via {provider}",
             summary=summary,
             quality=None,
-            processing_time=get_processing_time(start_time),
+            metadata=_build_metadata(metadata, get_processing_time(start_time)),
             iteration_count=1,
             target_language=request.target_language or "en",
         )
@@ -134,7 +148,7 @@ async def stream_summarize(request: SummarizeRequest):
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting summary...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
             await asyncio.sleep(0.01)
 
-            summary = await _summarize_with_provider(
+            summary, metadata = await _summarize_with_provider(
                 url=url,
                 provider=provider,
                 target_language=request.target_language,
@@ -142,12 +156,12 @@ async def stream_summarize(request: SummarizeRequest):
             completion_data = {
                 "type": "complete",
                 "message": f"Summary completed via {provider}",
-                "processing_time": get_processing_time(start_time),
                 "total_chunks": 1,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "provider": provider,
                 "summary": summary.model_dump(),
                 "quality": None,
+                "metadata": _build_metadata(metadata, get_processing_time(start_time)),
                 "iteration_count": 1,
                 "target_language": request.target_language or "en",
             }

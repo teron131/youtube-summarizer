@@ -36,17 +36,13 @@ class SummarizeRequest(BaseModel):
 class ScrapeResponse(BaseResponse):
     url: str | None = None
     transcript: str | None = None
-    processing_time: str
-
-
-# Backward-compatible alias.
-ScrapResponse = ScrapeResponse
+    metadata: dict[str, str | int | float] | None = None
 
 
 class SummarizeResponse(BaseResponse):
     summary: Summary
     quality: Quality | None = None
-    processing_time: str
+    metadata: dict[str, str | int | float] | None = None
     iteration_count: int = Field(default=1)
     target_language: str | None = Field(
         default=None,

@@ -13,7 +13,6 @@ from .scrapper import extract_transcript_text
 from .utils import is_youtube_url
 
 SUMMARY_MODEL = "x-ai/grok-4.1-fast"
-ANALYSIS_MODEL = SUMMARY_MODEL  # Backward-compatible alias used by existing routes.
 QUALITY_MODEL = "x-ai/grok-4.1-fast"
 FAST_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
 MIN_QUALITY_SCORE = 80

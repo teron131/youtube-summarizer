@@ -6,7 +6,6 @@ from .scrapper import (
     YouTubeScrapperResult,
     extract_transcript_text,
     has_transcript_provider_key,
-    scrap_youtube,
     scrape_youtube,
 )
 
@@ -16,6 +15,5 @@ __all__ = [
     "YouTubeScrapperResult",
     "extract_transcript_text",
     "has_transcript_provider_key",
-    "scrap_youtube",
     "scrape_youtube",
 ]

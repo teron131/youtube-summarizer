@@ -37,7 +37,9 @@ async def scrape_video(request: YouTubeRequest):
             message="Video scraped successfully",
             url=url,
             transcript=transcript,
-            processing_time=get_processing_time(start_time),
+            metadata={
+                "processing_time": get_processing_time(start_time),
+            },
         )
     except HTTPException:
         raise

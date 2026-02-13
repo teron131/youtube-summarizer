@@ -52,7 +52,7 @@ class YouTubeScrapperResult(BaseModel):
         return bool(self.parsed_transcript)
 
 
-def scrap_youtube(youtube_url: str) -> YouTubeScrapperResult:
+def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     """Fetch transcript from Scrape Creators transcript endpoint.
 
     Uses the transcript-only endpoint:

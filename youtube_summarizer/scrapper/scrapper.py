@@ -213,7 +213,3 @@ def extract_transcript_text(youtube_url: str) -> str:
         if subtitle:
             return subtitle
         raise
-
-
-# Backward-compatible alias used in existing routes/imports.
-scrap_youtube = scrape_youtube

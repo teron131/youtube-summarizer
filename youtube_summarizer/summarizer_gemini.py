@@ -39,7 +39,7 @@ def analyze_video_url(
     target_language: str = "auto",
     api_key: str | None = None,
     timeout: int = 600,
-) -> Summary | None:
+) -> tuple[Summary | None, dict[str, int | float] | None]:
     api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("API key not found. Set GOOGLE_API_KEY or GEMINI_API_KEY")
@@ -62,25 +62,35 @@ def analyze_video_url(
 
         if not response.text:
             logger.warning("Empty response from Gemini API")
-            return None
+            return None, None
 
         summary = Summary.model_validate_json(response.text)
+        metadata: dict[str, int | float] | None = None
 
         usage = getattr(response, "usage_metadata", None)
         if usage and hasattr(usage, "prompt_token_count") and hasattr(usage, "total_token_count"):
-            cost = _calculate_cost(GEMINI_SUMMARY_MODEL, usage.prompt_token_count, usage.total_token_count)
+            tokens_input = int(usage.prompt_token_count)
+            tokens_total = int(usage.total_token_count)
+            tokens_output = max(0, tokens_total - tokens_input)
+            cost = _calculate_cost(GEMINI_SUMMARY_MODEL, tokens_input, tokens_total)
+            metadata = {
+                "tokens_input": tokens_input,
+                "tokens_output": tokens_output,
+                "tokens_total": tokens_total,
+                "cost": cost,
+            }
             logger.info(
                 "Gemini usage input=%s total=%s est_cost_usd=%.6f",
-                usage.prompt_token_count,
-                usage.total_token_count,
+                tokens_input,
+                tokens_total,
                 cost,
             )
 
-        return summary
+        return summary, metadata
 
     except Exception as e:
         logger.exception("Failed to analyze video: %s", e)
-        return None
+        return None, None
 
 
 def summarize_video(
@@ -88,7 +98,7 @@ def summarize_video(
     *,
     target_language: str = "auto",
     api_key: str | None = None,
-) -> Summary | None:
+) -> tuple[Summary | None, dict[str, int | float] | None]:
     return analyze_video_url(
         video_url,
         target_language=target_language,

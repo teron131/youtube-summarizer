@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_supadata_api_key() -> str | None:
-    """Return Supadata API key with backwards-compatible env var support."""
-    return os.getenv("SUPADATA_API_KEY") or os.getenv("SUPDADATA_API_KEY")
+    """Return Supadata API key from environment."""
+    return os.getenv("SUPADATA_API_KEY")
 
 
 def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
