@@ -1,17 +1,10 @@
 """Scrape Creators transcript-only provider."""
 
-import os
-
-from dotenv import load_dotenv
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from ..settings import get_settings
 from ..utils import clean_text, clean_youtube_url, is_youtube_url
-
-load_dotenv()
-
-SCRAPECREATORS_API_KEY = os.getenv("SCRAPECREATORS_API_KEY")
-SCRAPECREATORS_TRANSCRIPT_URL = "https://api.scrapecreators.com/v1/youtube/video/transcript"
 
 
 class Channel(BaseModel):
@@ -64,17 +57,18 @@ async def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
     Returns:
         YouTubeScrapperResult: Parsed transcript response
     """
+    settings = get_settings()
     if not is_youtube_url(youtube_url):
         raise ValueError("Invalid YouTube URL")
 
-    if not SCRAPECREATORS_API_KEY:
+    if not settings.scrapecreators_api_key:
         raise ValueError("SCRAPECREATORS_API_KEY environment variable is required")
 
     youtube_url = clean_youtube_url(youtube_url)
 
-    url = f"{SCRAPECREATORS_TRANSCRIPT_URL}?url={youtube_url}"
-    headers = {"x-api-key": SCRAPECREATORS_API_KEY}
-    async with httpx.AsyncClient(timeout=60) as client:
+    url = f"{settings.scrapecreators_transcript_url}?url={youtube_url}"
+    headers = {"x-api-key": settings.scrapecreators_api_key}
+    async with httpx.AsyncClient(timeout=settings.scrape_timeout_seconds) as client:
         response = await client.get(url, headers=headers)
     response.raise_for_status()
 

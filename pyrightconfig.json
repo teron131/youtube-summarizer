@@ -1,0 +1,8 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "include": ["youtube_summarizer", "routes", "app.py"],
+  "exclude": ["**/__pycache__", "backup"]
+}

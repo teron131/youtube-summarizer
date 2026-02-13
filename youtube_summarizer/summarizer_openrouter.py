@@ -1,32 +1,27 @@
 """OpenRouter transcript summarization for deployment runtime."""
 
-import os
-
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .llm_harness import ChatOpenRouter
 from .prompts import get_langchain_summary_prompt
 from .schemas import Summary
-
-load_dotenv()
-
-OPENROUTER_SUMMARY_MODEL = os.getenv("OPENROUTER_SUMMARY_MODEL", "x-ai/grok-4.1-fast")
-OPENROUTER_REASONING_EFFORT = os.getenv("OPENROUTER_REASONING_EFFORT", "medium")
+from .settings import get_settings
 
 
 def summarize_video(
     transcript: str,
     target_language: str | None = None,
 ) -> Summary:
+    settings = get_settings()
     clean_transcript = transcript.strip()
     if not clean_transcript:
         raise ValueError("Transcript cannot be empty")
 
     llm = ChatOpenRouter(
-        model=OPENROUTER_SUMMARY_MODEL,
+        model=settings.openrouter_summary_model,
         temperature=0,
-        reasoning_effort=OPENROUTER_REASONING_EFFORT,
+        reasoning_effort=settings.openrouter_reasoning_effort,
+        timeout=settings.llm_timeout_seconds,
     ).with_structured_output(Summary)
 
     messages = [
@@ -40,14 +35,16 @@ async def summarize_video_async(
     transcript: str,
     target_language: str | None = None,
 ) -> Summary:
+    settings = get_settings()
     clean_transcript = transcript.strip()
     if not clean_transcript:
         raise ValueError("Transcript cannot be empty")
 
     llm = ChatOpenRouter(
-        model=OPENROUTER_SUMMARY_MODEL,
+        model=settings.openrouter_summary_model,
         temperature=0,
-        reasoning_effort=OPENROUTER_REASONING_EFFORT,
+        reasoning_effort=settings.openrouter_reasoning_effort,
+        timeout=settings.llm_timeout_seconds,
     ).with_structured_output(Summary)
 
     messages = [

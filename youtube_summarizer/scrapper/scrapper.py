@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
-from dotenv import load_dotenv
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from ..settings import get_settings
 from ..utils import clean_text, clean_youtube_url, extract_video_id, is_youtube_url
-
-load_dotenv()
-
-SCRAPECREATORS_ENDPOINT = "https://api.scrapecreators.com/v1/youtube/video/transcript"
-SUPADATA_ENDPOINT = "https://api.supadata.ai/v1/transcript"
-DEFAULT_TIMEOUT_S = 30
 
 
 class Channel(BaseModel):
@@ -74,29 +67,23 @@ class YouTubeScrapperResult(BaseModel):
         return bool(self.transcript or (self.transcript_only_text and self.transcript_only_text.strip()))
 
 
-def _get_api_key(name: str) -> str | None:
-    value = os.getenv(name)
-    if not value:
-        return None
-    value = value.strip()
-    return value or None
-
-
 def has_transcript_provider_key() -> bool:
-    return bool(_get_api_key("SCRAPECREATORS_API_KEY") or _get_api_key("SUPADATA_API_KEY"))
+    settings = get_settings()
+    return settings.has_any_transcript_provider
 
 
 async def _fetch_scrape_creators(
     client: httpx.AsyncClient,
     video_url: str,
 ) -> YouTubeScrapperResult | None:
-    api_key = _get_api_key("SCRAPECREATORS_API_KEY")
+    settings = get_settings()
+    api_key = settings.scrapecreators_api_key
     if not api_key:
         return None
 
     try:
         response = await client.get(
-            SCRAPECREATORS_ENDPOINT,
+            settings.scrapecreators_transcript_url,
             headers={"x-api-key": api_key},
             params={"url": video_url},
         )
@@ -117,13 +104,14 @@ async def _fetch_supadata(
     client: httpx.AsyncClient,
     video_url: str,
 ) -> YouTubeScrapperResult | None:
-    api_key = _get_api_key("SUPADATA_API_KEY")
+    settings = get_settings()
+    api_key = settings.supadata_api_key
     if not api_key:
         return None
 
     try:
         response = await client.get(
-            SUPADATA_ENDPOINT,
+            settings.supadata_transcript_url,
             headers={"x-api-key": api_key},
             params={"url": video_url, "lang": "en", "text": "true", "mode": "auto"},
         )
@@ -169,12 +157,13 @@ async def _fetch_supadata(
 
 
 async def scrape_youtube(youtube_url: str) -> YouTubeScrapperResult:
+    settings = get_settings()
     if not is_youtube_url(youtube_url):
         raise ValueError("Invalid YouTube URL")
 
     youtube_url = clean_youtube_url(youtube_url)
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_S) as client:
+    async with httpx.AsyncClient(timeout=settings.scrape_timeout_seconds) as client:
         result = await _fetch_scrape_creators(client, youtube_url)
         if result and result.has_transcript:
             return result

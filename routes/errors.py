@@ -1,9 +1,10 @@
 """Error handling utilities for consistent API error responses."""
 
 import logging
-import os
 
 from fastapi import HTTPException
+
+from youtube_summarizer.settings import get_settings
 
 
 def create_http_error(status_code: int, detail: str, error_type: str | None = None) -> HTTPException:
@@ -24,5 +25,6 @@ def handle_exception(e: Exception, context: str = "Processing") -> HTTPException
 
 
 def require_env_key(key_name: str) -> None:
-    if not os.getenv(key_name):
+    value = get_settings().model_dump().get(key_name.lower())
+    if not value:
         raise create_http_error(500, f"Config missing: {key_name}", "missing_config")

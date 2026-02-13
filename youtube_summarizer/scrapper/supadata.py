@@ -1,23 +1,18 @@
 """Supadata transcript provider integration."""
 
 import logging
-import os
 
-from dotenv import load_dotenv
 import httpx
 
+from ..settings import get_settings
 from ..utils import clean_text, clean_youtube_url, is_youtube_url
-
-load_dotenv()
-
-SUPADATA_API_URL = "https://api.supadata.ai/v1/transcript"
 
 logger = logging.getLogger(__name__)
 
 
 def get_supadata_api_key() -> str | None:
     """Return Supadata API key from environment."""
-    return os.getenv("SUPADATA_API_KEY")
+    return get_settings().supadata_api_key
 
 
 async def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str | None:
@@ -36,6 +31,7 @@ async def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str |
     api_key = get_supadata_api_key()
     if not api_key:
         return None
+    settings = get_settings()
 
     url = clean_youtube_url(youtube_url)
     params = {
@@ -50,9 +46,9 @@ async def fetch_supadata_transcript(youtube_url: str, lang: str = "en") -> str |
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=settings.scrape_timeout_seconds) as client:
             response = await client.get(
-                SUPADATA_API_URL,
+                settings.supadata_transcript_url,
                 params=params,
                 headers=headers,
             )

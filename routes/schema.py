@@ -58,3 +58,6 @@ class ConfigurationResponse(BaseResponse):
     default_provider: str = Field(description="Default provider route")
     default_summary_model: str = Field(description="Default summary model")
     default_target_language: str = Field(description="Default target language")
+    settings: dict[str, str | int | float | bool] = Field(
+        description="Active non-secret runtime settings",
+    )

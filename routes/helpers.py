@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 
-TIMEOUT_LONG = 300.0
+from youtube_summarizer.settings import get_settings
+
+DEFAULT_TASK_TIMEOUT_SECONDS = get_settings().task_timeout_seconds
 
 
-async def run_async_task(func, *args, timeout: float = TIMEOUT_LONG):
+async def run_async_task(func, *args, timeout: float = DEFAULT_TASK_TIMEOUT_SECONDS):
     try:
         return await asyncio.wait_for(
             asyncio.get_event_loop().run_in_executor(None, func, *args),

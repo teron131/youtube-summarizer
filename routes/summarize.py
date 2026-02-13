@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 import json
 import logging
-import os
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -12,6 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from youtube_summarizer.schemas import Summary
 from youtube_summarizer.scrapper import extract_transcript_text
+from youtube_summarizer.settings import get_settings
 from youtube_summarizer.summarizer_gemini import summarize_video_async as summarize_video_gemini
 from youtube_summarizer.summarizer_openrouter import summarize_video_async as summarize_video_openrouter
 from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
@@ -27,7 +27,8 @@ ProviderType = Literal["auto", "openrouter", "gemini"]
 
 
 def _require_any_llm_config() -> None:
-    if os.getenv("OPENROUTER_API_KEY") or os.getenv("GEMINI_API_KEY"):
+    settings = get_settings()
+    if settings.has_any_llm:
         return
     raise HTTPException(status_code=500, detail=LLM_CONFIG_ERROR)
 
@@ -42,8 +43,9 @@ def _validate_summary_request(request: SummarizeRequest) -> str:
 
 
 def _resolve_provider(requested_provider: ProviderType, url: str) -> Literal["openrouter", "gemini"]:
-    has_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
-    has_gemini = bool(os.getenv("GEMINI_API_KEY"))
+    settings = get_settings()
+    has_openrouter = settings.has_openrouter
+    has_gemini = settings.has_gemini
 
     if requested_provider == "openrouter":
         if not has_openrouter:
@@ -73,7 +75,7 @@ async def _summarize_with_provider(
     if provider == "gemini":
         summary, metadata = await summarize_video_gemini(
             url,
-            target_language=target_language or "en",
+            target_language=target_language or get_settings().default_target_language,
         )
         if summary is None:
             raise ValueError("Gemini summarization returned no content")
@@ -123,7 +125,7 @@ async def summarize(request: SummarizeRequest):
             summary=summary,
             metadata=_build_metadata(metadata, get_processing_time(start_time)),
             iteration_count=1,
-            target_language=request.target_language or "en",
+            target_language=request.target_language or get_settings().default_target_language,
         )
     except HTTPException:
         raise
@@ -158,7 +160,7 @@ async def stream_summarize(request: SummarizeRequest):
                 "summary": summary.model_dump(),
                 "metadata": _build_metadata(metadata, get_processing_time(start_time)),
                 "iteration_count": 1,
-                "target_language": request.target_language or "en",
+                "target_language": request.target_language or get_settings().default_target_language,
             }
             yield f"data: {json.dumps(completion_data, ensure_ascii=False)}\n\n"
 

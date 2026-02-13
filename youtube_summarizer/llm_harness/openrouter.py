@@ -1,13 +1,11 @@
 """OpenRouter/Gemini LLM client initialization and configuration."""
 
-import os
 from typing import Literal
 
-from dotenv import load_dotenv
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-load_dotenv()
+from ..settings import get_settings
 
 
 def _is_openrouter(model: str) -> bool:
@@ -22,10 +20,11 @@ def _is_gemini(model: str) -> bool:
 
 def _get_config(model: str, api_key: str | None = None) -> tuple[str | None, str]:
     """Get API key and base URL based on model type."""
+    settings = get_settings()
     if _is_openrouter(model):
-        return api_key or os.getenv("OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1"
+        return api_key or settings.openrouter_api_key, "https://openrouter.ai/api/v1"
 
-    key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    key = api_key or settings.gemini_api_key or settings.google_api_key
     return key, "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
@@ -89,7 +88,7 @@ def OpenRouterEmbeddings(
     if not _is_openrouter(model):
         raise ValueError(f"Invalid OpenRouter model format: {model}. Expected PROVIDER/MODEL")
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = get_settings().openrouter_api_key
     return OpenAIEmbeddings(
         model=model,
         api_key=api_key,

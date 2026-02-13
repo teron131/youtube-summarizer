@@ -1,27 +1,23 @@
 """Health check and configuration endpoints for API monitoring."""
 
 from datetime import UTC, datetime
-import os
 
 from fastapi import APIRouter
 
 from routes.schema import ConfigurationResponse
-from youtube_summarizer.scrapper.supadata import get_supadata_api_key
-from youtube_summarizer.summarizer_gemini import GEMINI_SUMMARY_MODEL
-from youtube_summarizer.summarizer_openrouter import OPENROUTER_SUMMARY_MODEL
+from youtube_summarizer.settings import get_settings
 
 router = APIRouter()
 
-API_VERSION = "3.0.0"
-API_TITLE = "YouTube Summarizer API"
+SETTINGS = get_settings()
 
 AVAILABLE_MODELS = {
-    "gemini_summary_model": GEMINI_SUMMARY_MODEL,
-    "openrouter_summary_model": OPENROUTER_SUMMARY_MODEL,
+    "gemini_summary_model": SETTINGS.gemini_summary_model,
+    "openrouter_summary_model": SETTINGS.openrouter_summary_model,
 }
 AVAILABLE_PROVIDERS = ["auto", "gemini", "openrouter"]
-DEFAULT_PROVIDER = "auto"
-DEFAULT_TARGET_LANGUAGE = os.getenv("TARGET_LANGUAGE", "en")
+DEFAULT_PROVIDER = SETTINGS.default_provider
+DEFAULT_TARGET_LANGUAGE = SETTINGS.default_target_language
 
 SUPPORTED_LANGUAGES = {
     "zh": "Chinese",
@@ -36,8 +32,8 @@ SUPPORTED_LANGUAGES = {
 @router.get("/")
 async def root():
     return {
-        "name": API_TITLE,
-        "version": API_VERSION,
+        "version": SETTINGS.api_version,
+        "name": SETTINGS.api_title,
         "description": "Optimized YouTube video processing and summarization",
         "docs": "/docs",
         "health": "/health",
@@ -57,14 +53,14 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "message": f"{API_TITLE} is running",
+        "message": f"{SETTINGS.api_title} is running",
         "timestamp": datetime.now(UTC).isoformat(),
-        "version": API_VERSION,
+        "version": SETTINGS.api_version,
         "environment": {
-            "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
-            "openrouter_configured": bool(os.getenv("OPENROUTER_API_KEY")),
-            "scrapecreators_configured": bool(os.getenv("SCRAPECREATORS_API_KEY")),
-            "supadata_configured": bool(get_supadata_api_key()),
+            "gemini_configured": SETTINGS.has_gemini,
+            "openrouter_configured": SETTINGS.has_openrouter,
+            "scrapecreators_configured": SETTINGS.has_scrapecreators,
+            "supadata_configured": SETTINGS.has_supadata,
         },
     }
 
@@ -78,6 +74,7 @@ async def get_configuration():
         "available_providers": AVAILABLE_PROVIDERS,
         "supported_languages": SUPPORTED_LANGUAGES,
         "default_provider": DEFAULT_PROVIDER,
-        "default_summary_model": OPENROUTER_SUMMARY_MODEL,
+        "default_summary_model": SETTINGS.openrouter_summary_model,
         "default_target_language": DEFAULT_TARGET_LANGUAGE,
+        "settings": SETTINGS.to_public_config(),
     }

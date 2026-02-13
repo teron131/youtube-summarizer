@@ -1,18 +1,15 @@
 """YouTube video summarization using Google Gemini multimodal API."""
 
 import logging
-import os
 
 from google import genai
 from google.genai import types
 
 from .prompts import get_gemini_summary_prompt
 from .schemas import Summary
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
-
-GEMINI_SUMMARY_MODEL = os.getenv("GEMINI_SUMMARY_MODEL", "gemini-3-flash-preview")
-GEMINI_THINKING_LEVEL = os.getenv("GEMINI_THINKING_LEVEL", "medium")
 
 USD_PER_M_TOKENS_BY_MODEL = {
     "gemini-3-flash-preview": {"input": 0.5, "output": 3},
@@ -34,13 +31,14 @@ def _calculate_cost(
 
 
 def _extract_usage_metadata(response) -> dict[str, int | float] | None:
+    settings = get_settings()
     metadata: dict[str, int | float] | None = None
     usage = getattr(response, "usage_metadata", None)
     if usage and hasattr(usage, "prompt_token_count") and hasattr(usage, "total_token_count"):
         tokens_input = int(usage.prompt_token_count)
         tokens_total = int(usage.total_token_count)
         tokens_output = max(0, tokens_total - tokens_input)
-        cost = _calculate_cost(GEMINI_SUMMARY_MODEL, tokens_input, tokens_total)
+        cost = _calculate_cost(settings.gemini_summary_model, tokens_input, tokens_total)
         metadata = {
             "tokens_input": tokens_input,
             "tokens_output": tokens_output,
@@ -62,21 +60,25 @@ def analyze_video_url(
     target_language: str = "auto",
     api_key: str | None = None,
 ) -> tuple[Summary | None, dict[str, int | float] | None]:
-    api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    settings = get_settings()
+    api_key = api_key or settings.google_api_key or settings.gemini_api_key
     if not api_key:
         raise ValueError("API key not found. Set GOOGLE_API_KEY or GEMINI_API_KEY")
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options={"timeout": settings.llm_timeout_milliseconds},
+    )
 
     try:
         response = client.models.generate_content(
-            model=GEMINI_SUMMARY_MODEL,
+            model=settings.gemini_summary_model,
             contents=[
                 types.Part(file_data=types.FileData(file_uri=video_url)),
                 types.Part(text=get_gemini_summary_prompt(target_language=target_language)),
             ],
             config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
+                thinking_config=types.ThinkingConfig(thinking_level=settings.gemini_thinking_level),
                 response_mime_type="application/json",
                 response_schema=Summary,
             ),
@@ -113,21 +115,25 @@ async def analyze_video_url_async(
     target_language: str = "auto",
     api_key: str | None = None,
 ) -> tuple[Summary | None, dict[str, int | float] | None]:
-    api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    settings = get_settings()
+    api_key = api_key or settings.google_api_key or settings.gemini_api_key
     if not api_key:
         raise ValueError("API key not found. Set GOOGLE_API_KEY or GEMINI_API_KEY")
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options={"timeout": settings.llm_timeout_milliseconds},
+    )
 
     try:
         response = await client.aio.models.generate_content(
-            model=GEMINI_SUMMARY_MODEL,
+            model=settings.gemini_summary_model,
             contents=[
                 types.Part(file_data=types.FileData(file_uri=video_url)),
                 types.Part(text=get_gemini_summary_prompt(target_language=target_language)),
             ],
             config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_level=GEMINI_THINKING_LEVEL),
+                thinking_config=types.ThinkingConfig(thinking_level=settings.gemini_thinking_level),
                 response_mime_type="application/json",
                 response_schema=Summary,
             ),
