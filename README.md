@@ -119,3 +119,30 @@ python app.py
 | `/health`           | `GET`  | System status and API configuration check                          |
 
 _Interactive docs available at `/api/docs` or `/api/redoc`._
+
+## 🧰 MCP Server (FastMCP)
+
+This repo includes a standalone FastMCP server at `mcp_server.py` (no FastAPI route dependency) that exposes tools:
+
+- `health`
+- `config`
+- `scrape`
+- `summarize`
+
+Run over stdio:
+
+```bash
+uv run python mcp_server.py
+```
+
+Or with FastMCP CLI:
+
+```bash
+uv run fastmcp run mcp_server.py
+```
+
+Run over HTTP transport:
+
+```bash
+MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=8000 uv run python mcp_server.py
+```
