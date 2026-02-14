@@ -16,10 +16,8 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
 
-    api_title: str = "YouTube Summarizer API"
-    api_version: str = "3.0.0"
+    api_title: str = "YouTube Summarizer MCP"
 
-    default_provider: str = "auto"
     default_target_language: Literal["auto", "en", "zh"] = "auto"
 
     scrape_timeout_seconds: int = 60
@@ -30,10 +28,10 @@ class AppSettings(BaseSettings):
     supadata_transcript_url: str = "https://api.supadata.ai/v1/transcript"
 
     openrouter_summary_model: str = "x-ai/grok-4.1-fast"
-    openrouter_reasoning_effort: str = "medium"
+    openrouter_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium"
 
     gemini_summary_model: str = "gemini-3-flash-preview"
-    gemini_thinking_level: str = "medium"
+    gemini_thinking_level: Literal["minimal", "low", "medium", "high"] = "medium"
 
     mcp_auth_mode: Literal["none", "google_oauth"] = "none"
     mcp_server_base_url: str | None = Field(default=None)
@@ -77,10 +75,6 @@ class AppSettings(BaseSettings):
         return self.has_scrapecreators or self.has_supadata
 
     @property
-    def mcp_auth_enabled(self) -> bool:
-        return self.mcp_auth_mode != "none"
-
-    @property
     def mcp_google_scopes(self) -> list[str]:
         return [scope for scope in self.mcp_google_required_scopes.split() if scope]
 
@@ -88,8 +82,6 @@ class AppSettings(BaseSettings):
         """Return safe config values for API responses and diagnostics."""
         return {
             "api_title": self.api_title,
-            "api_version": self.api_version,
-            "default_provider": self.default_provider,
             "default_target_language": self.default_target_language,
             "scrape_timeout_seconds": self.scrape_timeout_seconds,
             "llm_timeout_seconds": self.llm_timeout_seconds,
@@ -106,7 +98,7 @@ class AppSettings(BaseSettings):
             "gemini_configured": self.has_gemini,
             "scrapecreators_configured": self.has_scrapecreators,
             "supadata_configured": self.has_supadata,
-            "mcp_auth_enabled": self.mcp_auth_enabled,
+            "mcp_auth_enabled": self.mcp_auth_mode != "none",
         }
 
 

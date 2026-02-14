@@ -10,12 +10,17 @@ from fastmcp import FastMCP
 from fastmcp.server.auth.auth import AuthProvider
 from fastmcp.server.auth.providers.google import GoogleProvider
 
-from youtube_summarizer.schemas import Summary
-from youtube_summarizer.scrapper import extract_transcript_text, has_transcript_provider_key
-from youtube_summarizer.settings import AppSettings, get_settings
-from youtube_summarizer.summarizer_gemini import summarize_video_async as summarize_video_gemini
-from youtube_summarizer.summarizer_openrouter import summarize_video_async as summarize_video_openrouter
-from youtube_summarizer.utils import clean_youtube_url, is_youtube_url
+from youtube_summarizer import (
+    AppSettings,
+    Summary,
+    clean_youtube_url,
+    extract_transcript_text,
+    get_settings,
+    has_transcript_provider_key,
+    is_youtube_url,
+    summarize_video_gemini,
+    summarize_video_openrouter,
+)
 
 TargetLanguage = Literal["auto", "en", "zh"]
 
@@ -119,7 +124,6 @@ def health() -> dict:
         "status": "healthy",
         "message": f"{settings.api_title} MCP server is running",
         "timestamp": datetime.now(UTC).isoformat(),
-        "version": settings.api_version,
         "environment": {
             "gemini_configured": settings.has_gemini,
             "openrouter_configured": settings.has_openrouter,

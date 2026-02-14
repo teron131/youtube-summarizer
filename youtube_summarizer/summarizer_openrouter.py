@@ -1,5 +1,7 @@
 """OpenRouter transcript summarization for deployment runtime."""
 
+from typing import cast
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .llm_harness import ChatOpenRouter
@@ -28,7 +30,7 @@ def summarize_video(
         SystemMessage(content=get_langchain_summary_prompt(target_language=target_language)),
         HumanMessage(content=f"Transcript:\n{clean_transcript}"),
     ]
-    return llm.invoke(messages)
+    return cast(Summary, llm.invoke(messages))
 
 
 async def summarize_video_async(
@@ -51,4 +53,4 @@ async def summarize_video_async(
         SystemMessage(content=get_langchain_summary_prompt(target_language=target_language)),
         HumanMessage(content=f"Transcript:\n{clean_transcript}"),
     ]
-    return await llm.ainvoke(messages)
+    return cast(Summary, await llm.ainvoke(messages))
