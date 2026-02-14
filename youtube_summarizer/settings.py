@@ -3,6 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from google.genai import types
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -31,7 +32,7 @@ class AppSettings(BaseSettings):
     openrouter_reasoning_effort: Literal["minimal", "low", "medium", "high"] = "medium"
 
     gemini_summary_model: str = "gemini-3-flash-preview"
-    gemini_thinking_level: Literal["minimal", "low", "medium", "high"] = "medium"
+    gemini_thinking_level: types.ThinkingLevel = types.ThinkingLevel.MEDIUM
 
     mcp_auth_mode: Literal["none", "google_oauth"] = "none"
     mcp_server_base_url: str | None = Field(default=None)
@@ -91,7 +92,7 @@ class AppSettings(BaseSettings):
             "openrouter_summary_model": self.openrouter_summary_model,
             "openrouter_reasoning_effort": self.openrouter_reasoning_effort,
             "gemini_summary_model": self.gemini_summary_model,
-            "gemini_thinking_level": self.gemini_thinking_level,
+            "gemini_thinking_level": self.gemini_thinking_level.value.lower(),
             "mcp_auth_mode": self.mcp_auth_mode,
             "mcp_server_base_url_set": bool(self.mcp_server_base_url),
             "openrouter_configured": self.has_openrouter,
