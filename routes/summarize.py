@@ -24,6 +24,7 @@ router = APIRouter()
 
 LLM_CONFIG_ERROR = "Config missing: OPENROUTER_API_KEY or GEMINI_API_KEY"
 ProviderType = Literal["auto", "openrouter", "gemini"]
+TargetLanguage = Literal["auto", "en", "zh"]
 
 
 def _require_any_llm_config() -> None:
@@ -42,7 +43,7 @@ def _validate_summary_request(request: SummarizeRequest) -> str:
     return clean_youtube_url(url)
 
 
-def _resolve_provider(requested_provider: ProviderType, url: str) -> Literal["openrouter", "gemini"]:
+def _resolve_provider(requested_provider: ProviderType) -> Literal["openrouter", "gemini"]:
     settings = get_settings()
     has_openrouter = settings.has_openrouter
     has_gemini = settings.has_gemini
@@ -57,30 +58,23 @@ def _resolve_provider(requested_provider: ProviderType, url: str) -> Literal["op
             raise HTTPException(status_code=500, detail="Config missing: GEMINI_API_KEY")
         return "gemini"
 
-    if is_youtube_url(url) and has_gemini:
+    if has_gemini:
         return "gemini"
     if has_openrouter:
         return "openrouter"
-    if has_gemini:
-        return "gemini"
 
     raise HTTPException(status_code=500, detail=LLM_CONFIG_ERROR)
-
-
-def _resolve_target_language(target_language: Literal["auto", "en", "zh"] | None) -> Literal["auto", "en", "zh"]:
-    return target_language or get_settings().default_target_language
 
 
 async def _summarize_with_provider(
     url: str,
     provider: Literal["openrouter", "gemini"],
-    target_language: Literal["auto", "en", "zh"] | None,
+    target_language: TargetLanguage,
 ) -> tuple[Summary, dict[str, int | float] | None]:
-    resolved_target_language = _resolve_target_language(target_language)
     if provider == "gemini":
         summary, metadata = await summarize_video_gemini(
             url,
-            target_language=resolved_target_language,
+            target_language=target_language,
         )
         if summary is None:
             raise ValueError("Gemini summarization returned no content")
@@ -92,7 +86,7 @@ async def _summarize_with_provider(
 
     summary = await summarize_video_openrouter(
         transcript,
-        resolved_target_language,
+        target_language,
     )
     return summary, None
 
@@ -117,8 +111,8 @@ async def summarize(request: SummarizeRequest):
     start_time = datetime.now(UTC)
 
     try:
-        target_language = _resolve_target_language(request.target_language)
-        provider = _resolve_provider(request.provider, url)
+        target_language = request.target_language
+        provider = _resolve_provider(request.provider)
         summary, metadata = await _summarize_with_provider(
             url=url,
             provider=provider,
@@ -147,8 +141,8 @@ async def stream_summarize(request: SummarizeRequest):
     async def generate_stream():
         start_time = datetime.now(UTC)
         try:
-            target_language = _resolve_target_language(request.target_language)
-            provider = _resolve_provider(request.provider, url)
+            target_language = request.target_language
+            provider = _resolve_provider(request.provider)
 
             yield f"data: {json.dumps({'type': 'status', 'message': 'Starting summary...', 'timestamp': datetime.now(UTC).isoformat()})}\n\n"
             await asyncio.sleep(0.01)

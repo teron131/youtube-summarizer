@@ -67,10 +67,6 @@ def _validate_url(url: str) -> str:
     return clean_youtube_url(clean_url)
 
 
-def _resolve_target_language() -> TargetLanguage:
-    return get_settings().default_target_language
-
-
 def _resolve_provider() -> Literal["openrouter", "gemini"]:
     settings = get_settings()
     has_openrouter = settings.has_openrouter
@@ -104,16 +100,6 @@ async def _summarize_with_provider(
         target_language,
     )
     return summary, None
-
-
-def _build_metadata(
-    usage_metadata: dict[str, int | float] | None,
-    processing_time: str,
-) -> dict[str, str | int | float]:
-    metadata: dict[str, str | int | float] = {"processing_time": processing_time}
-    if usage_metadata:
-        metadata.update(usage_metadata)
-    return metadata
 
 
 @mcp.tool
@@ -161,7 +147,7 @@ async def summarize(
     """Generate summary from a YouTube URL using internal provider fallback."""
     start_time = datetime.now(UTC)
     normalized_url = _validate_url(url)
-    resolved_target_language = _resolve_target_language()
+    resolved_target_language = get_settings().default_target_language
     resolved_provider = _resolve_provider()
 
     summary, usage_metadata = await _summarize_with_provider(
@@ -169,12 +155,15 @@ async def summarize(
         provider=resolved_provider,
         target_language=resolved_target_language,
     )
+    metadata: dict[str, str | int | float] = {"processing_time": _processing_time(start_time)}
+    if usage_metadata:
+        metadata.update(usage_metadata)
 
     return {
         "status": "success",
         "message": f"Summary completed successfully via {resolved_provider}",
         "summary": summary.model_dump(),
-        "metadata": _build_metadata(usage_metadata, _processing_time(start_time)),
+        "metadata": metadata,
         "iteration_count": 1,
         "target_language": resolved_target_language,
     }

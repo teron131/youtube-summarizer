@@ -90,7 +90,12 @@ DEFAULT_TARGET_LANGUAGE=auto # auto | en | zh
 PORT=8080
 ```
 
-Model and language selection are environment-controlled. API callers cannot pass model IDs or target language directly.
+Model IDs are environment-controlled for both interfaces.  
+Interface controls are intentionally split:
+
+- MCP `summarize`: URL only (`summarize(url)`).
+- FastAPI `/summarize` and `/stream-summarize`: accepts `provider` and `target_language`.
+
 When `DEFAULT_TARGET_LANGUAGE=zh`, output is always Traditional Chinese (繁體中文).
 
 ### 3. Execution
@@ -116,6 +121,9 @@ Tool signatures:
 - `health() -> dict`
 - `scrape(url: str) -> dict`
 - `summarize(url: str) -> dict`
+
+MCP intentionally does not expose `provider`/`target_language` controls.
+Those remain available on FastAPI endpoints for direct API clients.
 
 When running in HTTP mode for ChatGPT/App integrations, OAuth is required.
 

@@ -27,7 +27,7 @@ class SummarizeRequest(BaseModel):
         default="auto",
         description="LLM provider route. 'auto' resolves using configured keys.",
     )
-    target_language: Literal["auto", "en", "zh"] | None = Field(
+    target_language: Literal["auto", "en", "zh"] = Field(
         default="auto",
         description="Target language for output: auto, en, or zh (Traditional Chinese)",
     )
@@ -43,8 +43,8 @@ class SummarizeResponse(BaseResponse):
     summary: Summary
     metadata: dict[str, str | int | float] | None = None
     iteration_count: int = Field(default=1)
-    target_language: Literal["auto", "en", "zh"] | None = Field(
-        default=None,
+    target_language: Literal["auto", "en", "zh"] = Field(
+        default="auto",
         description="Target language used for output",
     )
 
