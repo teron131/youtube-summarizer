@@ -7,6 +7,7 @@ SERVICE_NAME="${SERVICE_NAME:-youtube-summarizer-mcp}"
 ENV_FILE="${ENV_FILE:-.env}"
 SERVICE_ENV_CACHE_JSON=""
 SERVICE_STATUS_URL=""
+PROJECT_NUMBER=""
 
 cleanup() {
   if [[ -n "${SERVICE_ENV_CACHE_JSON}" && -f "${SERVICE_ENV_CACHE_JSON}" ]]; then
@@ -171,7 +172,15 @@ resolve_value() {
 }
 
 load_service_status_url
-MCP_SERVER_BASE_URL="${MCP_SERVER_BASE_URL:-${SERVICE_STATUS_URL}}"
+PROJECT_NUMBER="$(
+  gcloud projects describe "${PROJECT_ID}" \
+    --format='value(projectNumber)' 2>/dev/null || true
+)"
+DEFAULT_REGIONAL_BASE_URL=""
+if [[ -n "${PROJECT_NUMBER}" ]]; then
+  DEFAULT_REGIONAL_BASE_URL="https://${SERVICE_NAME}-${PROJECT_NUMBER}.${REGION}.run.app"
+fi
+MCP_SERVER_BASE_URL="${MCP_SERVER_BASE_URL:-${DEFAULT_REGIONAL_BASE_URL:-${SERVICE_STATUS_URL}}}"
 MCP_GOOGLE_CLIENT_ID="$(resolve_value MCP_GOOGLE_CLIENT_ID "${MCP_GOOGLE_CLIENT_ID:-}")"
 MCP_GOOGLE_CLIENT_SECRET="$(resolve_value MCP_GOOGLE_CLIENT_SECRET "${MCP_GOOGLE_CLIENT_SECRET:-}")"
 
@@ -261,14 +270,6 @@ FINAL_SERVICE_URL="$(
     --region "${REGION}" \
     --format='value(status.url)' 2>/dev/null || true
 )"
-
-if [[ -n "${FINAL_SERVICE_URL}" && "${FINAL_SERVICE_URL}" != "${MCP_SERVER_BASE_URL}" ]]; then
-  gcloud run services update "${SERVICE_NAME}" \
-    --project "${PROJECT_ID}" \
-    --region "${REGION}" \
-    --update-env-vars "MCP_SERVER_BASE_URL=${FINAL_SERVICE_URL}" >/dev/null
-  MCP_SERVER_BASE_URL="${FINAL_SERVICE_URL}"
-fi
 
 echo
 echo "Deploy complete."
