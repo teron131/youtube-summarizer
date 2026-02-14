@@ -1,8 +1,16 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "pythonVersion": "3.12",
+  "pythonVersion": "3.13",
   "typeCheckingMode": "basic",
-  "include": ["youtube_summarizer", "routes", "app.py"],
-  "exclude": ["**/__pycache__", "backup"]
+  "include": ["youtube_summarizer", "routes", "mcp_server.py", "app.py"],
+  "exclude": ["**/__pycache__", "backup", ".venv"],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "venvPath": ".",
+      "venv": ".venv",
+      "pythonVersion": "3.13"
+    }
+  ]
 }

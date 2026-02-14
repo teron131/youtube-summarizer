@@ -17,7 +17,7 @@ dependencies = [
     "langchain-google-genai>=4.2.0",
     "langchain-openai>=1.1.9",
     "langgraph>=1.0.8",
-    "opencc>=1.2.0",
+    "opencc-python-reimplemented>=0.1.7",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "pydub>=0.25.1",
@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-youtube-summarizer = "app:main"
+youtube-summarizer = "mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]

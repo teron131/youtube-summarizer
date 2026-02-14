@@ -35,6 +35,12 @@ class AppSettings(BaseSettings):
     gemini_summary_model: str = "gemini-3-flash-preview"
     gemini_thinking_level: str = "medium"
 
+    mcp_auth_mode: Literal["none", "google_oauth"] = "none"
+    mcp_server_base_url: str | None = Field(default=None)
+    mcp_google_client_id: str | None = Field(default=None)
+    mcp_google_client_secret: str | None = Field(default=None)
+    mcp_google_required_scopes: str = "openid"
+
     openrouter_api_key: str | None = Field(default=None)
     gemini_api_key: str | None = Field(default=None)
     google_api_key: str | None = Field(default=None)
@@ -70,6 +76,14 @@ class AppSettings(BaseSettings):
     def has_any_transcript_provider(self) -> bool:
         return self.has_scrapecreators or self.has_supadata
 
+    @property
+    def mcp_auth_enabled(self) -> bool:
+        return self.mcp_auth_mode != "none"
+
+    @property
+    def mcp_google_scopes(self) -> list[str]:
+        return [scope for scope in self.mcp_google_required_scopes.split() if scope]
+
     def to_public_config(self) -> dict[str, str | int | float | bool]:
         """Return safe config values for API responses and diagnostics."""
         return {
@@ -86,10 +100,13 @@ class AppSettings(BaseSettings):
             "openrouter_reasoning_effort": self.openrouter_reasoning_effort,
             "gemini_summary_model": self.gemini_summary_model,
             "gemini_thinking_level": self.gemini_thinking_level,
+            "mcp_auth_mode": self.mcp_auth_mode,
+            "mcp_server_base_url_set": bool(self.mcp_server_base_url),
             "openrouter_configured": self.has_openrouter,
             "gemini_configured": self.has_gemini,
             "scrapecreators_configured": self.has_scrapecreators,
             "supadata_configured": self.has_supadata,
+            "mcp_auth_enabled": self.mcp_auth_enabled,
         }
 
 
@@ -109,6 +126,9 @@ def get_settings() -> AppSettings:
         "google_api_key",
         "scrapecreators_api_key",
         "supadata_api_key",
+        "mcp_server_base_url",
+        "mcp_google_client_id",
+        "mcp_google_client_secret",
     )
     for field_name in optional_key_fields:
         current_value = getattr(settings, field_name)

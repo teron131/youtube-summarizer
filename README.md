@@ -1,21 +1,21 @@
-# YouTube Summarizer Backend API
+# YouTube Summarizer MCP Server
 
 ![YouTube Summarizer UI](ui.png)
 
 **Frontend:** [YouTube Summarizer UI](https://github.com/teron131/youtube-summarizer-ui)
 
-A Python backend API for YouTube video analysis. It focuses on transcript-first processing with provider-based extraction and provider-routed summarization.
+A Python MCP server for YouTube video analysis. It focuses on transcript-first processing with provider-based extraction and provider-routed summarization.
 
 > **Status:** Active refactor toward a cleaner provider-mode pipeline.
 
 ## 🌟 Key Features
 
-- **🎯 Unified API Layer**: Backend endpoints for scraping, summarizing, and streaming progress updates.
+- **🎯 Unified MCP Layer**: Tools for scraping, summarizing, and health checks.
 - **🧾 Provider-Based Transcript Flow**: Uses Scrape Creators / Supadata for transcript and metadata retrieval.
 - **✂️ Simplified Transcript Shape**: Normalized transcript text only (no timestamp-level transcript in API output).
 - **🤖 Single Summarization Path**: One production-focused summarization flow with configurable LLM provider.
 - **🔌 Flexible LLM Routing**: Supports Gemini/OpenRouter model backends via environment configuration.
-- **⚡ API-First Design**: FastAPI endpoints designed for UI integration and streaming UX.
+- **⚡ MCP-First Design**: Designed for agent integrations (ChatGPT and other MCP clients).
 
 ## 🗺️ Planned Workflow (Better-Youtube Style)
 
@@ -56,12 +56,11 @@ graph TD
 
 - The backend remains transcript-first: transcript APIs feed the single summarization path.
 - Transcript payloads are normalized to text segments/blocks; timestamp-level transcript detail is out of scope.
-- Runtime behavior is now simplified to provider selection (Gemini/OpenRouter) instead of summary mode selection.
-- Router behavior is explicit: it resolves `auto` first, then falls back to whichever provider key is available.
-- `/summarize` and `/stream-summarize` accept `provider: auto | gemini | openrouter` (default `auto`).
-- `/summarize` and `/stream-summarize` accept YouTube `url` only; transcript text remains an internal processing step.
+- Runtime behavior is now simplified to provider fallback (Gemini/OpenRouter) instead of summary mode selection.
+- Router behavior is internal: it auto-selects available provider keys using fallback order.
+- `summarize` accepts YouTube `url` only; transcript text and language resolution remain internal processing steps.
 
-## 🚀 Setup & Development
+## 🚀 Setup
 
 ### Prerequisites
 
@@ -71,63 +70,66 @@ graph TD
 ### 1. Installation
 
 ```bash
-# Recommended: Use UV
 uv sync
 uv pip install -e .
-
-# Alternative: Use pip
-pip install -r requirements.txt
 ```
 
 ### 2. Configuration
 
-Create a `.env` file (see `.env_example`):
+Create a `.env` file (see `.env.example`):
 
 ```env
 SCRAPECREATORS_API_KEY=...
 SUPADATA_API_KEY=... # Optional transcript provider
-TRANSCRIPT_PROVIDER_PREFERENCE=scrapecreators # scrapecreators | supadata
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=... # Optional
 GEMINI_SUMMARY_MODEL=gemini-3-flash-preview
 OPENROUTER_SUMMARY_MODEL=x-ai/grok-4.1-fast
 OPENROUTER_REASONING_EFFORT=medium
-TARGET_LANGUAGE=en
+DEFAULT_TARGET_LANGUAGE=auto # auto | en | zh
 PORT=8080
 ```
 
-Model selection is environment-controlled. API callers choose only `provider` (`auto|gemini|openrouter`) and cannot pass model IDs.
-Language control is also constrained: API callers can use `target_language` as `auto`, `en`, or `zh` only. `zh` output is always Traditional Chinese (繁體中文).
+Model and language selection are environment-controlled. API callers cannot pass model IDs or target language directly.
+When `DEFAULT_TARGET_LANGUAGE=zh`, output is always Traditional Chinese (繁體中文).
 
 ### 3. Execution
 
 ```bash
-# Development
-python app.py
+# stdio transport
+uv run python mcp_server.py
 
-# Production
-./start.sh
+# HTTP transport (for remote MCP clients)
+MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=8000 uv run python mcp_server.py
 ```
-
-## 🎯 API Reference
-
-| Endpoint            | Method | Description                                                        |
-| ------------------- | ------ | ------------------------------------------------------------------ |
-| `/scrape`           | `POST` | Extract video metadata and normalized transcript text via provider |
-| `/summarize`        | `POST` | Generate AI summary (`provider` route with `auto` fallback)        |
-| `/stream-summarize` | `POST` | Real-time streaming updates of summarization progress              |
-| `/health`           | `GET`  | System status and API configuration check                          |
-
-_Interactive docs available at `/api/docs` or `/api/redoc`._
 
 ## 🧰 MCP Server (FastMCP)
 
 This repo includes a standalone FastMCP server at `mcp_server.py` (no FastAPI route dependency) that exposes tools:
 
 - `health`
-- `config`
 - `scrape`
 - `summarize`
+
+Tool signatures:
+
+- `health() -> dict`
+- `scrape(url: str) -> dict`
+- `summarize(url: str) -> dict`
+
+When running in HTTP mode for ChatGPT/App integrations, OAuth is required.
+
+Set these environment variables:
+
+- `MCP_AUTH_MODE=google_oauth`
+- `MCP_SERVER_BASE_URL=https://<your-cloud-run-url>`
+- Optional scopes override:
+  - `MCP_GOOGLE_REQUIRED_SCOPES="openid"` (recommended with GoogleProvider)
+
+If using Google OAuth mode, also set:
+
+- `MCP_GOOGLE_CLIENT_ID=<google-oauth-client-id>`
+- `MCP_GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>`
 
 Run over stdio:
 
@@ -144,5 +146,92 @@ uv run fastmcp run mcp_server.py
 Run over HTTP transport:
 
 ```bash
-MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=8000 uv run python mcp_server.py
+MCP_TRANSPORT=http MCP_HOST=0.0.0.0 MCP_PORT=8000 MCP_AUTH_MODE=google_oauth MCP_SERVER_BASE_URL=https://your-service.run.app MCP_GOOGLE_CLIENT_ID=... MCP_GOOGLE_CLIENT_SECRET=... uv run python mcp_server.py
 ```
+
+Cloud Run deployment target region: `asia-east1` (Taiwan).
+
+### One-Step Future Setup (Key Checklist)
+
+Use this once to bootstrap, then redeploys are one command.
+
+Required secrets/keys:
+
+- `MCP_GOOGLE_CLIENT_ID` (Google OAuth client ID)
+- `MCP_GOOGLE_CLIENT_SECRET` (Google OAuth client secret)
+- At least one LLM key:
+  - `GEMINI_API_KEY` or `OPENROUTER_API_KEY`
+- At least one transcript key:
+  - `SCRAPECREATORS_API_KEY` or `SUPADATA_API_KEY`
+
+Required non-secret env vars:
+
+- `MCP_AUTH_MODE=google_oauth`
+- `MCP_SERVER_BASE_URL=https://<your-cloud-run-url>`
+
+Google OAuth client setup:
+
+- Add this redirect URI in Google OAuth credentials:
+  - `https://<your-cloud-run-url>/auth/callback`
+- The `<your-cloud-run-url>` must match `MCP_SERVER_BASE_URL` exactly.
+
+#### First deploy in a new region/service
+
+Set values in local `.env` (or shell env), then run:
+
+```bash
+ENV_FILE=.env bash scripts/deploy_cloud_run.sh
+```
+
+The script will:
+
+- create/update Secret Manager secrets
+- deploy Cloud Run with non-sensitive config in env vars
+- mount sensitive values via `--set-secrets`
+
+#### Subsequent deploys
+
+```bash
+bash scripts/deploy_cloud_run.sh
+```
+
+The script auto-resolves missing local values from current Cloud Run config + Secret Manager.
+
+`scripts/deploy_cloud_run.sh` is the single script for deploy + OAuth sync.
+
+On each run it also:
+
+- syncs `MCP_SERVER_BASE_URL` to the live Cloud Run URL
+- keeps `MCP_GOOGLE_CLIENT_ID` in env vars
+- keeps `MCP_GOOGLE_CLIENT_SECRET` in Secret Manager
+- prints the exact redirect URI:
+  - `https://<your-cloud-run-url>/auth/callback`
+
+### ChatGPT Connector Setup
+
+After deploy is healthy, add the MCP in ChatGPT with these values:
+
+- MCP Server URL: `https://<your-cloud-run-url>`
+- Authentication: `OAuth`
+
+Do not paste backend provider keys into ChatGPT:
+
+- `GEMINI_API_KEY`
+- `OPENROUTER_API_KEY`
+- `SCRAPECREATORS_API_KEY`
+- `SUPADATA_API_KEY`
+- `MCP_GOOGLE_CLIENT_SECRET`
+
+Those stay server-side in Cloud Run/Secret Manager.
+
+If OAuth fails with `redirect_uri_mismatch`:
+
+- Confirm Google OAuth redirect URI includes:
+  - `https://<your-cloud-run-url>/auth/callback`
+- Confirm `MCP_SERVER_BASE_URL` exactly matches the same host used in ChatGPT.
+
+If tools appear but calls fail or disappear:
+
+- Remove and re-add the connector in ChatGPT.
+- Start a new chat after reconnect.
+- Keep Cloud Run `max-instances=1` unless OAuth state is moved to shared persistent storage.
