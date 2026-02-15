@@ -8,6 +8,10 @@ ENV_FILE="${ENV_FILE:-.env}"
 SERVICE_ENV_CACHE_JSON=""
 SERVICE_STATUS_URL=""
 PROJECT_NUMBER=""
+RUNTIME_SERVICE_ACCOUNT=""
+MCP_OAUTH_BUCKET="${MCP_OAUTH_BUCKET:-}"
+MCP_OAUTH_VOLUME_NAME="${MCP_OAUTH_VOLUME_NAME:-fastmcp-state}"
+MCP_OAUTH_MOUNT_PATH="${MCP_OAUTH_MOUNT_PATH:-/mnt/fastmcp}"
 
 cleanup() {
   if [[ -n "${SERVICE_ENV_CACHE_JSON}" && -f "${SERVICE_ENV_CACHE_JSON}" ]]; then
@@ -176,6 +180,41 @@ PROJECT_NUMBER="$(
   gcloud projects describe "${PROJECT_ID}" \
     --format='value(projectNumber)' 2>/dev/null || true
 )"
+if [[ -z "${PROJECT_NUMBER}" ]]; then
+  echo "Unable to resolve project number for ${PROJECT_ID}."
+  exit 1
+fi
+
+if [[ -z "${MCP_OAUTH_BUCKET}" ]]; then
+  MCP_OAUTH_BUCKET="${SERVICE_NAME}-${PROJECT_NUMBER}-oauth-state"
+fi
+
+RUNTIME_SERVICE_ACCOUNT="$(
+  gcloud run services describe "${SERVICE_NAME}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null || true
+)"
+if [[ -z "${RUNTIME_SERVICE_ACCOUNT}" ]]; then
+  RUNTIME_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+fi
+
+gcloud services enable storage.googleapis.com \
+  --project "${PROJECT_ID}" >/dev/null
+
+if ! gcloud storage buckets describe "gs://${MCP_OAUTH_BUCKET}" \
+  --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  gcloud storage buckets create "gs://${MCP_OAUTH_BUCKET}" \
+    --project "${PROJECT_ID}" \
+    --location "${REGION}" \
+    --uniform-bucket-level-access >/dev/null
+fi
+
+gcloud storage buckets add-iam-policy-binding "gs://${MCP_OAUTH_BUCKET}" \
+  --project "${PROJECT_ID}" \
+  --member "serviceAccount:${RUNTIME_SERVICE_ACCOUNT}" \
+  --role "roles/storage.objectUser" >/dev/null
+
 DEFAULT_REGIONAL_BASE_URL=""
 if [[ -n "${PROJECT_NUMBER}" ]]; then
   DEFAULT_REGIONAL_BASE_URL="https://${SERVICE_NAME}-${PROJECT_NUMBER}.${REGION}.run.app"
@@ -223,6 +262,7 @@ ENV_VARS=(
   "MCP_TRANSPORT=http"
   "MCP_HOST=0.0.0.0"
   "DEFAULT_TARGET_LANGUAGE=auto"
+  "FASTMCP_HOME=${MCP_OAUTH_MOUNT_PATH}"
   "MCP_AUTH_MODE=google_oauth"
   "MCP_SERVER_BASE_URL=${MCP_SERVER_BASE_URL}"
   "MCP_GOOGLE_CLIENT_ID=${MCP_GOOGLE_CLIENT_ID}"
@@ -256,10 +296,12 @@ gcloud run deploy "${SERVICE_NAME}" \
   --allow-unauthenticated \
   --memory 1Gi \
   --cpu 1 \
-  --concurrency 4 \
+  --concurrency 16 \
   --timeout 180 \
   --min-instances 0 \
   --max-instances 2 \
+  --add-volume "name=${MCP_OAUTH_VOLUME_NAME},type=cloud-storage,bucket=${MCP_OAUTH_BUCKET}" \
+  --add-volume-mount "volume=${MCP_OAUTH_VOLUME_NAME},mount-path=${MCP_OAUTH_MOUNT_PATH}" \
   --set-env-vars "${ENV_VARS_CSV}" \
   --set-secrets "${SECRET_VARS_CSV}" \
   --command=web
@@ -275,3 +317,5 @@ echo
 echo "Deploy complete."
 echo "Service URL: ${FINAL_SERVICE_URL:-unknown}"
 echo "OAuth Redirect URI (Google client): ${MCP_SERVER_BASE_URL%/}/auth/callback"
+echo "OAuth state bucket: gs://${MCP_OAUTH_BUCKET}"
+echo "Runtime service account: ${RUNTIME_SERVICE_ACCOUNT}"
